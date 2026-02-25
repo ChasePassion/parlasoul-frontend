@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Roleplay - Horizontal Expand Suggestions</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 隐藏滚动条 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-gray-200 h-screen flex justify-center items-center font-sans">
+
+    <!-- 手机模拟器容器 (定宽 400px) -->
+    <div class="w-full max-w-[400px] h-[750px] bg-white shadow-2xl rounded-3xl overflow-hidden flex flex-col relative border-4 border-gray-800">
+
+        <!-- ========================================== -->
+        <!-- 1. 对话流区域 -->
+        <!-- ========================================== -->
+        <div class="flex-1 bg-gray-50 p-4 overflow-y-auto no-scrollbar flex flex-col gap-4 relative">
+            <div class="flex gap-2 mt-auto">
+                <div class="w-8 h-8 rounded-full bg-indigo-100 shrink-0 flex items-center justify-center text-sm">👩‍🏫</div>
+                <div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm max-w-[85%] text-sm text-gray-700 leading-relaxed">
+                    Iceland is amazing! The northern lights are breathtaking. Are you afraid of the cold though?
+                </div>
+            </div>
+            <!-- 底部安全占位，防止悬浮气泡挡住最后一条消息 -->
+            <div class="h-[60px] shrink-0"></div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- 2. 底部输入与建议区 -->
+        <!-- ========================================== -->
+        <div class="bg-white border-t border-gray-100 p-4 pb-6 shrink-0 relative z-20">
+
+            <!-- === 核心交互区：横向手风琴卡片 (绝对定位悬浮) === -->
+            <!-- bottom-full 让它贴在输入框顶端往上长，不推挤下面的元素 -->
+            <div class="absolute bottom-full left-0 w-full px-4 mb-3 z-50">
+
+                <!-- group/list: 监听整个卡片组的 Hover -->
+                <!-- 默认 gap-2，Hover 整个容器时 gap 变成 0，配合卡片消失做到无缝融合 -->
+                <div class="group/list flex w-full gap-2 hover:gap-0 transition-all duration-400 ease-[cubic-bezier(0.4,0,0.2,1)] items-end">
+
+                    <!-- 【卡片 1】 -->
+                    <!-- flex-[1_1_0%]: 默认三等分宽度 -->
+                    <!-- group-hover/list: 其他卡片被Hover时，当前卡片宽度归0，透明度归0，边框消失 -->
+                    <!-- hover:!flex-[1_0_100%]: 自己被Hover时，强制占据 100% 宽度 -->
+                    <div onclick="fillInput('Not really! Actually, I love winter sports so it is fine.')"
+                         class="group/card relative flex-[1_1_0%] bg-white border border-gray-200 rounded-xl cursor-pointer overflow-hidden transition-all duration-400 ease-[cubic-bezier(0.4,0,0.2,1)]
+                                max-h-[40px] hover:!max-h-[150px] hover:!flex-[1_0_100%] hover:!opacity-100 hover:!border-gray-300 hover:bg-gray-50 hover:shadow-md
+                                group-hover/list:flex-[0_0_0%] group-hover/list:opacity-0 group-hover/list:border-transparent">
+
+                        <!-- 默认折叠态：居中单行文字 -->
+                        <div class="absolute inset-x-0 top-0 h-[40px] flex items-center justify-center px-2 transition-opacity duration-200 group-hover/card:opacity-0">
+                            <span class="text-xs text-gray-600 font-medium truncate">Not really! I love...</span>
+                        </div>
+
+                        <!-- Hover 展开态：双语详情 -->
+                        <!-- 这里的 w-[366px] 是关键（400px容器 - 32px padding - 2px border），强制文字盒子宽度固定，防止在卡片变宽的过程中文字频繁换行乱抖 -->
+                        <div class="opacity-0 group-hover/card:opacity-100 transition-opacity duration-300 p-3 w-[366px] flex flex-col justify-center">
+                            <div class="text-sm font-bold text-gray-800 leading-snug">Not really! Actually, I love winter sports so it is fine.</div>
+                            <div class="h-px w-full bg-gray-200 my-2"></div>
+                            <div class="text-xs text-gray-500">不完全是！其实我很喜欢冬季运动，所以没关系。</div>
+                        </div>
+                    </div>
+
+                    <!-- 【卡片 2】 -->
+                    <div onclick="fillInput('A little bit, but the scenery is worth it!')"
+                         class="group/card relative flex-[1_1_0%] bg-white border border-gray-200 rounded-xl cursor-pointer overflow-hidden transition-all duration-400 ease-[cubic-bezier(0.4,0,0.2,1)]
+                                max-h-[40px] hover:!max-h-[150px] hover:!flex-[1_0_100%] hover:!opacity-100 hover:!border-gray-300 hover:bg-gray-50 hover:shadow-md
+                                group-hover/list:flex-[0_0_0%] group-hover/list:opacity-0 group-hover/list:border-transparent">
+
+                        <div class="absolute inset-x-0 top-0 h-[40px] flex items-center justify-center px-2 transition-opacity duration-200 group-hover/card:opacity-0">
+                            <span class="text-xs text-gray-600 font-medium truncate">A little bit, but the...</span>
+                        </div>
+
+                        <div class="opacity-0 group-hover/card:opacity-100 transition-opacity duration-300 p-3 w-[366px] flex flex-col justify-center">
+                            <div class="text-sm font-bold text-gray-800 leading-snug">A little bit, but I think the scenery is worth freezing for!</div>
+                            <div class="h-px w-full bg-gray-200 my-2"></div>
+                            <div class="text-xs text-gray-500">有一点点怕，但我觉得为了美景挨冻也值了！</div>
+                        </div>
+                    </div>
+
+                    <!-- 【卡片 3】 -->
+                    <div onclick="fillInput('Do you want to come with me?')"
+                         class="group/card relative flex-[1_1_0%] bg-white border border-gray-200 rounded-xl cursor-pointer overflow-hidden transition-all duration-400 ease-[cubic-bezier(0.4,0,0.2,1)]
+                                max-h-[40px] hover:!max-h-[150px] hover:!flex-[1_0_100%] hover:!opacity-100 hover:!border-gray-300 hover:bg-gray-50 hover:shadow-md
+                                group-hover/list:flex-[0_0_0%] group-hover/list:opacity-0 group-hover/list:border-transparent">
+
+                        <div class="absolute inset-x-0 top-0 h-[40px] flex items-center justify-center px-2 transition-opacity duration-200 group-hover/card:opacity-0">
+                            <span class="text-xs text-gray-600 font-medium truncate">Do you want to...</span>
+                        </div>
+
+                        <div class="opacity-0 group-hover/card:opacity-100 transition-opacity duration-300 p-3 w-[366px] flex flex-col justify-center">
+                            <div class="text-sm font-bold text-gray-800 leading-snug">Do you want to come with me? We can see the aurora together!</div>
+                            <div class="h-px w-full bg-gray-200 my-2"></div>
+                            <div class="text-xs text-gray-500">你想跟我一起去吗？我们可以一起看极光！</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <!-- === 横向手风琴容器 结束 === -->
+
+            <!-- 真正的输入框 -->
+            <div class="relative flex items-end gap-2 z-10">
+                <div class="flex-1 bg-gray-100 rounded-2xl px-4 py-3 min-h-[48px] flex items-center transition-all" id="input-container">
+                    <input id="chat-input" type="text" placeholder="Type a message..." class="bg-transparent w-full outline-none text-sm text-gray-700 placeholder-gray-400">
+                </div>
+                <button class="w-12 h-12 bg-gray-900 rounded-full text-white flex items-center justify-center hover:bg-black transition-colors shadow-lg">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function fillInput(text) {
+            const input = document.getElementById('chat-input');
+            const container = document.getElementById('input-container');
+            input.value = text;
+            container.classList.add('ring-2', 'ring-gray-300', 'bg-gray-200');
+            setTimeout(() => { container.classList.remove('ring-2', 'ring-gray-300', 'bg-gray-200'); }, 200);
+        }
+    </script>
+</body>
+</html>

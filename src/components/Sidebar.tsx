@@ -128,7 +128,7 @@ export default function Sidebar({
             </nav>
 
             {/* Bottom Fixed Section - Profile */}
-            <section className="flex-none p-4 mt-auto border-t border-divider relative profile-section" aria-label="账户菜单">
+            <section className="flex-none p-2 mt-auto border-t border-divider relative profile-section" aria-label="账户菜单">
                 <div
                     className="flex items-center gap-3 p-2 rounded-xl hover:bg-sidebar-hover cursor-pointer transition-colors"
                     onClick={(e) => {

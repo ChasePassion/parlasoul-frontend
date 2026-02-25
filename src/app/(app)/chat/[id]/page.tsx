@@ -22,6 +22,7 @@ export default function ChatPage() {
         isStreaming,
         isLoading,
         error,
+        currentReplySuggestions,
         handleSelectCandidate,
         handleRegenAssistant,
         handleEditUser,
@@ -80,6 +81,7 @@ export default function ChatPage() {
             isStreaming={isStreaming}
             userAvatar={user?.avatar_url || "/default-avatar.svg"}
             messagesEndRef={messagesEndRef}
+            chatId={chatId}
             onSelectCandidate={handleSelectCandidate}
             onRegenAssistant={handleRegenAssistant}
             onEditUser={handleEditUser}
@@ -91,6 +93,7 @@ export default function ChatPage() {
             onSend={handleSendMessage}
             disabled={isStreaming}
             roleName={character.name}
+            replySuggestions={currentReplySuggestions}
         />
     ) : (
         <div className="text-base mx-auto px-4 sm:px-6 lg:px-16">
@@ -99,7 +102,7 @@ export default function ChatPage() {
                     className="h-14 w-full"
                     style={{
                         borderRadius: "28px",
-                        backgroundColor: "#FFFFFF",
+                        backgroundColor: "var(--bg-primary)",
                         boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
                     }}
                 />

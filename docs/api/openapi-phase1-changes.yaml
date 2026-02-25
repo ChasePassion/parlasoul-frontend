@@ -1,0 +1,956 @@
+openapi: 3.0.3
+info:
+  title: NeuraChar Phase 1 API Delta
+  version: 1.0.0-phase1
+  description: |
+    This document contains only APIs changed for Phase 1 scope.
+    Excluded scope: "discovery -> enter chat" flow, which is already completed.
+    Change types are marked by `x-change-type` on each operation.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+x-change-summary:
+  added:
+    - POST /v1/saved-items
+    - GET /v1/saved-items
+    - DELETE /v1/saved-items/{saved_item_id}
+  modified:
+    - GET /v1/users/me/settings
+    - PATCH /v1/users/me/settings
+    - GET /v1/chats/{chat_id}/turns
+    - POST /v1/chats/{chat_id}/stream
+  deleted: []
+tags:
+  - name: user-settings
+    description: Per-user chat learning settings.
+  - name: chats
+    description: In-chat timeline and streaming orchestration.
+  - name: saved-items
+    description: Favorite system and generic saved item collection.
+paths:
+  /v1/users/me/settings:
+    get:
+      tags: [user-settings]
+      summary: Get current user settings (Phase 1 fields)
+      operationId: getMySettingsV2
+      x-change-type: modified
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelopeUserSettings"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [user-settings]
+      summary: Patch current user settings (Phase 1 fields)
+      operationId: patchMySettingsV2
+      x-change-type: modified
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserSettingsUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelopeUserSettings"
+        "400":
+          description: Empty patch payload or invalid logical state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/chats/{chat_id}/turns:
+    get:
+      tags: [chats]
+      summary: Get paged turns (with learning metadata for Phase 1)
+      operationId: getChatTurnsV2
+      x-change-type: modified
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: before_turn_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: include_learning_data
+          in: query
+          required: false
+          description: Include sentence card + mixed-input transform metadata in candidate.extra.
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelopeTurnsPage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Chat or turn not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/chats/{chat_id}/stream:
+    post:
+      tags: [chats]
+      summary: Stream one round with fixed Phase 1 orchestration
+      operationId: streamChatV2
+      x-change-type: modified
+      description: |
+        Fixed orchestration for one round:
+        1) Mixed-input transform (triggered only when Chinese exists and setting enabled)
+        2) Assistant dialogue streaming
+        3) Reply suggestions (exactly 3)
+        4) Sentence card generation for this assistant message
+        5) Memory update (background, user-invisible)
+
+        SSE event order (strict):
+        - `meta`
+        - `transform_chunk`* and `transform_done` (only when transform triggered)
+        - `chunk`* (assistant streaming)
+        - `done` (assistant final)
+        - `reply_suggestions`
+        - `sentence_card`
+        - `memory_queued` (optional)
+      x-sse-event-schema:
+        $ref: "#/components/schemas/SSEEvent"
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatStreamRequestV2"
+      responses:
+        "200":
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                stream:
+                  value: |
+                    data: {"type":"meta","user_turn":{"id":"9ce9...","turn_no":11,"candidate_id":"f12a..."},"assistant_turn":{"id":"4cf5...","turn_no":12,"candidate_id":"42ab..."}}
+
+                    data: {"type":"transform_done","original_content":"I think 我们可以明天见","transformed_content":"I think we can meet tomorrow.","applied":true}
+
+                    data: {"type":"chunk","content":"That sounds"}
+
+                    data: {"type":"chunk","content":" great!"}
+
+                    data: {"type":"done","full_content":"That sounds great!","assistant_turn_id":"4cf5...","assistant_candidate_id":"42ab..."}
+
+                    data: {"type":"reply_suggestions","suggestions":[{"type":"relationship","en":"I missed talking to you too :)","zh":"我也很想和你聊天 :)"},{"type":"topic","en":"What time works best for you tomorrow?","zh":"你明天几点最方便？"},{"type":"interaction","en":"Pick one: coffee date or park walk?","zh":"二选一：喝咖啡还是去公园散步？"}]}
+
+                    data: {"type":"sentence_card","message_id":"42ab...","sentence_card":{"surface":"That sounds great!","zh":"那听起来太棒了！","key_phrases":[{"surface":"sounds great","ipa_us":"/saʊndz ɡreɪt/","zh":"听起来很棒"},{"surface":"That sounds","ipa_us":"/ðæt saʊndz/","zh":"这听起来"}],"favorite":{"enabled":true,"is_favorited":false,"saved_item_id":null}}}
+
+                    data: {"type":"memory_queued","status":"queued"}
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Chat/character not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Chat state conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/saved-items:
+    post:
+      tags: [saved-items]
+      summary: Save one learning item to favorites
+      operationId: createSavedItem
+      x-change-type: added
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SavedItemCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelopeSavedItem"
+        "400":
+          description: Invalid payload or unsupported source reference
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Duplicate favorite (same user + same source)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    get:
+      tags: [saved-items]
+      summary: List saved items
+      operationId: listSavedItems
+      x-change-type: added
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            example: sentence_card
+        - name: role_id
+          in: query
+          required: false
+          description: Character/role id filter.
+          schema:
+            type: string
+            format: uuid
+        - name: chat_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelopeSavedItemsPage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/saved-items/{saved_item_id}:
+    delete:
+      tags: [saved-items]
+      summary: Delete one saved item
+      operationId: deleteSavedItem
+      x-change-type: added
+      parameters:
+        - name: saved_item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Saved item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [code, message, status]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        status:
+          type: integer
+
+    DisplayMode:
+      type: string
+      enum: [concise, detailed]
+
+    UserSettingsResponse:
+      type: object
+      required:
+        - display_mode
+        - knowledge_card_enabled
+        - mixed_input_auto_translate_enabled
+        - updated_at
+      properties:
+        display_mode:
+          $ref: "#/components/schemas/DisplayMode"
+        knowledge_card_enabled:
+          type: boolean
+          default: true
+        mixed_input_auto_translate_enabled:
+          type: boolean
+          default: true
+        message_font_size:
+          type: integer
+          nullable: true
+          deprecated: true
+          description: Legacy field kept for compatibility.
+        updated_at:
+          type: string
+          format: date-time
+
+    UserSettingsUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        display_mode:
+          $ref: "#/components/schemas/DisplayMode"
+        knowledge_card_enabled:
+          type: boolean
+        mixed_input_auto_translate_enabled:
+          type: boolean
+        message_font_size:
+          type: integer
+          deprecated: true
+          description: Legacy field kept for compatibility.
+
+    SuccessEnvelopeUserSettings:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/UserSettingsResponse"
+
+    CharacterBrief:
+      type: object
+      required: [id, name, description, visibility, interaction_count]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        greeting_message:
+          type: string
+          nullable: true
+        avatar_file_name:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          nullable: true
+          items:
+            type: string
+        visibility:
+          type: string
+        creator_id:
+          type: string
+          nullable: true
+        interaction_count:
+          type: integer
+
+    ChatResponse:
+      type: object
+      required:
+        - id
+        - user_id
+        - character_id
+        - type
+        - state
+        - visibility
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        character_id:
+          type: string
+        type:
+          type: string
+        state:
+          type: string
+        visibility:
+          type: string
+        last_turn_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_turn_id:
+          type: string
+          nullable: true
+        last_turn_no:
+          type: integer
+          nullable: true
+        active_leaf_turn_id:
+          type: string
+          nullable: true
+        last_read_turn_no:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+        meta:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    SentenceCardPhrase:
+      type: object
+      required: [surface, zh, ipa_us]
+      properties:
+        surface:
+          type: string
+        zh:
+          type: string
+        ipa_us:
+          type: string
+
+    SentenceCardFavoriteState:
+      type: object
+      required: [enabled, is_favorited]
+      properties:
+        enabled:
+          type: boolean
+          example: true
+        is_favorited:
+          type: boolean
+          example: false
+        saved_item_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    SentenceCard:
+      type: object
+      required: [surface, zh, key_phrases, favorite]
+      properties:
+        surface:
+          type: string
+        zh:
+          type: string
+        key_phrases:
+          type: array
+          minItems: 2
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/SentenceCardPhrase"
+        favorite:
+          $ref: "#/components/schemas/SentenceCardFavoriteState"
+
+    InputTransform:
+      type: object
+      required: [applied, transformed_content]
+      properties:
+        applied:
+          type: boolean
+        transformed_content:
+          type: string
+
+    CandidateExtra:
+      type: object
+      additionalProperties: true
+      properties:
+        input_transform:
+          allOf:
+            - $ref: "#/components/schemas/InputTransform"
+          nullable: true
+        sentence_card:
+          allOf:
+            - $ref: "#/components/schemas/SentenceCard"
+          nullable: true
+
+    CandidateResponse:
+      type: object
+      required: [id, candidate_no, content, is_final, created_at]
+      properties:
+        id:
+          type: string
+        candidate_no:
+          type: integer
+        content:
+          type: string
+        model_type:
+          type: string
+          nullable: true
+        is_final:
+          type: boolean
+        rank:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        extra:
+          $ref: "#/components/schemas/CandidateExtra"
+
+    TurnResponse:
+      type: object
+      required:
+        [
+          id,
+          turn_no,
+          author_type,
+          state,
+          is_proactive,
+          primary_candidate,
+          candidate_count,
+        ]
+      properties:
+        id:
+          type: string
+        turn_no:
+          type: integer
+        author_type:
+          type: string
+          enum: [USER, CHARACTER, SYSTEM]
+        state:
+          type: string
+        is_proactive:
+          type: boolean
+        parent_turn_id:
+          type: string
+          nullable: true
+        parent_candidate_id:
+          type: string
+          nullable: true
+        primary_candidate:
+          $ref: "#/components/schemas/CandidateResponse"
+        candidate_count:
+          type: integer
+          minimum: 1
+
+    TurnsPageResponse:
+      type: object
+      required: [chat, character, turns, has_more]
+      properties:
+        chat:
+          $ref: "#/components/schemas/ChatResponse"
+        character:
+          $ref: "#/components/schemas/CharacterBrief"
+        turns:
+          type: array
+          items:
+            $ref: "#/components/schemas/TurnResponse"
+        next_before_turn_id:
+          type: string
+          nullable: true
+        has_more:
+          type: boolean
+
+    SuccessEnvelopeTurnsPage:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/TurnsPageResponse"
+
+    ChatStreamRequestV2:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          description: User typed text (can be mixed Chinese+English).
+        client_message_id:
+          type: string
+          description: Optional client idempotency key.
+
+    ReplySuggestion:
+      type: object
+      required: [type, en, zh]
+      properties:
+        type:
+          type: string
+          enum: [relationship, topic, interaction]
+        en:
+          type: string
+        zh:
+          type: string
+
+    SSEMetaEvent:
+      type: object
+      required: [type, user_turn, assistant_turn]
+      properties:
+        type:
+          type: string
+          enum: [meta]
+        user_turn:
+          type: object
+          required: [id, turn_no, candidate_id]
+          properties:
+            id:
+              type: string
+            turn_no:
+              type: integer
+            candidate_id:
+              type: string
+        assistant_turn:
+          type: object
+          required: [id, turn_no, candidate_id]
+          properties:
+            id:
+              type: string
+            turn_no:
+              type: integer
+            candidate_id:
+              type: string
+
+    SSETransformChunkEvent:
+      type: object
+      required: [type, content]
+      properties:
+        type:
+          type: string
+          enum: [transform_chunk]
+        content:
+          type: string
+
+    SSETransformDoneEvent:
+      type: object
+      required: [type, original_content, transformed_content, applied]
+      properties:
+        type:
+          type: string
+          enum: [transform_done]
+        original_content:
+          type: string
+        transformed_content:
+          type: string
+        applied:
+          type: boolean
+
+    SSEAssistantChunkEvent:
+      type: object
+      required: [type, content]
+      properties:
+        type:
+          type: string
+          enum: [chunk]
+        content:
+          type: string
+
+    SSEAssistantDoneEvent:
+      type: object
+      required: [type, full_content, assistant_turn_id, assistant_candidate_id]
+      properties:
+        type:
+          type: string
+          enum: [done]
+        full_content:
+          type: string
+        assistant_turn_id:
+          type: string
+        assistant_candidate_id:
+          type: string
+
+    SSEReplySuggestionsEvent:
+      type: object
+      required: [type, suggestions]
+      properties:
+        type:
+          type: string
+          enum: [reply_suggestions]
+        suggestions:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/ReplySuggestion"
+
+    SSESentenceCardEvent:
+      type: object
+      required: [type, message_id, sentence_card]
+      properties:
+        type:
+          type: string
+          enum: [sentence_card]
+        message_id:
+          type: string
+        sentence_card:
+          $ref: "#/components/schemas/SentenceCard"
+
+    SSEMemoryQueuedEvent:
+      type: object
+      required: [type, status]
+      properties:
+        type:
+          type: string
+          enum: [memory_queued]
+        status:
+          type: string
+          enum: [queued]
+
+    SSEErrorEvent:
+      type: object
+      required: [type, code, message]
+      properties:
+        type:
+          type: string
+          enum: [error]
+        code:
+          type: string
+        message:
+          type: string
+
+    SSEEvent:
+      oneOf:
+        - $ref: "#/components/schemas/SSEMetaEvent"
+        - $ref: "#/components/schemas/SSETransformChunkEvent"
+        - $ref: "#/components/schemas/SSETransformDoneEvent"
+        - $ref: "#/components/schemas/SSEAssistantChunkEvent"
+        - $ref: "#/components/schemas/SSEAssistantDoneEvent"
+        - $ref: "#/components/schemas/SSEReplySuggestionsEvent"
+        - $ref: "#/components/schemas/SSESentenceCardEvent"
+        - $ref: "#/components/schemas/SSEMemoryQueuedEvent"
+        - $ref: "#/components/schemas/SSEErrorEvent"
+
+    SavedItemDisplay:
+      type: object
+      required: [surface, zh]
+      properties:
+        surface:
+          type: string
+        zh:
+          type: string
+
+    SavedItemSource:
+      type: object
+      required: [role_id, chat_id, message_id]
+      properties:
+        role_id:
+          type: string
+          format: uuid
+        chat_id:
+          type: string
+          format: uuid
+        message_id:
+          type: string
+          description: "Assistant message id (recommended: assistant_candidate_id)."
+        turn_id:
+          type: string
+          nullable: true
+        candidate_id:
+          type: string
+          nullable: true
+        meta:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    SavedItemPayload:
+      type: object
+      required: [kind, display, card, source]
+      properties:
+        kind:
+          type: string
+          description: Current Phase 1 recommended value is `sentence_card`.
+          example: sentence_card
+        display:
+          $ref: "#/components/schemas/SavedItemDisplay"
+        card:
+          $ref: "#/components/schemas/SentenceCard"
+        source:
+          $ref: "#/components/schemas/SavedItemSource"
+
+    SavedItemCreateRequest:
+      type: object
+      required: [saved_item]
+      properties:
+        saved_item:
+          $ref: "#/components/schemas/SavedItemPayload"
+
+    SavedItemResponse:
+      allOf:
+        - $ref: "#/components/schemas/SavedItemPayload"
+        - type: object
+          required: [id, created_at]
+          properties:
+            id:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+              format: date-time
+
+    SavedItemsPage:
+      type: object
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SavedItemResponse"
+        next_cursor:
+          type: string
+          nullable: true
+        has_more:
+          type: boolean
+
+    SuccessEnvelopeSavedItem:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 201
+        data:
+          $ref: "#/components/schemas/SavedItemResponse"
+
+    SuccessEnvelopeSavedItemsPage:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/SavedItemsPage"

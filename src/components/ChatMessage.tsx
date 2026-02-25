@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Markdown from "./Markdown";
+import MixedInputTransformBox from "./MixedInputTransformBox";
+import type { InputTransform, SentenceCard, ReplySuggestion, DisplayMode } from "@/lib/api";
 
 export interface Message {
     id: string;
@@ -12,6 +14,13 @@ export interface Message {
     candidateCount?: number;
     isTemp?: boolean;
     isGreeting?: boolean;
+    // Phase 1 learning fields
+    inputTransform?: InputTransform | null;
+    sentenceCard?: SentenceCard | null;
+    replySuggestions?: ReplySuggestion[] | null;
+    transformChunks?: string;
+    assistantTurnId?: string;
+    assistantCandidateId?: string;
 }
 
 interface ChatMessageProps {
@@ -19,10 +28,14 @@ interface ChatMessageProps {
     userAvatar: string;
     assistantAvatar: string;
     messageFontSize: number;
-    disabled?: boolean;
+    actionsDisabled?: boolean;
+    knowledgeCardDisabled?: boolean;
+    displayMode?: DisplayMode;
+    knowledgeCardEnabled?: boolean;
     onSelectCandidate?: (turnId: string, candidateNo: number) => void;
     onRegenAssistant?: (turnId: string) => void;
     onEditUser?: (turnId: string, newContent: string) => void;
+    onOpenKnowledgeCard?: (messageId: string) => void;
 }
 
 export default function ChatMessage({
@@ -30,20 +43,25 @@ export default function ChatMessage({
     userAvatar,
     assistantAvatar,
     messageFontSize,
-    disabled = false,
+    actionsDisabled = false,
+    knowledgeCardDisabled = false,
+    displayMode = "concise",
+    knowledgeCardEnabled = false,
     onSelectCandidate,
     onRegenAssistant,
     onEditUser,
+    onOpenKnowledgeCard,
 }: ChatMessageProps) {
     const userActionRowHideDelayMs = 500;
     const chevronLeftIcon = "/icons/chevron-left-8ee2e9.svg";
     const duplicateIcon = "/icons/duplicate-ce3544.svg";
     const checkIcon = "/icons/check-fa1dbd.svg";
     const editIcon = "/icons/edit-6d87e1.svg";
+    const ideaIcon = "/os-icon-idea.svg";
     const branchButtonClass =
-        "hover:bg-gray-100 flex h-[30px] w-[24px] items-center justify-center rounded-md text-text-secondary disabled:opacity-50 disabled:hover:bg-transparent";
+        "text-token-text-secondary hover:bg-token-bg-secondary rounded-md disabled:opacity-50";
     const actionButtonClass =
-        "text-text-secondary hover:bg-gray-100 flex h-8 w-8 items-center justify-center rounded-lg disabled:opacity-50 disabled:hover:bg-transparent";
+        "text-token-text-secondary hover:bg-token-bg-secondary rounded-lg disabled:opacity-50";
     const isUser = message.role === "user";
     const k = message.candidateNo ?? 1;
     const n = message.candidateCount ?? 1;
@@ -53,24 +71,27 @@ export default function ChatMessage({
         message.candidateNo !== undefined &&
         message.candidateCount !== undefined;
     const [isUserMessageHovering, setIsUserMessageHovering] = useState(false);
-    const isActionRowVisible = !isUser || isUserMessageHovering;
-    const renderActionIcon = (iconSrc: string, className = "") => (
-        <span
-            aria-hidden="true"
-            className={`inline-block h-5 w-5 shrink-0 ${className}`}
-            style={{
-                backgroundColor: "#5D5D5D",
-                WebkitMaskImage: `url(${iconSrc})`,
-                maskImage: `url(${iconSrc})`,
-                WebkitMaskRepeat: "no-repeat",
-                maskRepeat: "no-repeat",
-                WebkitMaskPosition: "center",
-                maskPosition: "center",
-                WebkitMaskSize: "contain",
-                maskSize: "contain",
-            }}
-            data-icon-src={iconSrc}
-        />
+    const [isTouchLikeDevice, setIsTouchLikeDevice] = useState(false);
+    const isActionRowVisible = !isUser || isTouchLikeDevice || isUserMessageHovering;
+    const renderActionIcon = (iconSrc: string, className = "", size: "branch" | "action" = "action") => (
+        <span className={`flex items-center justify-center ${size === "branch" ? "h-[30px] w-[24px]" : "h-8 w-8"}`}>
+            <span
+                aria-hidden="true"
+                className={`inline-block h-5 w-5 shrink-0 ${className}`}
+                style={{
+                    backgroundColor: "#5D5D5D",
+                    WebkitMaskImage: `url(${iconSrc})`,
+                    maskImage: `url(${iconSrc})`,
+                    WebkitMaskRepeat: "no-repeat",
+                    maskRepeat: "no-repeat",
+                    WebkitMaskPosition: "center",
+                    maskPosition: "center",
+                    WebkitMaskSize: "contain",
+                    maskSize: "contain",
+                }}
+                data-icon-src={iconSrc}
+            />
+        </span>
     );
 
     const [isEditing, setIsEditing] = useState(false);
@@ -136,6 +157,21 @@ export default function ChatMessage({
     }, [message.id, message.content]);
 
     useEffect(() => {
+        if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+        const mediaQuery = window.matchMedia("(hover: none), (pointer: coarse)");
+        const updateTouchLike = () => setIsTouchLikeDevice(mediaQuery.matches);
+        updateTouchLike();
+
+        if (typeof mediaQuery.addEventListener === "function") {
+            mediaQuery.addEventListener("change", updateTouchLike);
+            return () => mediaQuery.removeEventListener("change", updateTouchLike);
+        }
+
+        mediaQuery.addListener(updateTouchLike);
+        return () => mediaQuery.removeListener(updateTouchLike);
+    }, []);
+
+    useEffect(() => {
         return () => {
             if (copyResetTimerRef.current) {
                 clearTimeout(copyResetTimerRef.current);
@@ -166,7 +202,7 @@ export default function ChatMessage({
     };
 
     const handleLeft = () => {
-        if (disabled) return;
+        if (actionsDisabled) return;
         if (!showNav) return;
         if (!onSelectCandidate) return;
         if (k <= 1) return;
@@ -174,7 +210,7 @@ export default function ChatMessage({
     };
 
     const handleRight = () => {
-        if (disabled) return;
+        if (actionsDisabled) return;
         if (!showNav) return;
         if (k < n) {
             onSelectCandidate?.(message.id, k + 1);
@@ -186,7 +222,7 @@ export default function ChatMessage({
     };
 
     const handleEdit = () => {
-        if (disabled) return;
+        if (actionsDisabled) return;
         if (message.role !== "user") return;
         if (!showNav) return;
         if (n >= 10) return;
@@ -199,7 +235,7 @@ export default function ChatMessage({
     };
 
     const handleEditSend = () => {
-        if (disabled) return;
+        if (actionsDisabled) return;
         const next = draft.trim();
         if (!next) return;
         onEditUser?.(message.id, next);
@@ -207,7 +243,7 @@ export default function ChatMessage({
     };
 
     const handleCopy = async () => {
-        if (disabled) return;
+        if (actionsDisabled) return;
         if (!message.content) return;
         const copied = await copyTextToClipboard(message.content);
         if (copied) {
@@ -220,6 +256,25 @@ export default function ChatMessage({
             }, 1500);
         }
     };
+
+    // Phase 1: Whether to show mixed-input transform box under user message
+    const showTransformBox = isUser && (
+        (message.inputTransform?.applied && message.inputTransform.transformed_content) ||
+        message.transformChunks
+    );
+
+    const transformContent = message.inputTransform?.applied
+        ? message.inputTransform.transformed_content
+        : message.transformChunks || "";
+
+    const isTransformStreaming = !message.inputTransform?.applied && !!message.transformChunks;
+
+    // Phase 1: Whether to show detailed mode extras under assistant message
+    const showDetailedExtras = !isUser && displayMode === "detailed" && message.sentenceCard;
+
+    // Phase 1: Whether to show knowledge card (lightbulb) button
+    const showKnowledgeCardBtn = !isUser && knowledgeCardEnabled && message.sentenceCard && !message.isTemp;
+    const showActionRow = showNav || showKnowledgeCardBtn;
 
     return (
         <div className="relative flex w-full min-w-0 flex-col">
@@ -249,18 +304,18 @@ export default function ChatMessage({
                 <div
                     className={
                         isUser
-                            ? "relative flex w-[70%] min-w-0 flex-col items-end py-[6px]"
+                            ? "relative flex w-[70%] min-w-0 flex-col items-end"
                             : "flex min-w-0 max-w-[70%] flex-col"
                     }
                     onMouseEnter={
-                        isUser ? handleUserMessageMouseEnter : undefined
+                        isUser && !isTouchLikeDevice ? handleUserMessageMouseEnter : undefined
                     }
                     onMouseLeave={
-                        isUser ? handleUserMessageMouseLeave : undefined
+                        isUser && !isTouchLikeDevice ? handleUserMessageMouseLeave : undefined
                     }
                 >
                     <div
-                        className={`w-fit max-w-full px-4 py-2.5 ${isUser ? "bubble-user" : "bubble-assistant"}`}
+                        className={`w-fit max-w-full px-4 py-1.5 min-h-9 flex items-center ${isUser ? "bubble-user" : "bubble-assistant"}`}
                     >
                         {isEditing ? (
                             <div className="space-y-2">
@@ -268,16 +323,16 @@ export default function ChatMessage({
                                     value={draft}
                                     onChange={(e) => setDraft(e.target.value)}
                                     rows={3}
-                                    className="w-full resize-none bg-transparent leading-relaxed whitespace-pre-wrap focus:outline-none"
+                                    className="w-full resize-none bg-transparent leading-normal whitespace-pre-wrap focus:outline-none"
                                     style={messageTextStyle}
-                                    disabled={disabled}
+                                    disabled={actionsDisabled}
                                 />
                                 <div className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
                                     <button
                                         type="button"
                                         className="text-xs px-2 py-1 rounded border border-divider text-text-secondary hover:bg-gray-50 disabled:opacity-50"
                                         onClick={handleEditCancel}
-                                        disabled={disabled}
+                                        disabled={actionsDisabled}
                                     >
                                         取消
                                     </button>
@@ -285,14 +340,14 @@ export default function ChatMessage({
                                         type="button"
                                         className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                                         onClick={handleEditSend}
-                                        disabled={disabled || !draft.trim()}
+                                        disabled={actionsDisabled || !draft.trim()}
                                     >
                                         发送
                                     </button>
                                 </div>
                             </div>
                         ) : (
-                            <div className="leading-relaxed" style={messageTextStyle}>
+                            <div className="leading-normal w-full" style={messageTextStyle}>
                                 {isUser ? (
                                     <p className="whitespace-pre-wrap">{message.content}</p>
                                 ) : (
@@ -302,58 +357,94 @@ export default function ChatMessage({
                         )}
                     </div>
 
-                    {showNav && (
+                    {/* Phase 1: Detailed mode extras (zh + ipa) under assistant bubble */}
+                    {showDetailedExtras && message.sentenceCard && (
+                        <div className="mt-1 px-1 max-w-full">
+                            <p className="text-sm text-gray-500 leading-relaxed">
+                                {message.sentenceCard.zh}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Phase 1: Mixed-input transform box under user bubble */}
+                    {showTransformBox && (
+                        <div className="w-fit max-w-full">
+                            <MixedInputTransformBox
+                                transformedContent={transformContent}
+                                isStreaming={isTransformStreaming}
+                            />
+                        </div>
+                    )}
+
+                    {showActionRow && (
                         <div
                             className={`mt-1 flex h-8 w-full items-center gap-1 ${isUser ? "justify-end transition-opacity duration-200 ease-out" : "justify-start"} ${isUser && !isActionRowVisible ? "pointer-events-none opacity-0" : "opacity-100"}`}
                         >
-                            <div className="flex items-center justify-center text-text-secondary">
-                                <button
-                                    type="button"
-                                    className={branchButtonClass}
-                                    onClick={handleLeft}
-                                    disabled={disabled || k <= 1}
-                                    aria-label="上一分支"
-                                >
-                                    {renderActionIcon(chevronLeftIcon)}
-                                </button>
-                                <div className="px-0.5 text-sm font-semibold tabular-nums text-text-secondary">
-                                    {k}/{n}
+                            {showNav && (
+                                <div className="flex items-center justify-center text-text-secondary">
+                                    <button
+                                        type="button"
+                                        className={branchButtonClass}
+                                        onClick={handleLeft}
+                                        disabled={actionsDisabled || k <= 1}
+                                        aria-label="上一分支"
+                                    >
+                                        {renderActionIcon(chevronLeftIcon, "", "branch")}
+                                    </button>
+                                    <div className="px-0.5 text-sm font-semibold tabular-nums text-text-secondary">
+                                        {k}/{n}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className={branchButtonClass}
+                                        onClick={handleRight}
+                                        disabled={
+                                            actionsDisabled ||
+                                            (k >= n && (message.role !== "assistant" || n >= 10))
+                                        }
+                                        aria-label="下一分支"
+                                    >
+                                        {renderActionIcon(chevronLeftIcon, "rotate-180", "branch")}
+                                    </button>
                                 </div>
+                            )}
+
+                            {showNav && (
                                 <button
                                     type="button"
-                                    className={branchButtonClass}
-                                    onClick={handleRight}
-                                    disabled={
-                                        disabled ||
-                                        (k >= n && (message.role !== "assistant" || n >= 10))
-                                    }
-                                    aria-label="下一分支"
+                                    className={actionButtonClass}
+                                    onClick={() => {
+                                        void handleCopy();
+                                    }}
+                                    disabled={actionsDisabled || !message.content}
+                                    aria-label="复制原文"
                                 >
-                                    {renderActionIcon(chevronLeftIcon, "rotate-180")}
+                                    {renderActionIcon(isCopySuccess ? checkIcon : duplicateIcon)}
                                 </button>
-                            </div>
+                            )}
 
-                            <button
-                                type="button"
-                                className={actionButtonClass}
-                                onClick={() => {
-                                    void handleCopy();
-                                }}
-                                disabled={disabled || !message.content}
-                                aria-label="复制原文"
-                            >
-                                {renderActionIcon(isCopySuccess ? checkIcon : duplicateIcon)}
-                            </button>
-
-                            {message.role === "user" && (
+                            {showNav && message.role === "user" && (
                                 <button
                                     type="button"
                                     className={actionButtonClass}
                                     onClick={handleEdit}
-                                    disabled={disabled || n >= 10}
+                                    disabled={actionsDisabled || n >= 10}
                                     aria-label="编辑"
                                 >
                                     {renderActionIcon(editIcon)}
+                                </button>
+                            )}
+
+                            {/* Phase 1: Knowledge card lightbulb button */}
+                            {showKnowledgeCardBtn && (
+                                <button
+                                    type="button"
+                                    className={actionButtonClass}
+                                    onClick={() => onOpenKnowledgeCard?.(message.id)}
+                                    disabled={knowledgeCardDisabled}
+                                    aria-label="知识卡"
+                                >
+                                    {renderActionIcon(ideaIcon)}
                                 </button>
                             )}
                         </div>

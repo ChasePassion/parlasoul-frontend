@@ -5,7 +5,11 @@ import Image from "next/image";
 import CharacterCard from "@/components/CharacterCard";
 import CreateCharacterModal from "@/components/CreateCharacterModal";
 import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
-import { getUserCharacters, deleteCharacter, CharacterResponse } from "@/lib/api";
+import {
+    getUserCharacters,
+    deleteCharacter,
+    type CharacterResponse,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import WorkspaceFrame from "@/components/layout/WorkspaceFrame";
 import { useSidebar } from "../layout";
@@ -26,7 +30,7 @@ export default function ProfilePage() {
     const [isDeleting, setIsDeleting] = useState(false);
 
     // Tab State
-    const [activeTab, setActiveTab] = useState<'works' | 'likes' | 'favorites'>('works');
+    const [activeTab, setActiveTab] = useState<'works' | 'likes'>('works');
 
     // Clear selected character when on profile page
     useEffect(() => {
@@ -90,7 +94,6 @@ export default function ProfilePage() {
     const handleModalSuccess = () => {
         loadUserCharacters();
         refreshSidebarCharacters(); // Refresh sidebar when character created/edited
-        // Modal will be closed by handleModalClose which is called by onClose prop wrapper or directly
     };
 
     return (
@@ -133,16 +136,6 @@ export default function ProfilePage() {
                                 <div className="absolute bottom-0 left-0 h-0.5 w-full rounded-full bg-blue-600" />
                             )}
                         </button>
-                        <button
-                            onClick={() => setActiveTab('favorites')}
-                            className={`relative px-1 pb-3 text-lg font-medium transition-colors ${activeTab === 'favorites' ? "text-blue-600" : "text-gray-500 hover:text-gray-700"
-                                }`}
-                        >
-                            收藏
-                            {activeTab === 'favorites' && (
-                                <div className="absolute bottom-0 left-0 h-0.5 w-full rounded-full bg-blue-600" />
-                            )}
-                        </button>
                     </div>
 
                     {activeTab === 'works' && (
@@ -160,11 +153,12 @@ export default function ProfilePage() {
                         </div>
                     )}
 
-                    {activeTab !== 'works' && (
+                    {activeTab === 'likes' && (
                         <div className="py-20 text-center text-gray-400">
                             暂无内容
                         </div>
                     )}
+
                 </div>
             </div>
 

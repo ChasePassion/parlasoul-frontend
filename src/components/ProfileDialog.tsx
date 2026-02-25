@@ -34,6 +34,11 @@ export default function ProfileDialog({
         onClose();
     };
 
+    const handleOpenFavorites = () => {
+        router.push("/favorites");
+        onClose();
+    };
+
     return (
         <div
             className="absolute bottom-16 left-2 w-[90%] bg-white rounded-xl shadow-xl z-50 py-2 animate-modal-in"
@@ -54,6 +59,14 @@ export default function ProfileDialog({
             >
                 <Image src="/setting.svg" alt="Settings" width={20} height={20} className="shrink-0" />
                 <span className="text-sm font-medium text-gray-700">设置</span>
+            </button>
+
+            <button
+                onClick={handleOpenFavorites}
+                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+            >
+                <Image src="/mark.svg" alt="Favorites" width={20} height={20} className="shrink-0" />
+                <span className="text-sm font-medium text-gray-700">收藏夹</span>
             </button>
 
             {/* Divider */}

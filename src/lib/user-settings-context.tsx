@@ -11,16 +11,29 @@ import {
     type ReactNode,
 } from "react";
 import { getMySettings, updateMySettings } from "@/lib/api";
+import type { DisplayMode } from "@/lib/api";
 
-const USER_SETTINGS_STORAGE_KEY = "user_settings_v1";
+const USER_SETTINGS_STORAGE_KEY = "user_settings_v2";
 const DEFAULT_MESSAGE_FONT_SIZE = 16;
 const MIN_MESSAGE_FONT_SIZE = 14;
 const MAX_MESSAGE_FONT_SIZE = 24;
+const DEFAULT_DISPLAY_MODE: DisplayMode = "concise";
+const DEFAULT_KNOWLEDGE_CARD_ENABLED = true;
+const DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED = true;
 const SETTINGS_SYNC_DEBOUNCE_MS = 400;
 
-interface UserSettingsContextType {
+interface SettingsState {
     messageFontSize: number;
+    displayMode: DisplayMode;
+    knowledgeCardEnabled: boolean;
+    mixedInputAutoTranslateEnabled: boolean;
+}
+
+interface UserSettingsContextType extends SettingsState {
     setMessageFontSize: (size: number) => void;
+    setDisplayMode: (mode: DisplayMode) => void;
+    setKnowledgeCardEnabled: (enabled: boolean) => void;
+    setMixedInputAutoTranslateEnabled: (enabled: boolean) => void;
     minMessageFontSize: number;
     maxMessageFontSize: number;
     isLoading: boolean;
@@ -38,11 +51,18 @@ const clampMessageFontSize = (size: number): number => {
     return Math.min(MAX_MESSAGE_FONT_SIZE, Math.max(MIN_MESSAGE_FONT_SIZE, Math.round(size)));
 };
 
-const saveToLocalStorage = (messageFontSize: number) => {
+const defaultState: SettingsState = {
+    messageFontSize: DEFAULT_MESSAGE_FONT_SIZE,
+    displayMode: DEFAULT_DISPLAY_MODE,
+    knowledgeCardEnabled: DEFAULT_KNOWLEDGE_CARD_ENABLED,
+    mixedInputAutoTranslateEnabled: DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED,
+};
+
+const saveToLocalStorage = (state: SettingsState) => {
     try {
         window.localStorage.setItem(
             USER_SETTINGS_STORAGE_KEY,
-            JSON.stringify({ messageFontSize })
+            JSON.stringify(state)
         );
     } catch {
         // Ignore localStorage write failures and continue.
@@ -50,7 +70,11 @@ const saveToLocalStorage = (messageFontSize: number) => {
 };
 
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
-    const [messageFontSize, setMessageFontSizeState] = useState(DEFAULT_MESSAGE_FONT_SIZE);
+    const [messageFontSize, setMessageFontSizeState] = useState(defaultState.messageFontSize);
+    const [displayMode, setDisplayModeState] = useState<DisplayMode>(defaultState.displayMode);
+    const [knowledgeCardEnabled, setKnowledgeCardEnabledState] = useState(defaultState.knowledgeCardEnabled);
+    const [mixedInputAutoTranslateEnabled, setMixedInputAutoTranslateEnabledState] = useState(defaultState.mixedInputAutoTranslateEnabled);
+
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -58,10 +82,20 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
 
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const syncMessageFontSize = useCallback(async (size: number) => {
+    // Track the latest values for sync without stale closure issues
+    const latestRef = useRef({ messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled });
+    latestRef.current = { messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled };
+
+    const syncSettings = useCallback(async () => {
+        const current = latestRef.current;
         setIsSaving(true);
         try {
-            await updateMySettings({ message_font_size: size });
+            await updateMySettings({
+                message_font_size: current.messageFontSize,
+                display_mode: current.displayMode,
+                knowledge_card_enabled: current.knowledgeCardEnabled,
+                mixed_input_auto_translate_enabled: current.mixedInputAutoTranslateEnabled,
+            });
             setError(null);
         } catch {
             setError("未同步到云端，可重试");
@@ -70,28 +104,48 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
+    // Bootstrap: load from localStorage then remote
     useEffect(() => {
         let cancelled = false;
 
         const bootstrap = async () => {
+            // 1. Local storage (instant)
             try {
                 const raw = window.localStorage.getItem(USER_SETTINGS_STORAGE_KEY);
                 if (raw) {
-                    const parsed = JSON.parse(raw) as { messageFontSize?: number };
+                    const parsed = JSON.parse(raw) as Partial<SettingsState>;
                     if (typeof parsed.messageFontSize === "number") {
                         setMessageFontSizeState(clampMessageFontSize(parsed.messageFontSize));
+                    }
+                    if (parsed.displayMode === "concise" || parsed.displayMode === "detailed") {
+                        setDisplayModeState(parsed.displayMode);
+                    }
+                    if (typeof parsed.knowledgeCardEnabled === "boolean") {
+                        setKnowledgeCardEnabledState(parsed.knowledgeCardEnabled);
+                    }
+                    if (typeof parsed.mixedInputAutoTranslateEnabled === "boolean") {
+                        setMixedInputAutoTranslateEnabledState(parsed.mixedInputAutoTranslateEnabled);
                     }
                 }
             } catch {
                 // Ignore malformed/blocked local storage reads.
             }
 
+            // 2. Remote
             try {
                 const remote = await getMySettings();
                 if (!cancelled) {
-                    const next = clampMessageFontSize(remote.message_font_size);
-                    setMessageFontSizeState(next);
-                    saveToLocalStorage(next);
+                    const nextFontSize = clampMessageFontSize(remote.message_font_size);
+                    setMessageFontSizeState(nextFontSize);
+                    setDisplayModeState(remote.display_mode ?? DEFAULT_DISPLAY_MODE);
+                    setKnowledgeCardEnabledState(remote.knowledge_card_enabled ?? DEFAULT_KNOWLEDGE_CARD_ENABLED);
+                    setMixedInputAutoTranslateEnabledState(remote.mixed_input_auto_translate_enabled ?? DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED);
+                    saveToLocalStorage({
+                        messageFontSize: nextFontSize,
+                        displayMode: remote.display_mode ?? DEFAULT_DISPLAY_MODE,
+                        knowledgeCardEnabled: remote.knowledge_card_enabled ?? DEFAULT_KNOWLEDGE_CARD_ENABLED,
+                        mixedInputAutoTranslateEnabled: remote.mixed_input_auto_translate_enabled ?? DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED,
+                    });
                     setError(null);
                 }
             } catch {
@@ -112,11 +166,13 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
+    // Persist to localStorage on every change after loading
     useEffect(() => {
         if (isLoading) return;
-        saveToLocalStorage(messageFontSize);
-    }, [isLoading, messageFontSize]);
+        saveToLocalStorage({ messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled });
+    }, [isLoading, messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled]);
 
+    // Debounced remote sync
     useEffect(() => {
         if (changeVersion === 0) return;
         if (debounceTimerRef.current) {
@@ -125,7 +181,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
 
         debounceTimerRef.current = setTimeout(() => {
             debounceTimerRef.current = null;
-            void syncMessageFontSize(messageFontSize);
+            void syncSettings();
         }, SETTINGS_SYNC_DEBOUNCE_MS);
 
         return () => {
@@ -134,7 +190,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
                 debounceTimerRef.current = null;
             }
         };
-    }, [changeVersion, messageFontSize, syncMessageFontSize]);
+    }, [changeVersion, syncSettings]);
 
     useEffect(() => {
         return () => {
@@ -144,19 +200,44 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
-    const setMessageFontSize = useCallback((size: number) => {
-        setMessageFontSizeState(clampMessageFontSize(size));
-        setChangeVersion((version) => version + 1);
+    const bumpVersion = useCallback(() => {
+        setChangeVersion((v) => v + 1);
     }, []);
 
+    const setMessageFontSize = useCallback((size: number) => {
+        setMessageFontSizeState(clampMessageFontSize(size));
+        bumpVersion();
+    }, [bumpVersion]);
+
+    const setDisplayMode = useCallback((mode: DisplayMode) => {
+        setDisplayModeState(mode);
+        bumpVersion();
+    }, [bumpVersion]);
+
+    const setKnowledgeCardEnabled = useCallback((enabled: boolean) => {
+        setKnowledgeCardEnabledState(enabled);
+        bumpVersion();
+    }, [bumpVersion]);
+
+    const setMixedInputAutoTranslateEnabled = useCallback((enabled: boolean) => {
+        setMixedInputAutoTranslateEnabledState(enabled);
+        bumpVersion();
+    }, [bumpVersion]);
+
     const retrySync = useCallback(async () => {
-        await syncMessageFontSize(messageFontSize);
-    }, [messageFontSize, syncMessageFontSize]);
+        await syncSettings();
+    }, [syncSettings]);
 
     const contextValue = useMemo(
         () => ({
             messageFontSize,
+            displayMode,
+            knowledgeCardEnabled,
+            mixedInputAutoTranslateEnabled,
             setMessageFontSize,
+            setDisplayMode,
+            setKnowledgeCardEnabled,
+            setMixedInputAutoTranslateEnabled,
             minMessageFontSize: MIN_MESSAGE_FONT_SIZE,
             maxMessageFontSize: MAX_MESSAGE_FONT_SIZE,
             isLoading,
@@ -164,7 +245,11 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             error,
             retrySync,
         }),
-        [error, isLoading, isSaving, messageFontSize, retrySync, setMessageFontSize]
+        [
+            messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled,
+            setMessageFontSize, setDisplayMode, setKnowledgeCardEnabled, setMixedInputAutoTranslateEnabled,
+            isLoading, isSaving, error, retrySync,
+        ]
     );
 
     return (

@@ -1,17 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, KeyboardEvent } from "react";
+import Image from "next/image";
+import ReplySuggestionsBar from "./ReplySuggestionsBar";
+import type { ReplySuggestion } from "@/lib/api";
 
 interface ChatInputProps {
     onSend: (message: string) => void;
     disabled?: boolean;
     roleName?: string;
+    replySuggestions?: ReplySuggestion[] | null;
+    onSelectSuggestion?: (text: string) => void;
 }
 
 export default function ChatInput({
     onSend,
     disabled = false,
     roleName,
+    replySuggestions,
+    onSelectSuggestion,
 }: ChatInputProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const [message, setMessage] = useState("");
@@ -95,7 +102,10 @@ export default function ChatInput({
     const hasText = message.length > 0;
 
     return (
-        <div className="text-base mx-auto [--thread-content-margin:--spacing(4)] @w-sm/main:[--thread-content-margin:--spacing(6)] @w-lg/main:[--thread-content-margin:--spacing(16)] px-(--thread-content-margin)">
+        <div
+            className="text-base mx-auto [--thread-content-margin:--spacing(4)] @w-sm/main:[--thread-content-margin:--spacing(6)] @w-lg/main:[--thread-content-margin:--spacing(16)] px-(--thread-content-margin)"
+            style={{ backgroundColor: "var(--workspace-bg)" }}
+        >
             <div
                 className="[--thread-content-max-width:40rem] @w-lg/main:[--thread-content-max-width:48rem] mx-auto max-w-(--thread-content-max-width) flex-1 mb-4"
                 style={{ maxWidth: "48rem", width: "100%" }}
@@ -106,7 +116,51 @@ export default function ChatInput({
                     ) : null}
                 </div>
                 <div className="pointer-events-auto relative z-1 flex h-(--composer-container-height,100%) max-w-full flex-(--composer-container-flex,1) flex-col">
-                    <div className="absolute start-0 end-0 bottom-full z-20"></div>
+                    <div className="absolute start-0 end-0 bottom-full z-20">
+                        {replySuggestions && replySuggestions.length > 0 && (
+                            <ReplySuggestionsBar
+                                suggestions={replySuggestions}
+                                onSelect={(text) => {
+                                    // Append suggestion text to editor
+                                    const root = editorRef.current;
+                                    if (!root) return;
+
+                                    // Remove placeholder if present
+                                    const placeholderNode = root.querySelector("p.placeholder");
+                                    if (placeholderNode) {
+                                        placeholderNode.classList.remove("placeholder");
+                                        placeholderNode.removeAttribute("data-placeholder");
+                                        placeholderNode.textContent = text;
+                                    } else {
+                                        // Append to existing content
+                                        const currentText = getEditorText().trim();
+                                        const newText = currentText ? `${currentText} ${text}` : text;
+                                        root.textContent = "";
+                                        const p = document.createElement("p");
+                                        p.textContent = newText;
+                                        root.appendChild(p);
+                                    }
+
+                                    // Update state
+                                    const updatedText = getEditorText().trim();
+                                    setMessage(updatedText);
+                                    root.focus();
+
+                                    // Place cursor at end
+                                    const selection = window.getSelection();
+                                    if (selection && root.lastChild) {
+                                        const range = document.createRange();
+                                        range.selectNodeContents(root.lastChild);
+                                        range.collapse(false);
+                                        selection.removeAllRanges();
+                                        selection.addRange(range);
+                                    }
+
+                                    onSelectSuggestion?.(text);
+                                }}
+                            />
+                        )}
+                    </div>
                     <form
                         className="group/composer w-full"
                         data-type="unified-composer"
@@ -137,7 +191,7 @@ export default function ChatInput({
                         </div>
                         <div className="">
                             <div
-                                className="bg-token-bg-primary corner-superellipse/1.1 cursor-text overflow-clip bg-clip-padding p-2.5 contain-inline-size motion-safe:transition-colors motion-safe:duration-200 motion-safe:ease-in-out dark:bg-[#303030] grid grid-cols-[auto_1fr_auto] [grid-template-areas:'header_header_header'_'leading_primary_trailing'_'._footer_.'] group-data-expanded/composer:[grid-template-areas:'header_header_header'_'primary_primary_primary'_'leading_footer_trailing'] shadow-short"
+                                className="bg-token-bg-primary corner-superellipse/1.1 overflow-clip bg-clip-padding p-2.5 contain-inline-size motion-safe:transition-colors motion-safe:duration-200 motion-safe:ease-in-out dark:bg-[#303030] grid grid-cols-[auto_1fr_auto] [grid-template-areas:'header_header_header'_'leading_primary_trailing'_'._footer_.'] group-data-expanded/composer:[grid-template-areas:'header_header_header'_'primary_primary_primary'_'leading_footer_trailing'] shadow-short"
                                 data-composer-surface="true"
                                 style={{
                                     borderRadius: "28px",
@@ -147,7 +201,7 @@ export default function ChatInput({
                                 onClick={() => editorRef.current?.focus()}
                             >
                                 <div
-                                    className="-my-2.5 flex min-h-14 items-center overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5"
+                                    className="-my-2.5 flex min-h-14 items-center overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5 cursor-text"
                                     style={{ transform: "none", transformOrigin: "50% 50% 0px" }}
                                 >
                                     <div className="wcDTda_prosemirror-parent text-token-text-primary max-h-[max(30svh,5rem)] max-h-52 min-h-[var(--deep-research-composer-extra-height,unset)] flex-1 overflow-auto [scrollbar-width:thin] default-browser vertical-scroll-fade-mask">
@@ -192,7 +246,7 @@ export default function ChatInput({
                                             data-state="closed"
                                             onClick={() => showNotice("功能开发中")}
                                         >
-                                            <img
+                                            <Image
                                                 src="/icons/desktop-6be74c.svg"
                                                 width="20"
                                                 height="20"
@@ -215,7 +269,7 @@ export default function ChatInput({
                                                 className="composer-btn"
                                                 onClick={() => showNotice("功能开发中")}
                                             >
-                                                <img
+                                                <Image
                                                     src="/icons/close-29f921.svg"
                                                     width="20"
                                                     height="20"
@@ -246,7 +300,7 @@ export default function ChatInput({
                                                                 handleSend();
                                                             }}
                                                         >
-                                                            <img
+                                                            <Image
                                                                 src={
                                                                     hasText
                                                                         ? "/icons/laptop-01bab7.svg"

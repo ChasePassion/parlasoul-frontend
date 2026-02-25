@@ -2,7 +2,8 @@
 import { apiService } from "./api-service";
 
 // 认证相关
-export const sendVerificationCode = apiService.sendVerificationCode.bind(apiService);
+export const sendVerificationCode =
+  apiService.sendVerificationCode.bind(apiService);
 export const loginWithCode = apiService.login.bind(apiService);
 export const getCurrentUser = apiService.getCurrentUser.bind(apiService);
 
@@ -14,7 +15,8 @@ export const updateMySettings = apiService.updateMySettings.bind(apiService);
 
 // 角色相关
 export const createCharacter = apiService.createCharacter.bind(apiService);
-export const getMarketCharacters = apiService.getMarketCharacters.bind(apiService);
+export const getMarketCharacters =
+  apiService.getMarketCharacters.bind(apiService);
 export const getCharacterById = apiService.getCharacterById.bind(apiService);
 export const getUserCharacters = apiService.getUserCharacters.bind(apiService);
 export const updateCharacter = apiService.updateCharacter.bind(apiService);
@@ -25,13 +27,23 @@ export const getRecentChat = apiService.getRecentChat.bind(apiService);
 export const createChatInstance = apiService.createChat.bind(apiService);
 export const getChatTurns = apiService.getChatTurns.bind(apiService);
 export const streamChatMessage = apiService.streamChatMessage.bind(apiService);
-export const selectTurnCandidate = apiService.selectTurnCandidate.bind(apiService);
-export const regenAssistantTurn = apiService.regenAssistantTurn.bind(apiService);
-export const editUserTurnAndStreamReply = apiService.editUserTurnAndStreamReply.bind(apiService);
+export const selectTurnCandidate =
+  apiService.selectTurnCandidate.bind(apiService);
+export const selectTurnCandidateWithSnapshot =
+  apiService.selectTurnCandidateWithSnapshot.bind(apiService);
+export const regenAssistantTurn =
+  apiService.regenAssistantTurn.bind(apiService);
+export const editUserTurnAndStreamReply =
+  apiService.editUserTurnAndStreamReply.bind(apiService);
 
 // 记忆相关
 export const manageMemories = apiService.manageMemories.bind(apiService);
 export const searchMemories = apiService.searchMemories.bind(apiService);
+
+// 收藏相关
+export const createSavedItem = apiService.createSavedItem.bind(apiService);
+export const listSavedItems = apiService.listSavedItems.bind(apiService);
+export const deleteSavedItem = apiService.deleteSavedItem.bind(apiService);
 
 // 导出类型和错误类
 export * from "./token-store";
@@ -48,6 +60,7 @@ export type {
   TurnResponse,
   TurnSelectRequest,
   TurnSelectResponse,
+  TurnSelectSnapshotResponse,
   UserTurnEditStreamRequest,
   MemoryManageRequest,
   MemorySearchRequest,
@@ -58,4 +71,17 @@ export type {
   CharacterResponse,
   UpdateCharacterRequest,
   CharacterVisibility,
+  // Phase 1 types
+  DisplayMode,
+  SentenceCard,
+  SentenceCardPhrase,
+  SentenceCardFavoriteState,
+  ReplySuggestion,
+  InputTransform,
+  CandidateExtra,
+  SavedItemDisplay,
+  SavedItemSource,
+  SavedItemPayload,
+  SavedItemResponse,
+  SavedItemsPage,
 } from "./api-service";

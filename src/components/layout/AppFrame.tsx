@@ -40,7 +40,10 @@ export default function AppFrame({
                         {sidebar}
                     </aside>
 
-                    <section className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-white">
+                    <section
+                        className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-workspace-bg"
+                        style={{ backgroundColor: "var(--workspace-bg)" }}
+                    >
                         {!isSidebarOpen && (
                             <button
                                 onClick={onToggleSidebar}

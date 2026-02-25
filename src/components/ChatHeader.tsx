@@ -9,11 +9,19 @@ interface ChatHeaderProps {
 
 export default function ChatHeader({ character }: ChatHeaderProps) {
     if (!character) {
-        return <div className="w-full h-[64px] border-b border-divider bg-white" />;
+        return (
+            <div
+                className="w-full h-[64px] border-b border-divider bg-workspace-bg"
+                style={{ backgroundColor: "var(--workspace-bg)" }}
+            />
+        );
     }
 
     return (
-        <div className="w-full h-[64px] flex items-center gap-3 px-[14px] py-[14px] border-b border-divider bg-white">
+        <div
+            className="w-full h-[64px] flex items-center gap-3 px-[14px] py-[14px] border-b border-divider bg-workspace-bg"
+            style={{ backgroundColor: "var(--workspace-bg)" }}
+        >
             <div className="relative w-10 h-10 rounded-lg overflow-hidden shrink-0">
                 <Image
                     src={character.avatar}

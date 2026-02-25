@@ -41,7 +41,7 @@ export default function Markdown({
         ol: ({ children }) => (
             <ol className="mb-2 list-decimal pl-5 space-y-1">{children}</ol>
         ),
-        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        li: ({ children }) => <li className="leading-normal">{children}</li>,
         blockquote: ({ children }) => (
             <blockquote
                 className={[
