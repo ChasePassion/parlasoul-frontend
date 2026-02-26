@@ -51,6 +51,8 @@ export default function SettingsPage() {
         setKnowledgeCardEnabled,
         mixedInputAutoTranslateEnabled,
         setMixedInputAutoTranslateEnabled,
+        autoReadAloudEnabled,
+        setAutoReadAloudEnabled,
         isLoading,
         isSaving,
         error,
@@ -180,6 +182,21 @@ export default function SettingsPage() {
                                     checked={mixedInputAutoTranslateEnabled}
                                     onChange={setMixedInputAutoTranslateEnabled}
                                     label="混输自动转英文"
+                                />
+                            </div>
+
+                            {/* Phase 2: Auto Read Aloud */}
+                            <div className="flex items-center justify-between py-4 first:pt-0 last:pb-0">
+                                <div className="pr-4">
+                                    <p className="text-sm font-medium text-gray-900">自动朗读</p>
+                                    <p className="mt-0.5 text-sm text-gray-500">
+                                        开启后，AI 回复时会实时语音朗读
+                                    </p>
+                                </div>
+                                <Toggle
+                                    checked={autoReadAloudEnabled}
+                                    onChange={setAutoReadAloudEnabled}
+                                    label="自动朗读"
                                 />
                             </div>
                         </div>

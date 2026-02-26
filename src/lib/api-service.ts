@@ -52,6 +52,7 @@ export interface UserSettingsResponse {
   display_mode: DisplayMode;
   knowledge_card_enabled: boolean;
   mixed_input_auto_translate_enabled: boolean;
+  auto_read_aloud_enabled: boolean;
   message_font_size: number;
   updated_at: string;
 }
@@ -60,6 +61,7 @@ export interface UpdateUserSettingsRequest {
   display_mode?: DisplayMode;
   knowledge_card_enabled?: boolean;
   mixed_input_auto_translate_enabled?: boolean;
+  auto_read_aloud_enabled?: boolean;
   message_font_size?: number;
 }
 
@@ -351,6 +353,33 @@ interface ChatStreamErrorEvent {
   message?: string;
 }
 
+// Phase 2: TTS realtime SSE events
+interface ChatStreamTtsAudioDeltaEvent {
+  type: "tts_audio_delta";
+  assistant_candidate_id: string;
+  seq: number;
+  audio_b64: string;
+  mime_type: string;
+}
+
+interface ChatStreamTtsAudioDoneEvent {
+  type: "tts_audio_done";
+  assistant_candidate_id: string;
+}
+
+interface ChatStreamTtsErrorEvent {
+  type: "tts_error";
+  code: string;
+  message: string;
+}
+
+// Phase 2: STT transcription result
+export interface STTTranscriptionResult {
+  text: string;
+  model: string;
+  request_id?: string | null;
+}
+
 type ChatStreamEvent =
   | ChatStreamMetaEvent
   | ChatStreamTransformChunkEvent
@@ -360,7 +389,10 @@ type ChatStreamEvent =
   | ChatStreamReplySuggestionsEvent
   | ChatStreamSentenceCardEvent
   | ChatStreamMemoryQueuedEvent
-  | ChatStreamErrorEvent;
+  | ChatStreamErrorEvent
+  | ChatStreamTtsAudioDeltaEvent
+  | ChatStreamTtsAudioDoneEvent
+  | ChatStreamTtsErrorEvent;
 
 export class ApiService {
   async sendVerificationCode(email: string): Promise<void> {
@@ -750,6 +782,15 @@ export class ApiService {
         message_id: string;
         sentence_card: SentenceCard;
       }) => void;
+      // Phase 2: TTS realtime callbacks
+      onTtsAudioDelta?: (data: {
+        assistant_candidate_id: string;
+        seq: number;
+        audio_b64: string;
+        mime_type: string;
+      }) => void;
+      onTtsAudioDone?: (data: { assistant_candidate_id: string }) => void;
+      onTtsError?: (data: { code: string; message: string }) => void;
       onError: (error: string) => void;
     },
   ): Promise<void> {
@@ -843,6 +884,22 @@ export class ApiService {
               } else {
                 handlers.onError(data.message || "Unknown error");
               }
+            } else if (data.type === "tts_audio_delta") {
+              handlers.onTtsAudioDelta?.({
+                assistant_candidate_id: data.assistant_candidate_id,
+                seq: data.seq,
+                audio_b64: data.audio_b64,
+                mime_type: data.mime_type,
+              });
+            } else if (data.type === "tts_audio_done") {
+              handlers.onTtsAudioDone?.({
+                assistant_candidate_id: data.assistant_candidate_id,
+              });
+            } else if (data.type === "tts_error") {
+              handlers.onTtsError?.({
+                code: data.code,
+                message: data.message,
+              });
             }
             // memory_queued is silently ignored (background operation)
           } catch {
@@ -911,6 +968,98 @@ export class ApiService {
     request: MemorySearchRequest,
   ): Promise<{ episodic: unknown[]; semantic: unknown[] }> {
     return httpClient.post("/v1/memories/search", request);
+  }
+
+  // Phase 2: STT transcription
+  async sttTranscribe(
+    audioBlob: Blob,
+    options?: { audio_format?: string; sample_rate?: number },
+  ): Promise<STTTranscriptionResult> {
+    const token = tokenStore.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const formData = new FormData();
+    const fileName = options?.audio_format === "wav" ? "recording.wav" : "recording.webm";
+    formData.append("audio", audioBlob, fileName);
+    if (options?.audio_format) {
+      formData.append("audio_format", options.audio_format);
+    }
+    if (options?.sample_rate) {
+      formData.append("sample_rate", String(options.sample_rate));
+    }
+
+    const response = await fetch("/v1/voice/stt/transcriptions", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData: { code?: string; message?: string; detail?: string } =
+        await response.json().catch(() => ({}));
+      const errorMessage =
+        errorData.message ||
+        errorData.detail ||
+        `HTTP error! status: ${response.status}`;
+
+      if (response.status === 401) {
+        tokenStore.clearToken();
+        throw new UnauthorizedError(errorMessage);
+      }
+      if (response.status === 422) {
+        throw new ApiError(422, errorData.code ?? "no_speech", errorMessage);
+      }
+      throw new ApiError(response.status, errorData.code, errorMessage);
+    }
+
+    const payload = await response.json();
+    // Unwrap SuccessEnvelope if present
+    if (payload && typeof payload === "object" && "data" in payload) {
+      return payload.data as STTTranscriptionResult;
+    }
+    return payload as STTTranscriptionResult;
+  }
+
+  // Phase 2: TTS single-message audio stream
+  async getTtsAudioStream(
+    assistantCandidateId: string,
+    options?: { audio_format?: "opus" | "mp3"; signal?: AbortSignal },
+  ): Promise<ArrayBuffer> {
+    const token = tokenStore.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const format = options?.audio_format ?? "opus";
+    const response = await fetch(
+      `/v1/voice/tts/messages/${assistantCandidateId}/audio?audio_format=${format}`,
+      {
+        method: "GET",
+        headers,
+        signal: options?.signal,
+      },
+    );
+
+    if (!response.ok) {
+      const errorData: { code?: string; message?: string; detail?: string } =
+        await response.json().catch(() => ({}));
+      const errorMessage =
+        errorData.message ||
+        errorData.detail ||
+        `HTTP error! status: ${response.status}`;
+
+      if (response.status === 401) {
+        tokenStore.clearToken();
+        throw new UnauthorizedError(errorMessage);
+      }
+      throw new ApiError(response.status, errorData.code, errorMessage);
+    }
+
+    return response.arrayBuffer();
   }
 }
 

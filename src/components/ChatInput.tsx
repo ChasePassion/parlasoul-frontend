@@ -3,7 +3,20 @@
 import { useCallback, useEffect, useRef, useState, KeyboardEvent } from "react";
 import Image from "next/image";
 import ReplySuggestionsBar from "./ReplySuggestionsBar";
+import { SttRecorder } from "@/lib/voice/stt-recorder";
 import type { ReplySuggestion } from "@/lib/api";
+
+// Canvas waveform configuration (from example/app VoiceInput)
+const WAVEFORM_CONFIG = {
+    lineThickness: 2,
+    lineGap: 1.5,
+    lineColor: "#000",
+    speedFactor: 3,
+    minHeight: 3,
+    sensitivity: 2.5,
+};
+
+type InputAreaState = "default" | "recording" | "transcribing";
 
 interface ChatInputProps {
     onSend: (message: string) => void;
@@ -11,6 +24,9 @@ interface ChatInputProps {
     roleName?: string;
     replySuggestions?: ReplySuggestion[] | null;
     onSelectSuggestion?: (text: string) => void;
+    // Phase 2
+    onMicStart?: () => void;
+    onMicCancel?: () => void;
 }
 
 export default function ChatInput({
@@ -19,10 +35,25 @@ export default function ChatInput({
     roleName,
     replySuggestions,
     onSelectSuggestion,
+    onMicStart,
+    onMicCancel,
 }: ChatInputProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const [message, setMessage] = useState("");
     const [notice, setNotice] = useState<string | null>(null);
+    const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
+
+    // Phase 2: recording state
+    const [inputAreaState, setInputAreaState] = useState<InputAreaState>("default");
+    const sttRecorderRef = useRef<SttRecorder | null>(null);
+
+    // Canvas waveform refs
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const waveformContainerRef = useRef<HTMLDivElement>(null);
+    const frameCounterRef = useRef(0);
+    const dataArrayRef = useRef<number[]>([]);
+    const animationFrameRef = useRef<number | null>(null);
+    const maxBarsRef = useRef(0);
 
     const placeholder = roleName?.trim()
         ? `Chat with ${roleName.trim()}`
@@ -45,10 +76,10 @@ export default function ChatInput({
         root.appendChild(paragraph);
     }, [placeholder]);
 
-    const getEditorText = () => {
+    const getEditorText = useCallback(() => {
         const raw = editorRef.current?.innerText || "";
         return raw.replace(/\u00A0/g, " ");
-    };
+    }, []);
 
     const showNotice = (text: string) => {
         setNotice(text);
@@ -99,7 +130,290 @@ export default function ChatInput({
         }
     };
 
+    // ── Phase 2: Waveform Canvas helpers ──
+
+    const initCanvas = useCallback(() => {
+        const canvas = canvasRef.current;
+        const container = waveformContainerRef.current;
+        if (!canvas || !container) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const rect = container.getBoundingClientRect();
+
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+            ctx.scale(dpr, dpr);
+        }
+
+        maxBarsRef.current = Math.ceil(
+            rect.width / (WAVEFORM_CONFIG.lineThickness + WAVEFORM_CONFIG.lineGap)
+        );
+    }, []);
+
+    const renderWaveform = useCallback(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const width = canvas.width / dpr;
+        const height = canvas.height / dpr;
+        const centerY = height / 2;
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = WAVEFORM_CONFIG.lineColor;
+
+        const step = WAVEFORM_CONFIG.lineThickness + WAVEFORM_CONFIG.lineGap;
+        const data = dataArrayRef.current;
+
+        for (let i = 0; i < data.length; i++) {
+            const h = data[i];
+            const offsetFromRight = (data.length - 1 - i) * step;
+            const x = width - offsetFromRight - WAVEFORM_CONFIG.lineThickness - 2;
+
+            ctx.beginPath();
+            // roundRect for rounded bars
+            const rx = WAVEFORM_CONFIG.lineThickness / 2;
+            const y = centerY - h / 2;
+            if (typeof ctx.roundRect === "function") {
+                ctx.roundRect(x, y, WAVEFORM_CONFIG.lineThickness, h, rx);
+            } else {
+                ctx.rect(x, y, WAVEFORM_CONFIG.lineThickness, h);
+            }
+            ctx.fill();
+        }
+    }, []);
+
+    const waveformLoop = useCallback(() => {
+        animationFrameRef.current = requestAnimationFrame(waveformLoop);
+
+        // Speed throttle
+        frameCounterRef.current++;
+        if (frameCounterRef.current < WAVEFORM_CONFIG.speedFactor) return;
+        frameCounterRef.current = 0;
+
+        const analyser = sttRecorderRef.current?.getAnalyserNode();
+        if (!analyser) return;
+
+        const bufferLength = analyser.frequencyBinCount;
+        const rawData = new Uint8Array(bufferLength);
+        analyser.getByteTimeDomainData(rawData);
+
+        // Calculate RMS
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+            const x = (rawData[i] - 128) / 128.0;
+            sum += x * x;
+        }
+        const rms = Math.sqrt(sum / bufferLength);
+
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const canvasHeight = canvas.height / dpr;
+        let barHeight = rms * canvasHeight * WAVEFORM_CONFIG.sensitivity;
+        barHeight = Math.min(
+            canvasHeight * 0.9,
+            Math.max(WAVEFORM_CONFIG.minHeight, barHeight)
+        );
+
+        dataArrayRef.current.push(barHeight);
+        if (dataArrayRef.current.length > maxBarsRef.current) {
+            dataArrayRef.current.shift();
+        }
+
+        renderWaveform();
+    }, [renderWaveform]);
+
+    // Start/stop waveform animation based on recording state
+    useEffect(() => {
+        if (inputAreaState === "recording") {
+            dataArrayRef.current = [];
+            frameCounterRef.current = 0;
+            initCanvas();
+            // Small delay so canvas is ready
+            const raf = requestAnimationFrame(waveformLoop);
+            animationFrameRef.current = raf;
+        } else {
+            if (animationFrameRef.current) {
+                cancelAnimationFrame(animationFrameRef.current);
+                animationFrameRef.current = null;
+            }
+            // Clear canvas
+            const canvas = canvasRef.current;
+            if (canvas) {
+                const ctx = canvas.getContext("2d");
+                if (ctx) {
+                    const dpr = window.devicePixelRatio || 1;
+                    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+                }
+            }
+            dataArrayRef.current = [];
+        }
+
+        return () => {
+            if (animationFrameRef.current) {
+                cancelAnimationFrame(animationFrameRef.current);
+                animationFrameRef.current = null;
+            }
+        };
+    }, [inputAreaState, initCanvas, waveformLoop]);
+
+    // Handle window resize during recording
+    useEffect(() => {
+        const handleResize = () => {
+            if (inputAreaState === "recording") {
+                initCanvas();
+            }
+        };
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, [inputAreaState, initCanvas]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            sttRecorderRef.current?.dispose();
+        };
+    }, []);
+
+    // ── Phase 2: Mic handlers ──
+
+    const handleMicClick = async () => {
+        if (inputAreaState !== "default") return;
+
+        // Create recorder if needed
+        if (!sttRecorderRef.current) {
+            sttRecorderRef.current = new SttRecorder();
+        }
+
+        try {
+            await sttRecorderRef.current.startRecording();
+            // Recording has actually started, now notify parent to interrupt TTS.
+            onMicStart?.();
+            setInputAreaState("recording");
+        } catch (err) {
+            const errorCode = err instanceof Error ? err.message : "MIC_START_FAILED";
+            if (errorCode === "MIC_PERMISSION_DENIED") {
+                // Always try getUserMedia first. Only after failure decide whether
+                // it is a persistent deny (needs settings) or a regular prompt deny.
+                const permissionState = await SttRecorder.getMicPermissionState();
+                if (permissionState === "denied") {
+                    showNotice("请在浏览器或系统设置中允许使用麦克风");
+                } else {
+                    showNotice("请允许麦克风权限以开始录音");
+                }
+                return;
+            }
+
+            switch (errorCode) {
+                case "MIC_INSECURE_CONTEXT":
+                case "MIC_API_UNAVAILABLE":
+                    showNotice("请在 https 或 localhost 环境下使用麦克风");
+                    break;
+                case "MIC_DEVICE_NOT_FOUND":
+                    showNotice("未检测到可用麦克风");
+                    break;
+                case "MIC_DEVICE_BUSY":
+                    showNotice("麦克风正被其他应用占用");
+                    break;
+                default:
+                    showNotice("无法启动录音");
+            }
+        }
+    };
+
+    const handleRecordConfirm = async () => {
+        if (inputAreaState !== "recording" || !sttRecorderRef.current) return;
+
+        setInputAreaState("transcribing");
+
+        try {
+            const text = await sttRecorderRef.current.confirmAndTranscribe();
+            // Input area is still not in default state here; defer append until editor remounts.
+            setPendingTranscript(text);
+            setInputAreaState("default");
+            onMicCancel?.(); // notify parent recording ended
+        } catch (err) {
+            if (err instanceof Error && err.message === "NO_SPEECH") {
+                showNotice("似乎没有听到声音哦");
+            } else {
+                showNotice("转写失败，请重试");
+            }
+            setInputAreaState("default");
+            onMicCancel?.();
+        }
+    };
+
+    const handleRecordCancel = () => {
+        sttRecorderRef.current?.cancelRecording();
+        setInputAreaState("default");
+        onMicCancel?.();
+    };
+
+    const appendTextToEditor = useCallback((text: string) => {
+        const root = editorRef.current;
+        if (!root) return;
+
+        // Remove placeholder if present
+        const placeholderNode = root.querySelector("p.placeholder");
+        if (placeholderNode) {
+            placeholderNode.classList.remove("placeholder");
+            placeholderNode.removeAttribute("data-placeholder");
+            placeholderNode.textContent = text;
+        } else {
+            // Append to existing content
+            const currentText = getEditorText().trim();
+            const newText = currentText ? `${currentText} ${text}` : text;
+            root.textContent = "";
+            const p = document.createElement("p");
+            p.textContent = newText;
+            root.appendChild(p);
+        }
+
+        // Update state
+        const updatedText = getEditorText().trim();
+        setMessage(updatedText);
+        root.focus();
+
+        // Place cursor at end
+        const selection = window.getSelection();
+        if (selection && root.lastChild) {
+            const range = document.createRange();
+            range.selectNodeContents(root.lastChild);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+    }, [getEditorText]);
+
+    useEffect(() => {
+        if (inputAreaState !== "default") return;
+        if (!pendingTranscript) return;
+        appendTextToEditor(pendingTranscript);
+        setPendingTranscript(null);
+    }, [appendTextToEditor, inputAreaState, pendingTranscript]);
+
     const hasText = message.length > 0;
+    const isInRecordingFlow = inputAreaState === "recording" || inputAreaState === "transcribing";
+
+    const checkSvg = (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="currentColor"/>
+        </svg>
+    );
+
+    const closeSvg = (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12L19 6.41Z" fill="currentColor"/>
+        </svg>
+    );
 
     return (
         <div
@@ -191,132 +505,204 @@ export default function ChatInput({
                         </div>
                         <div className="">
                             <div
-                                className="bg-token-bg-primary corner-superellipse/1.1 overflow-clip bg-clip-padding p-2.5 contain-inline-size motion-safe:transition-colors motion-safe:duration-200 motion-safe:ease-in-out dark:bg-[#303030] grid grid-cols-[auto_1fr_auto] [grid-template-areas:'header_header_header'_'leading_primary_trailing'_'._footer_.'] group-data-expanded/composer:[grid-template-areas:'header_header_header'_'primary_primary_primary'_'leading_footer_trailing'] shadow-short"
+                                className={`bg-token-bg-primary corner-superellipse/1.1 overflow-clip bg-clip-padding p-2.5 contain-inline-size motion-safe:transition-colors motion-safe:duration-200 motion-safe:ease-in-out dark:bg-[#303030] grid grid-cols-[auto_1fr_auto] [grid-template-areas:'header_header_header'_'leading_primary_trailing'_'._footer_.'] group-data-expanded/composer:[grid-template-areas:'header_header_header'_'primary_primary_primary'_'leading_footer_trailing'] shadow-short ${isInRecordingFlow ? "ring-2 ring-blue-100" : ""}`}
                                 data-composer-surface="true"
                                 style={{
                                     borderRadius: "28px",
                                     transform: "none",
                                     transformOrigin: "50% 50% 0px",
                                 }}
-                                onClick={() => editorRef.current?.focus()}
+                                onClick={() => {
+                                    if (inputAreaState === "default") {
+                                        editorRef.current?.focus();
+                                    }
+                                }}
                             >
+                                {/* ── Primary area: text input OR waveform OR transcribing ── */}
                                 <div
                                     className="-my-2.5 flex min-h-14 items-center overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5 cursor-text"
                                     style={{ transform: "none", transformOrigin: "50% 50% 0px" }}
                                 >
-                                    <div className="wcDTda_prosemirror-parent text-token-text-primary max-h-[max(30svh,5rem)] max-h-52 min-h-[var(--deep-research-composer-extra-height,unset)] flex-1 overflow-auto [scrollbar-width:thin] default-browser vertical-scroll-fade-mask">
-                                        <textarea
-                                            className="wcDTda_fallbackTextarea"
-                                            name="prompt-textarea"
-                                            placeholder={placeholder}
-                                            data-virtualkeyboard="true"
-                                            style={{ display: "none" }}
-                                            readOnly
-                                        />
-                                        <div
-                                            contentEditable={!disabled}
-                                            translate="no"
-                                            className="ProseMirror"
-                                            id="prompt-textarea"
-                                            data-virtualkeyboard="true"
-                                            ref={editorRef}
-                                            onInput={handleEditorInput}
-                                            onKeyDown={handleEditorKeyDown}
-                                            suppressContentEditableWarning
-                                        >
-                                            <p data-placeholder={placeholder} className="placeholder">
-                                                <br className="ProseMirror-trailingBreak" />
-                                            </p>
+                                    {inputAreaState === "default" && (
+                                        <div className="wcDTda_prosemirror-parent text-token-text-primary max-h-[max(30svh,5rem)] max-h-52 min-h-[var(--deep-research-composer-extra-height,unset)] flex-1 overflow-auto [scrollbar-width:thin] default-browser vertical-scroll-fade-mask">
+                                            <textarea
+                                                className="wcDTda_fallbackTextarea"
+                                                name="prompt-textarea"
+                                                placeholder={placeholder}
+                                                data-virtualkeyboard="true"
+                                                style={{ display: "none" }}
+                                                readOnly
+                                            />
+                                            <div
+                                                contentEditable={!disabled}
+                                                translate="no"
+                                                className="ProseMirror"
+                                                id="prompt-textarea"
+                                                data-virtualkeyboard="true"
+                                                ref={editorRef}
+                                                onInput={handleEditorInput}
+                                                onKeyDown={handleEditorKeyDown}
+                                                suppressContentEditableWarning
+                                            >
+                                                <p data-placeholder={placeholder} className="placeholder">
+                                                    <br className="ProseMirror-trailingBreak" />
+                                                </p>
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
+
+                                    {inputAreaState === "recording" && (
+                                        <div
+                                            ref={waveformContainerRef}
+                                            className="recording-waveform-container flex-1"
+                                        >
+                                            <canvas
+                                                ref={canvasRef}
+                                                className="recording-waveform-canvas"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {inputAreaState === "transcribing" && (
+                                        <div className="flex-1 flex items-center gap-2 px-1">
+                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
+                                            <span className="text-token-text-secondary text-sm">
+                                                正在转写文字...
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
+
+                                {/* ── Leading area: plus button (hidden during recording) ── */}
                                 <div
                                     className="[grid-area:leading]"
                                     style={{ transform: "none", transformOrigin: "50% 50% 0px" }}
                                 >
-                                    <span className="flex" data-state="closed">
-                                        <button
-                                            type="button"
-                                            className="composer-btn"
-                                            data-testid="composer-plus-btn"
-                                            aria-label="Add files and more"
-                                            id="composer-plus-btn"
-                                            aria-haspopup="menu"
-                                            aria-expanded="false"
-                                            data-state="closed"
-                                            onClick={() => showNotice("功能开发中")}
-                                        >
-                                            <Image
-                                                src="/icons/desktop-6be74c.svg"
-                                                width="20"
-                                                height="20"
-                                                aria-hidden="true"
-                                                className="icon"
-                                                alt=""
-                                            />
-                                        </button>
-                                    </span>
-                                </div>
-                                <div
-                                    className="flex items-center gap-2 [grid-area:trailing]"
-                                    style={{ transform: "none", transformOrigin: "50% 50% 0px" }}
-                                >
-                                    <div className="ms-auto flex items-center gap-1.5">
-                                        <span className="" data-state="closed">
+                                    {inputAreaState === "default" && (
+                                        <span className="flex" data-state="closed">
                                             <button
-                                                aria-label="Dictate button"
                                                 type="button"
                                                 className="composer-btn"
+                                                data-testid="composer-plus-btn"
+                                                aria-label="Add files and more"
+                                                id="composer-plus-btn"
+                                                aria-haspopup="menu"
+                                                aria-expanded="false"
+                                                data-state="closed"
                                                 onClick={() => showNotice("功能开发中")}
                                             >
                                                 <Image
-                                                    src="/icons/close-29f921.svg"
+                                                    src="/icons/desktop-6be74c.svg"
                                                     width="20"
                                                     height="20"
-                                                    aria-label=""
+                                                    aria-hidden="true"
                                                     className="icon"
                                                     alt=""
                                                 />
                                             </button>
                                         </span>
-                                        <div>
-                                            <span className="" data-state="closed">
+                                    )}
+                                </div>
+
+                                {/* ── Trailing area: mic/send OR cancel/confirm ── */}
+                                <div
+                                    className="flex items-center gap-2 [grid-area:trailing]"
+                                    style={{ transform: "none", transformOrigin: "50% 50% 0px" }}
+                                >
+                                    <div className="ms-auto flex items-center gap-1.5">
+                                        {inputAreaState === "default" && (
+                                            <>
+                                                {/* Mic button */}
+                                                <span data-state="closed">
+                                                    <button
+                                                        aria-label="语音输入"
+                                                        type="button"
+                                                        className="composer-btn"
+                                                        onClick={handleMicClick}
+                                                        disabled={disabled}
+                                                    >
+                                                        <Image
+                                                            src="/icons/close-29f921.svg"
+                                                            width="20"
+                                                            height="20"
+                                                            aria-label=""
+                                                            className="icon"
+                                                            alt=""
+                                                        />
+                                                    </button>
+                                                </span>
+
+                                                {/* Send button */}
                                                 <div>
-                                                    <div className="relative">
-                                                        <button
-                                                            type="button"
-                                                            aria-label={hasText ? "Send message" : "Start Voice"}
-                                                            className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white"
-                                                            style={{
-                                                                viewTransitionName:
-                                                                    "var(--vt-composer-speech-button)",
-                                                            }}
-                                                            disabled={disabled}
-                                                            onClick={() => {
-                                                                if (!hasText) {
-                                                                    showNotice("功能开发中");
-                                                                    return;
-                                                                }
-                                                                handleSend();
-                                                            }}
-                                                        >
-                                                            <Image
-                                                                src={
-                                                                    hasText
-                                                                        ? "/icons/laptop-01bab7.svg"
-                                                                        : "/icons/sliders-f8aa74.svg"
-                                                                }
-                                                                width="20"
-                                                                height="20"
-                                                                aria-hidden="true"
-                                                                className="h-5 w-5 brightness-0 invert"
-                                                                alt=""
-                                                            />
-                                                        </button>
-                                                    </div>
+                                                    <span className="" data-state="closed">
+                                                        <div>
+                                                            <div className="relative">
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label={hasText ? "Send message" : "Start Voice"}
+                                                                    className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white"
+                                                                    style={{
+                                                                        viewTransitionName:
+                                                                            "var(--vt-composer-speech-button)",
+                                                                    }}
+                                                                    disabled={disabled}
+                                                                    onClick={() => {
+                                                                        if (!hasText) {
+                                                                            showNotice("功能开发中");
+                                                                            return;
+                                                                        }
+                                                                        handleSend();
+                                                                    }}
+                                                                >
+                                                                    <Image
+                                                                        src={
+                                                                            hasText
+                                                                                ? "/icons/laptop-01bab7.svg"
+                                                                                : "/icons/sliders-f8aa74.svg"
+                                                                        }
+                                                                        width="20"
+                                                                        height="20"
+                                                                        aria-hidden="true"
+                                                                        className="h-5 w-5 brightness-0 invert"
+                                                                        alt=""
+                                                                    />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </span>
                                                 </div>
-                                            </span>
-                                        </div>
+                                            </>
+                                        )}
+
+                                        {(inputAreaState === "recording" || inputAreaState === "transcribing") && (
+                                            <>
+                                                {/* Cancel (×) button */}
+                                                <button
+                                                    type="button"
+                                                    className="composer-btn"
+                                                    onClick={handleRecordCancel}
+                                                    disabled={inputAreaState === "transcribing"}
+                                                    aria-label="取消录音"
+                                                >
+                                                    <span className="text-token-text-secondary">
+                                                        {closeSvg}
+                                                    </span>
+                                                </button>
+
+                                                {/* Confirm (✓) button */}
+                                                <button
+                                                    type="button"
+                                                    className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-none disabled:opacity-30"
+                                                    onClick={handleRecordConfirm}
+                                                    disabled={inputAreaState === "transcribing"}
+                                                    aria-label="确认录音"
+                                                >
+                                                    <span className="text-white">
+                                                        {checkSvg}
+                                                    </span>
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>

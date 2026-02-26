@@ -1,20 +1,41 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { useUserSettings } from "@/lib/user-settings-context";
 import ChatHeader from "@/components/ChatHeader";
 import ChatInput from "@/components/ChatInput";
 import ChatMainFrame from "@/components/layout/ChatMainFrame";
 import ChatThread from "@/components/chat/ChatThread";
 import { useSidebar } from "../../layout";
 import { useChatSession } from "@/hooks/useChatSession";
+import { TtsPlaybackManager } from "@/lib/voice/tts-playback-manager";
 
 export default function ChatPage() {
     const params = useParams();
     const { user, isAuthed } = useAuth();
     const { setSelectedCharacterId } = useSidebar();
+    const { autoReadAloudEnabled } = useUserSettings();
     const chatId = params.id as string;
+
+    // Phase 2: TTS playback manager
+    const ttsManagerRef = useRef<TtsPlaybackManager | null>(null);
+    const [playingCandidateId, setPlayingCandidateId] = useState<string | null>(null);
+    const [isRecording, setIsRecording] = useState(false);
+
+    useEffect(() => {
+        const manager = new TtsPlaybackManager();
+        manager.onPlayStateChange = (candidateId) => {
+            setPlayingCandidateId(candidateId);
+        };
+        ttsManagerRef.current = manager;
+
+        return () => {
+            manager.dispose();
+            ttsManagerRef.current = null;
+        };
+    }, []);
 
     const {
         character,
@@ -32,6 +53,8 @@ export default function ChatPage() {
         isAuthed,
         canSend: Boolean(user),
         setSelectedCharacterId,
+        ttsPlaybackManager: ttsManagerRef.current,
+        autoReadAloudEnabled,
     });
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -66,6 +89,30 @@ export default function ChatPage() {
         return () => cancelAnimationFrame(raf);
     }, [messages, isStreaming]);
 
+    // Phase 2: Mic start → interrupt TTS + track recording state
+    const handleMicStart = useCallback(() => {
+        setIsRecording(true);
+        ttsManagerRef.current?.interruptAll();
+    }, []);
+
+    const handleMicCancel = useCallback(() => {
+        setIsRecording(false);
+    }, []);
+
+    // Phase 2: Speaker button handlers
+    const handlePlayTts = useCallback(async (candidateId: string) => {
+        if (isRecording) return;
+        try {
+            await ttsManagerRef.current?.playMessage(candidateId);
+        } catch (err) {
+            console.error("TTS playback failed:", err);
+        }
+    }, [isRecording]);
+
+    const handleStopTts = useCallback((candidateId: string) => {
+        ttsManagerRef.current?.stopMessage(candidateId);
+    }, []);
+
     const headerContent = (
         <div className="w-full">
             <ChatHeader character={character} />
@@ -85,6 +132,10 @@ export default function ChatPage() {
             onSelectCandidate={handleSelectCandidate}
             onRegenAssistant={handleRegenAssistant}
             onEditUser={handleEditUser}
+            playingCandidateId={playingCandidateId}
+            isRecording={isRecording}
+            onPlayTts={handlePlayTts}
+            onStopTts={handleStopTts}
         />
     );
 
@@ -94,6 +145,8 @@ export default function ChatPage() {
             disabled={isStreaming}
             roleName={character.name}
             replySuggestions={currentReplySuggestions}
+            onMicStart={handleMicStart}
+            onMicCancel={handleMicCancel}
         />
     ) : (
         <div className="text-base mx-auto px-4 sm:px-6 lg:px-16">

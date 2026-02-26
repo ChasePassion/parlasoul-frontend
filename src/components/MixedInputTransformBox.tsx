@@ -12,7 +12,7 @@ export default function MixedInputTransformBox({
     if (!transformedContent) return null;
 
     return (
-        <div className="mt-1.5 bg-white rounded-xl border border-gray-100 px-3 py-2 max-w-full">
+        <div className="bubble-translation mt-1.5 bg-white rounded-xl border border-gray-100 px-3 py-2 max-w-full">
             <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap wrap-break-word">
                 {transformedContent}
                 {isStreaming && (

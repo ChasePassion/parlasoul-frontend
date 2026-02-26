@@ -31,6 +31,7 @@
   --text-primary: #0d0d0d;
   --user-bubble: #e5f3ff;
   --send-button: #924ff7;
+  --chat-bubble-shadow: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.08));
 
   /* Liquid glass */
   --glass-bg: rgba(255, 255, 255, 0.7);
@@ -342,6 +343,7 @@ strong,
   background-color: var(--user-bubble);
   color: var(--text-primary);
   border-radius: 10px;
+  filter: var(--chat-bubble-shadow);
 }
 
 .bubble-user::after {
@@ -361,7 +363,7 @@ strong,
   background-color: #ffffff;
   color: var(--text-primary);
   border-radius: 10px;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.08));
+  filter: var(--chat-bubble-shadow);
 }
 
 .bubble-assistant::before {
@@ -374,6 +376,11 @@ strong,
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
   border-right: 6px solid #ffffff;
+}
+
+/* Translation bubble under user message */
+.bubble-translation {
+  filter: var(--chat-bubble-shadow);
 }
 
 /* Send button */
@@ -446,4 +453,43 @@ strong,
 
 .animate-modal-in {
   animation: modal-in 0.2s ease-out;
+}
+
+/* ── Phase 2: 录音波形容器 ── */
+.recording-waveform-container {
+  position: relative;
+  width: 100%;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.recording-waveform-container::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  border-top: 1px dashed var(--text-tertiary);
+}
+
+.recording-waveform-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  display: block;
+}
+
+/* ── Phase 2: TTS 喇叭播放中动效 ── */
+.tts-playing {
+  animation: tts-pulse 1s ease-in-out infinite;
+}
+
+@keyframes tts-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }

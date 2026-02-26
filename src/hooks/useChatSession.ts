@@ -13,12 +13,16 @@ import {
   type TurnsPageResponse,
 } from "@/lib/api";
 import { mapCharacterToSidebar } from "@/lib/character-adapter";
+import type { TtsPlaybackManager } from "@/lib/voice/tts-playback-manager";
 
 interface UseChatSessionArgs {
   chatId: string;
   isAuthed: boolean;
   canSend: boolean;
   setSelectedCharacterId: (id: string | null) => void;
+  // Phase 2: TTS
+  ttsPlaybackManager?: TtsPlaybackManager | null;
+  autoReadAloudEnabled?: boolean;
 }
 
 interface UseChatSessionResult {
@@ -34,6 +38,7 @@ interface UseChatSessionResult {
   handleRegenAssistant: (turnId: string) => Promise<void>;
   handleEditUser: (turnId: string, newContent: string) => Promise<void>;
   handleSendMessage: (content: string) => Promise<void>;
+  interruptAllTts: () => void;
 }
 
 export function useChatSession({
@@ -41,6 +46,8 @@ export function useChatSession({
   isAuthed,
   canSend,
   setSelectedCharacterId,
+  ttsPlaybackManager,
+  autoReadAloudEnabled = true,
 }: UseChatSessionArgs): UseChatSessionResult {
   const [character, setCharacter] = useState<Character | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -54,6 +61,10 @@ export function useChatSession({
   const streamAbortRef = useRef<AbortController | null>(null);
   const selectCandidateInFlightRef = useRef(false);
   const characterIdRef = useRef<string | null>(null);
+  const autoReadAloudRef = useRef(autoReadAloudEnabled);
+  useEffect(() => {
+    autoReadAloudRef.current = autoReadAloudEnabled;
+  }, [autoReadAloudEnabled]);
 
   const clearActiveStream = useCallback((controller?: AbortController) => {
     if (!controller || streamAbortRef.current === controller) {
@@ -81,7 +92,9 @@ export function useChatSession({
       setSelectedCharacterId(data.character.id);
 
       const mappedMessages: Message[] = data.turns
-        .filter((t) => t.author_type === "USER" || t.author_type === "CHARACTER")
+        .filter(
+          (t) => t.author_type === "USER" || t.author_type === "CHARACTER",
+        )
         .filter(
           (t) =>
             t.primary_candidate.is_final ||
@@ -92,7 +105,9 @@ export function useChatSession({
           role: t.author_type === "USER" ? "user" : "assistant",
           content: t.primary_candidate.content,
           isGreeting:
-            t.author_type === "CHARACTER" && t.is_proactive && !t.parent_turn_id,
+            t.author_type === "CHARACTER" &&
+            t.is_proactive &&
+            !t.parent_turn_id,
           candidateNo: t.primary_candidate.candidate_no,
           candidateCount: t.candidate_count,
           // Phase 1: learning data from candidate.extra
@@ -335,6 +350,11 @@ export function useChatSession({
     async (content: string) => {
       if (!character || !canSend || isStreaming) return;
 
+      // Phase 2: Interrupt all TTS before sending
+      ttsPlaybackManager?.interruptAll();
+      // Ensure AudioContext is resumed within user gesture to allow auto read-aloud.
+      void ttsPlaybackManager?.ensureResumed().catch(() => {});
+
       const tempUserId = `user-${Date.now()}`;
       const tempAssistantId = `assistant-${Date.now()}`;
       let resolvedUserMessageId = tempUserId;
@@ -386,7 +406,10 @@ export function useChatSession({
                     };
                   }
 
-                  if (m.id === tempAssistantId || m.id === resolvedAssistantMessageId) {
+                  if (
+                    m.id === tempAssistantId ||
+                    m.id === resolvedAssistantMessageId
+                  ) {
                     return {
                       ...m,
                       id: resolvedAssistantMessageId,
@@ -450,7 +473,8 @@ export function useChatSession({
               if (controller.signal.aborted) return;
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === tempAssistantId || m.id === resolvedAssistantMessageId
+                  m.id === tempAssistantId ||
+                  m.id === resolvedAssistantMessageId
                     ? {
                         ...m,
                         content: m.content + chunk,
@@ -473,7 +497,8 @@ export function useChatSession({
 
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === tempAssistantId || m.id === resolvedAssistantMessageId
+                  m.id === tempAssistantId ||
+                  m.id === resolvedAssistantMessageId
                     ? {
                         ...m,
                         id: resolvedAssistantMessageId,
@@ -519,7 +544,8 @@ export function useChatSession({
             // Phase 1: Sentence card
             onSentenceCard: (data) => {
               if (controller.signal.aborted) return;
-              const targetAssistantId = data.message_id || resolvedAssistantMessageId;
+              const targetAssistantId =
+                data.message_id || resolvedAssistantMessageId;
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === targetAssistantId ||
@@ -532,13 +558,34 @@ export function useChatSession({
               );
             },
 
+            // Phase 2: TTS realtime callbacks
+            onTtsAudioDelta: (data) => {
+              if (controller.signal.aborted) return;
+              if (!autoReadAloudRef.current) return;
+              ttsPlaybackManager?.feedRealtimeChunk(
+                data.assistant_candidate_id,
+                data.audio_b64,
+                data.mime_type,
+                data.seq,
+              );
+            },
+            onTtsAudioDone: (data) => {
+              if (controller.signal.aborted) return;
+              ttsPlaybackManager?.finishRealtime(data.assistant_candidate_id);
+            },
+            onTtsError: (data) => {
+              if (controller.signal.aborted) return;
+              ttsPlaybackManager?.handleTtsError(data.code, data.message);
+            },
+
             onError: async (streamError) => {
               if (controller.signal.aborted) return;
               hasStreamError = true;
               console.error("Chat error:", streamError);
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === tempAssistantId || m.id === resolvedAssistantMessageId
+                  m.id === tempAssistantId ||
+                  m.id === resolvedAssistantMessageId
                     ? { ...m, content: `Error: ${streamError}` }
                     : m,
                 ),
@@ -569,8 +616,13 @@ export function useChatSession({
       clearActiveStream,
       isStreaming,
       reloadChatTurns,
+      ttsPlaybackManager,
     ],
   );
+
+  const interruptAllTts = useCallback(() => {
+    ttsPlaybackManager?.interruptAll();
+  }, [ttsPlaybackManager]);
 
   return {
     character,
@@ -585,5 +637,6 @@ export function useChatSession({
     handleRegenAssistant,
     handleEditUser,
     handleSendMessage,
+    interruptAllTts,
   };
 }

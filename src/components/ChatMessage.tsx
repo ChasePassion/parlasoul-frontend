@@ -32,6 +32,11 @@ interface ChatMessageProps {
     knowledgeCardDisabled?: boolean;
     displayMode?: DisplayMode;
     knowledgeCardEnabled?: boolean;
+    // Phase 2: TTS
+    playingCandidateId?: string | null;
+    isRecording?: boolean;
+    onPlayTts?: (candidateId: string) => void;
+    onStopTts?: (candidateId: string) => void;
     onSelectCandidate?: (turnId: string, candidateNo: number) => void;
     onRegenAssistant?: (turnId: string) => void;
     onEditUser?: (turnId: string, newContent: string) => void;
@@ -47,6 +52,10 @@ export default function ChatMessage({
     knowledgeCardDisabled = false,
     displayMode = "concise",
     knowledgeCardEnabled = false,
+    playingCandidateId,
+    isRecording = false,
+    onPlayTts,
+    onStopTts,
     onSelectCandidate,
     onRegenAssistant,
     onEditUser,
@@ -58,6 +67,7 @@ export default function ChatMessage({
     const checkIcon = "/icons/check-fa1dbd.svg";
     const editIcon = "/icons/edit-6d87e1.svg";
     const ideaIcon = "/os-icon-idea.svg";
+    const volumeIcon = "/icons/volume-54f145.svg";
     const branchButtonClass =
         "text-token-text-secondary hover:bg-token-bg-secondary rounded-md disabled:opacity-50";
     const actionButtonClass =
@@ -274,7 +284,10 @@ export default function ChatMessage({
 
     // Phase 1: Whether to show knowledge card (lightbulb) button
     const showKnowledgeCardBtn = !isUser && knowledgeCardEnabled && message.sentenceCard && !message.isTemp;
-    const showActionRow = showNav || showKnowledgeCardBtn;
+    // Phase 2: Whether to show speaker button
+    const showSpeakerBtn = !isUser && !message.isTemp && !!message.assistantCandidateId;
+    const isSpeakerPlaying = showSpeakerBtn && playingCandidateId === message.assistantCandidateId;
+    const showActionRow = showNav || showKnowledgeCardBtn || showSpeakerBtn;
 
     return (
         <div className="relative flex w-full min-w-0 flex-col">
@@ -445,6 +458,26 @@ export default function ChatMessage({
                                     aria-label="知识卡"
                                 >
                                     {renderActionIcon(ideaIcon)}
+                                </button>
+                            )}
+
+                            {/* Phase 2: Speaker button for assistant messages (rightmost) */}
+                            {showSpeakerBtn && (
+                                <button
+                                    type="button"
+                                    className={actionButtonClass}
+                                    onClick={() => {
+                                        if (isRecording) return;
+                                        if (isSpeakerPlaying) {
+                                            onStopTts?.(message.assistantCandidateId!);
+                                        } else {
+                                            onPlayTts?.(message.assistantCandidateId!);
+                                        }
+                                    }}
+                                    disabled={isRecording}
+                                    aria-label={isSpeakerPlaying ? "停止朗读" : "朗读"}
+                                >
+                                    {renderActionIcon(volumeIcon, isSpeakerPlaying ? "tts-playing" : "")}
                                 </button>
                             )}
                         </div>

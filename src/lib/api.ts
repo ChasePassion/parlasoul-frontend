@@ -45,6 +45,10 @@ export const createSavedItem = apiService.createSavedItem.bind(apiService);
 export const listSavedItems = apiService.listSavedItems.bind(apiService);
 export const deleteSavedItem = apiService.deleteSavedItem.bind(apiService);
 
+// Phase 2: 语音相关
+export const sttTranscribe = apiService.sttTranscribe.bind(apiService);
+export const getTtsAudioStream = apiService.getTtsAudioStream.bind(apiService);
+
 // 导出类型和错误类
 export * from "./token-store";
 export type {
@@ -84,4 +88,6 @@ export type {
   SavedItemPayload,
   SavedItemResponse,
   SavedItemsPage,
+  // Phase 2 types
+  STTTranscriptionResult,
 } from "./api-service";

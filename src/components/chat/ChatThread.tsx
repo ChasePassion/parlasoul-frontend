@@ -22,6 +22,11 @@ interface ChatThreadProps {
     onSelectCandidate: (turnId: string, candidateNo: number) => void;
     onRegenAssistant: (turnId: string) => void;
     onEditUser: (turnId: string, newContent: string) => void;
+    // Phase 2: TTS
+    playingCandidateId?: string | null;
+    isRecording?: boolean;
+    onPlayTts?: (candidateId: string) => void;
+    onStopTts?: (candidateId: string) => void;
 }
 
 export default function ChatThread({
@@ -36,6 +41,10 @@ export default function ChatThread({
     onSelectCandidate,
     onRegenAssistant,
     onEditUser,
+    playingCandidateId,
+    isRecording,
+    onPlayTts,
+    onStopTts,
 }: ChatThreadProps) {
     const CARD_WIDTH = 320;
     const CARD_HEIGHT = 360;
@@ -331,6 +340,10 @@ export default function ChatThread({
                                             knowledgeCardDisabled={isFavoriteSaving}
                                             displayMode={displayMode}
                                             knowledgeCardEnabled={knowledgeCardEnabled}
+                                            playingCandidateId={playingCandidateId}
+                                            isRecording={isRecording}
+                                            onPlayTts={onPlayTts}
+                                            onStopTts={onStopTts}
                                             onSelectCandidate={onSelectCandidate}
                                             onRegenAssistant={onRegenAssistant}
                                             onEditUser={onEditUser}
