@@ -403,17 +403,7 @@ export default function ChatInput({
     const hasText = message.length > 0;
     const isInRecordingFlow = inputAreaState === "recording" || inputAreaState === "transcribing";
 
-    const checkSvg = (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z" fill="currentColor"/>
-        </svg>
-    );
 
-    const closeSvg = (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12L19 6.41Z" fill="currentColor"/>
-        </svg>
-    );
 
     return (
         <div
@@ -684,8 +674,14 @@ export default function ChatInput({
                                                     disabled={inputAreaState === "transcribing"}
                                                     aria-label="取消录音"
                                                 >
-                                                    <span className="text-token-text-secondary">
-                                                        {closeSvg}
+                                                    <span className="text-token-text-secondary flex items-center justify-center">
+                                                        <Image
+                                                            src="/icons/close-recording.svg"
+                                                            width={20}
+                                                            height={20}
+                                                            alt=""
+                                                            className="icon"
+                                                        />
                                                     </span>
                                                 </button>
 
@@ -697,8 +693,14 @@ export default function ChatInput({
                                                     disabled={inputAreaState === "transcribing"}
                                                     aria-label="确认录音"
                                                 >
-                                                    <span className="text-white">
-                                                        {checkSvg}
+                                                    <span className="text-white flex items-center justify-center">
+                                                        <Image
+                                                            src="/check-recording.svg"
+                                                            width={20}
+                                                            height={20}
+                                                            alt=""
+                                                            className="h-5 w-5 brightness-0 invert"
+                                                        />
                                                     </span>
                                                 </button>
                                             </>
