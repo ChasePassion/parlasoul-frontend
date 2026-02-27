@@ -676,7 +676,7 @@ export default function ChatInput({
                                                 >
                                                     <span className="text-token-text-secondary flex items-center justify-center">
                                                         <Image
-                                                            src="/icons/close-recording.svg"
+                                                            src="/icons/close-recording-85f94b.svg"
                                                             width={20}
                                                             height={20}
                                                             alt=""
@@ -695,7 +695,7 @@ export default function ChatInput({
                                                 >
                                                     <span className="text-white flex items-center justify-center">
                                                         <Image
-                                                            src="/check-recording.svg"
+                                                            src="/icons/check-recording-fa1dbd.svg"
                                                             width={20}
                                                             height={20}
                                                             alt=""
