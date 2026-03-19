@@ -1,0 +1,1108 @@
+openapi: 3.1.0
+info:
+  title: NeuraChar Phase 2.1 Incremental API
+  version: 2.1.1
+  description: |
+    Incremental API changes for voice clone + voice selection.
+    This document reflects the final implementation state:
+    - character voice binding is direct provider/model/voice/source fields
+    - system voice catalog is sourced from DashScope/Aliyun (not local DB seed)
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+
+x-phase2.1-change-log:
+  modified:
+    - POST /v1/characters
+    - GET /v1/characters
+    - GET /v1/characters/market
+    - GET /v1/characters/{character_id}
+    - PUT /v1/characters/{character_id}
+    - GET /v1/users/{creator_id}/characters
+  added:
+    - GET /v1/voices
+    - GET /v1/voices/catalog
+    - POST /v1/voices/clones
+    - GET /v1/voices/{voice_id}
+    - PATCH /v1/voices/{voice_id}
+    - DELETE /v1/voices/{voice_id}
+  removed: []
+
+x-db-delta:
+  modified_tables:
+    - table: characters
+      removed_fields:
+        - voice_profile_id
+      added_fields:
+        - voice_provider
+        - voice_model
+        - voice_provider_voice_id
+        - voice_source_type
+  added_tables:
+    - table: voice_profiles
+      purpose: Persist user custom voice profiles (clone/design/import metadata).
+
+x-provider-notes:
+  dashscope:
+    - System voice catalog is fetched from DashScope/Aliyun timbre docs source configured by DASHSCOPE_TIMBRE_LIST_DOC_URL.
+    - Voice clone create/delete uses POST /api/v1/services/audio/tts/customization with input.action=create|delete.
+    - Clone model is backend-configured (client cannot choose model in this API phase).
+    - provider_status is preserved; status is normalized for product behavior.
+
+tags:
+  - name: characters
+  - name: voices
+  - name: users
+
+paths:
+  /v1/characters:
+    post:
+      tags: [characters]
+      summary: "[MODIFIED] Create character (direct voice binding)"
+      operationId: createCharacterPhase21
+      x-change-type: modified
+      x-change-detail:
+        request:
+          removed_fields: [voice_profile_id]
+          added_fields: [voice_provider, voice_model, voice_provider_voice_id, voice_source_type]
+        response:
+          removed_fields: [voice_profile_id]
+          added_fields: [voice_provider, voice_model, voice_provider_voice_id, voice_source_type, voice]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CharacterCreatePhase2_1"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_CharacterResponsePhase2_1"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Voice or character resource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Selected clone voice is not selectable for current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    get:
+      tags: [characters]
+      summary: "[MODIFIED] List my characters (voice fields updated)"
+      operationId: listMyCharactersPhase21
+      x-change-type: modified
+      x-change-detail:
+        response:
+          removed_fields: [voice_profile_id]
+          added_fields: [voice_provider, voice_model, voice_provider_voice_id, voice_source_type, voice]
+      parameters:
+        - name: skip
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_CharacterListPhase2_1"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/characters/market:
+    get:
+      tags: [characters]
+      summary: "[MODIFIED] List market characters (voice fields updated)"
+      operationId: listMarketCharactersPhase21
+      x-change-type: modified
+      x-change-detail:
+        response:
+          removed_fields: [voice_profile_id]
+          added_fields: [voice_provider, voice_model, voice_provider_voice_id, voice_source_type, voice]
+      parameters:
+        - name: skip
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_CharacterListPhase2_1"
+
+  /v1/characters/{character_id}:
+    get:
+      tags: [characters]
+      summary: "[MODIFIED] Get character detail (voice fields updated)"
+      operationId: getCharacterPhase21
+      x-change-type: modified
+      x-change-detail:
+        response:
+          removed_fields: [voice_profile_id]
+          added_fields: [voice_provider, voice_model, voice_provider_voice_id, voice_source_type, voice]
+      parameters:
+        - name: character_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_CharacterResponsePhase2_1"
+        "401":
+          description: Invalid token for optional auth
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Private character forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Character not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    put:
+      tags: [characters]
+      summary: "[MODIFIED] Update character (supports voice rebinding)"
+      operationId: updateCharacterPhase21
+      x-change-type: modified
+      x-change-detail:
+        request:
+          removed_fields: [voice_profile_id]
+          added_fields: [voice_provider, voice_model, voice_provider_voice_id, voice_source_type]
+        response:
+          removed_fields: [voice_profile_id]
+          added_fields: [voice_provider, voice_model, voice_provider_voice_id, voice_source_type, voice]
+      parameters:
+        - name: character_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CharacterUpdatePhase2_1"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_CharacterResponsePhase2_1"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Only creator can modify
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Character/system voice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Clone voice not selectable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/users/{creator_id}/characters:
+    get:
+      tags: [users]
+      summary: "[MODIFIED] List creator characters (voice fields updated)"
+      operationId: listCreatorCharactersPhase21
+      x-change-type: modified
+      x-change-detail:
+        response:
+          removed_fields: [voice_profile_id]
+          added_fields: [voice_provider, voice_model, voice_provider_voice_id, voice_source_type, voice]
+      parameters:
+        - name: creator_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: skip
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_CharacterListPhase2_1"
+        "401":
+          description: Invalid token for optional auth
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/voices:
+    get:
+      tags: [voices]
+      summary: "[NEW] List current user's voice cards"
+      operationId: listMyVoices
+      x-change-type: added
+      description: |
+        Returns user-owned voice profiles for profile-page voice tab.
+        Frontend should render a local "create voice" card separately.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/VoiceStatus"
+        - name: source_type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/VoiceSourceType"
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_VoiceProfilesPage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/voices/catalog:
+    get:
+      tags: [voices]
+      summary: "[NEW] List selectable voices for character create/edit"
+      operationId: listSelectableVoices
+      x-change-type: added
+      description: |
+        Returns system voices from DashScope/Aliyun source and/or current user's ready clone voices.
+      parameters:
+        - name: provider
+          in: query
+          required: false
+          schema:
+            type: string
+            default: dashscope
+            example: dashscope
+        - name: model
+          in: query
+          required: false
+          schema:
+            type: string
+            nullable: true
+            example: qwen3-tts-instruct-flash-realtime
+          description: |
+            Provider model for voice catalog filtering.
+            If omitted, backend default model is used.
+        - name: include_system
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: include_user_custom
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_VoiceCatalogResponse"
+        "400":
+          description: Unsupported provider/model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Validation failed (e.g., empty model string)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Upstream catalog source parsing/fetch failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/voices/clones:
+    post:
+      tags: [voices]
+      summary: "[NEW] Create voice clone (async accepted)"
+      operationId: createVoiceClone
+      x-change-type: added
+      description: |
+        Creates a voice clone via DashScope customization API.
+        Client does not provide target model in this phase; backend uses configured default.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [display_name, source_audio]
+              properties:
+                provider:
+                  type: string
+                  default: dashscope
+                  example: dashscope
+                display_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 40
+                source_audio:
+                  type: string
+                  format: binary
+                  description: Voice sample audio used for cloning.
+                source_audio_format:
+                  type: string
+                  enum: [wav, mp3, m4a, flac, pcm, opus]
+                  default: wav
+                description:
+                  type: string
+                  nullable: true
+                  maxLength: 160
+                language_hint:
+                  type: string
+                  nullable: true
+                  example: zh-CN
+                idempotency_key:
+                  type: string
+                  nullable: true
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_VoiceCloneAccepted"
+        "400":
+          description: Unsupported provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Source audio too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Validation failed (missing/invalid audio payload or format)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Provider rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Provider upstream request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Dependency unavailable (e.g., missing API key)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "504":
+          description: Provider request timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/voices/{voice_id}:
+    get:
+      tags: [voices]
+      summary: "[NEW] Get voice profile detail"
+      operationId: getVoiceById
+      x-change-type: added
+      parameters:
+        - name: voice_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_VoiceProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Voice profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    patch:
+      tags: [voices]
+      summary: "[NEW] Update voice profile metadata"
+      operationId: patchVoiceById
+      x-change-type: added
+      parameters:
+        - name: voice_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceProfileUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_VoiceProfile"
+        "400":
+          description: Empty patch payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Voice profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    delete:
+      tags: [voices]
+      summary: "[NEW] Delete voice profile"
+      operationId: deleteVoiceById
+      x-change-type: added
+      parameters:
+        - name: voice_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Voice profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Voice is referenced by character(s)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Provider rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Provider upstream request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Dependency unavailable (e.g., missing API key)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [code, message, status]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        status:
+          type: integer
+
+    VisibilityEnum:
+      type: string
+      enum: [PUBLIC, PRIVATE, UNLISTED]
+
+    VoiceSourceType:
+      type: string
+      enum: [system, clone, designed, imported]
+
+    VoiceStatus:
+      type: string
+      enum: [creating, processing, ready, failed, deleting, deleted]
+
+    VoiceSelectableItem:
+      type: object
+      required: [id, display_name, source_type, provider, provider_voice_id]
+      properties:
+        id:
+          type: string
+          description: |
+            Selectable item ID used by frontend.
+            - system voice format: sys:{provider}:{model}:{provider_voice_id}
+            - clone voice format: local UUID string
+        display_name:
+          type: string
+        source_type:
+          $ref: "#/components/schemas/VoiceSourceType"
+        provider:
+          type: string
+          example: dashscope
+        provider_model:
+          type: string
+          nullable: true
+        provider_voice_id:
+          type: string
+          description: Provider-side voice identifier.
+        preview_audio_url:
+          type: string
+          nullable: true
+          format: uri
+        usage_hint:
+          type: string
+          nullable: true
+
+    VoiceProfile:
+      type: object
+      required:
+        - id
+        - provider
+        - provider_voice_id
+        - source_type
+        - display_name
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        provider:
+          type: string
+          example: dashscope
+        provider_voice_id:
+          type: string
+        provider_model:
+          type: string
+          nullable: true
+        source_type:
+          $ref: "#/components/schemas/VoiceSourceType"
+        display_name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/VoiceStatus"
+        provider_status:
+          type: string
+          nullable: true
+        preview_audio_url:
+          type: string
+          format: uri
+          nullable: true
+        language_tags:
+          type: array
+          items:
+            type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    VoiceProfilesPage:
+      type: object
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceProfile"
+        next_cursor:
+          type: string
+          nullable: true
+        has_more:
+          type: boolean
+
+    VoiceCatalogResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceSelectableItem"
+
+    VoiceCloneAccepted:
+      type: object
+      required: [voice]
+      properties:
+        voice:
+          $ref: "#/components/schemas/VoiceProfile"
+        provider_request_id:
+          type: string
+          nullable: true
+        estimated_ready_seconds:
+          type: integer
+          nullable: true
+
+    VoiceProfileUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        description:
+          type: string
+          nullable: true
+          maxLength: 160
+
+    CharacterCreatePhase2_1:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - description
+        - system_prompt
+        - voice_model
+        - voice_provider_voice_id
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 10
+        description:
+          type: string
+          minLength: 1
+          maxLength: 35
+        system_prompt:
+          type: string
+          minLength: 1
+        greeting_message:
+          type: string
+          nullable: true
+        avatar_file_name:
+          type: string
+          nullable: true
+        voice_provider:
+          type: string
+          default: dashscope
+          minLength: 1
+          maxLength: 40
+        voice_model:
+          type: string
+          minLength: 1
+          maxLength: 120
+        voice_provider_voice_id:
+          type: string
+          minLength: 1
+          maxLength: 191
+        voice_source_type:
+          $ref: "#/components/schemas/VoiceSourceType"
+        tags:
+          type: array
+          nullable: true
+          maxItems: 3
+          items:
+            type: string
+            minLength: 1
+            maxLength: 4
+        visibility:
+          $ref: "#/components/schemas/VisibilityEnum"
+
+    CharacterUpdatePhase2_1:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+          minLength: 5
+          maxLength: 35
+        system_prompt:
+          type: string
+          minLength: 10
+        greeting_message:
+          type: string
+          nullable: true
+        avatar_file_name:
+          type: string
+          nullable: true
+        voice_provider:
+          type: string
+          minLength: 1
+          maxLength: 40
+        voice_model:
+          type: string
+          minLength: 1
+          maxLength: 120
+        voice_provider_voice_id:
+          type: string
+          minLength: 1
+          maxLength: 191
+        voice_source_type:
+          $ref: "#/components/schemas/VoiceSourceType"
+        tags:
+          type: array
+          nullable: true
+          items:
+            type: string
+        visibility:
+          $ref: "#/components/schemas/VisibilityEnum"
+
+    CharacterResponsePhase2_1:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - system_prompt
+        - voice_provider
+        - voice_model
+        - voice_provider_voice_id
+        - voice_source_type
+        - visibility
+        - interaction_count
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        system_prompt:
+          type: string
+        greeting_message:
+          type: string
+          nullable: true
+        avatar_file_name:
+          type: string
+          nullable: true
+        voice_provider:
+          type: string
+        voice_model:
+          type: string
+        voice_provider_voice_id:
+          type: string
+        voice_source_type:
+          $ref: "#/components/schemas/VoiceSourceType"
+        voice:
+          allOf:
+            - $ref: "#/components/schemas/VoiceSelectableItem"
+          nullable: true
+        tags:
+          type: array
+          nullable: true
+          items:
+            type: string
+        creator_id:
+          type: string
+          nullable: true
+        visibility:
+          type: string
+        identifier:
+          type: string
+          nullable: true
+        interaction_count:
+          type: integer
+
+    SuccessEnvelope_CharacterResponsePhase2_1:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/CharacterResponsePhase2_1"
+
+    SuccessEnvelope_CharacterListPhase2_1:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CharacterResponsePhase2_1"
+
+    SuccessEnvelope_VoiceProfile:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/VoiceProfile"
+
+    SuccessEnvelope_VoiceProfilesPage:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/VoiceProfilesPage"
+
+    SuccessEnvelope_VoiceCatalogResponse:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/VoiceCatalogResponse"
+
+    SuccessEnvelope_VoiceCloneAccepted:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: accepted
+        status:
+          type: integer
+          example: 202
+        data:
+          $ref: "#/components/schemas/VoiceCloneAccepted"

@@ -2,12 +2,19 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
+import { Plus, Loader2 } from "lucide-react";
 import CharacterCard from "@/components/CharacterCard";
 import CreateCharacterModal from "@/components/CreateCharacterModal";
 import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
+import VoiceCard from "@/components/voice/VoiceCard";
+import CreateVoiceCloneModal from "@/components/voice/CreateVoiceCloneModal";
+import EditVoiceModal from "@/components/voice/EditVoiceModal";
+import { Button } from "@/components/ui/button";
 import {
-    getUserCharacters,
+    getMyCharacters,
     deleteCharacter,
+    listMyVoices,
+    deleteVoiceById,
     type CharacterResponse,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -15,6 +22,12 @@ import WorkspaceFrame from "@/components/layout/WorkspaceFrame";
 import { useSidebar } from "../layout";
 import { Character } from "@/components/Sidebar";
 import { mapCharacterToSidebar } from "@/lib/character-adapter";
+import {
+    mapVoiceProfileToCardDisplay,
+    type VoiceCardDisplay,
+} from "@/lib/voice-adapter";
+
+type TabType = 'works' | 'likes' | 'voices';
 
 export default function ProfilePage() {
     const { user, isAuthed } = useAuth();
@@ -29,21 +42,35 @@ export default function ProfilePage() {
     const [characterToDelete, setCharacterToDelete] = useState<Character | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    // Voice Modal State
+    const [isCreateVoiceModalOpen, setIsCreateVoiceModalOpen] = useState(false);
+    const [isEditVoiceModalOpen, setIsEditVoiceModalOpen] = useState(false);
+    const [voiceToEdit, setVoiceToEdit] = useState<VoiceCardDisplay | null>(null);
+
     // Tab State
-    const [activeTab, setActiveTab] = useState<'works' | 'likes'>('works');
+    const [activeTab, setActiveTab] = useState<TabType>('works');
+
+    // Voice State
+    const [voices, setVoices] = useState<VoiceCardDisplay[]>([]);
+    const [voicesLoading, setVoicesLoading] = useState(false);
+    const [voicesHasMore, setVoicesHasMore] = useState(false);
+    const [voicesCursor, setVoicesCursor] = useState<string | null>(null);
+    const [isLoadingMoreVoices, setIsLoadingMoreVoices] = useState(false);
+    const [voiceToDelete, setVoiceToDelete] = useState<string | null>(null);
+    const [isDeletingVoice, setIsDeletingVoice] = useState(false);
 
     // Clear selected character when on profile page
     useEffect(() => {
         setSelectedCharacterId(null);
     }, [setSelectedCharacterId]);
 
-    // Load User Characters
+    // Load User Characters using getMyCharacters
     const loadUserCharacters = useCallback(async () => {
-        if (!user || !isAuthed) return;
+        if (!isAuthed) return;
         try {
-            const apiCharacters = await getUserCharacters(user.id);
+            const apiCharacters = await getMyCharacters();
             const mapped: Character[] = apiCharacters.map((c: CharacterResponse) =>
-                mapCharacterToSidebar(c, { creatorUsername: user.username })
+                mapCharacterToSidebar(c, { creatorUsername: user?.username })
             );
             setCharacters(mapped);
         } catch (err) {
@@ -51,11 +78,53 @@ export default function ProfilePage() {
         }
     }, [user, isAuthed]);
 
+    // Load Voices
+    const loadVoices = useCallback(async (reset = false) => {
+        if (!isAuthed) return;
+
+        if (reset) {
+            setVoicesLoading(true);
+            setVoicesCursor(null);
+        } else {
+            setIsLoadingMoreVoices(true);
+        }
+
+        try {
+            const cursor = reset ? undefined : voicesCursor;
+            const response = await listMyVoices({
+                cursor: cursor || undefined,
+                limit: 20,
+            });
+
+            const mappedVoices = response.items.map(mapVoiceProfileToCardDisplay);
+
+            if (reset) {
+                setVoices(mappedVoices);
+            } else {
+                setVoices((prev) => [...prev, ...mappedVoices]);
+            }
+
+            setVoicesHasMore(response.has_more);
+            setVoicesCursor(response.next_cursor);
+        } catch (err) {
+            console.error("Failed to load voices:", err);
+        } finally {
+            setVoicesLoading(false);
+            setIsLoadingMoreVoices(false);
+        }
+    }, [isAuthed, voicesCursor]);
+
     useEffect(() => {
-        if (user) {
+        if (user && activeTab === 'works') {
             loadUserCharacters();
         }
-    }, [user, loadUserCharacters]);
+    }, [user, activeTab, loadUserCharacters]);
+
+    useEffect(() => {
+        if (activeTab === 'voices' && isAuthed) {
+            loadVoices(true);
+        }
+    }, [activeTab, isAuthed, loadVoices]);
 
     // Actions
     const handleEdit = (character: Character) => {
@@ -69,13 +138,13 @@ export default function ProfilePage() {
     };
 
     const handleConfirmDelete = async () => {
-        if (!characterToDelete || !user || !isAuthed) return;
+        if (!characterToDelete || !isAuthed) return;
 
         setIsDeleting(true);
         try {
             await deleteCharacter(characterToDelete.id);
-            await loadUserCharacters(); // Refresh list
-            await refreshSidebarCharacters(); // Refresh sidebar
+            await loadUserCharacters();
+            await refreshSidebarCharacters();
             setIsDeleteDialogOpen(false);
             setCharacterToDelete(null);
         } catch (err) {
@@ -93,7 +162,36 @@ export default function ProfilePage() {
 
     const handleModalSuccess = () => {
         loadUserCharacters();
-        refreshSidebarCharacters(); // Refresh sidebar when character created/edited
+        refreshSidebarCharacters();
+    };
+
+    const handleVoiceCloneSuccess = () => {
+        loadVoices(true);
+    };
+
+    const handleEditVoice = (voice: VoiceCardDisplay) => {
+        setVoiceToEdit(voice);
+        setIsEditVoiceModalOpen(true);
+    };
+
+    const handleDeleteVoice = (voiceId: string) => {
+        setVoiceToDelete(voiceId);
+    };
+
+    const handleConfirmDeleteVoice = async () => {
+        if (!voiceToDelete || !isAuthed) return;
+
+        setIsDeletingVoice(true);
+        try {
+            await deleteVoiceById(voiceToDelete);
+            setVoices((prev) => prev.filter((v) => v.id !== voiceToDelete));
+            setVoiceToDelete(null);
+        } catch (err) {
+            console.error("Delete voice failed:", err);
+            alert("删除音色失败，请稍后重试");
+        } finally {
+            setIsDeletingVoice(false);
+        }
     };
 
     return (
@@ -136,6 +234,16 @@ export default function ProfilePage() {
                                 <div className="absolute bottom-0 left-0 h-0.5 w-full rounded-full bg-blue-600" />
                             )}
                         </button>
+                        <button
+                            onClick={() => setActiveTab('voices')}
+                            className={`relative px-1 pb-3 text-lg font-medium transition-colors ${activeTab === 'voices' ? "text-blue-600" : "text-gray-500 hover:text-gray-700"
+                                }`}
+                        >
+                            音色
+                            {activeTab === 'voices' && (
+                                <div className="absolute bottom-0 left-0 h-0.5 w-full rounded-full bg-blue-600" />
+                            )}
+                        </button>
                     </div>
 
                     {activeTab === 'works' && (
@@ -159,6 +267,63 @@ export default function ProfilePage() {
                         </div>
                     )}
 
+                    {activeTab === 'voices' && (
+                        <div className="space-y-6">
+                            <div className="flex justify-end">
+                                <Button
+                                    onClick={() => setIsCreateVoiceModalOpen(true)}
+                                    className="bg-[#3964FE] text-white hover:bg-[#2a4fd6]"
+                                >
+                                    <Plus className="w-4 h-4 mr-2" />
+                                    创建音色
+                                </Button>
+                            </div>
+
+                            {voicesLoading ? (
+                                <div className="flex items-center justify-center py-20">
+                                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                                </div>
+                            ) : voices.length === 0 ? (
+                                <div className="py-20 text-center text-gray-400">
+                                    <p>暂无音色</p>
+                                    <p className="text-sm mt-2">点击上方按钮克隆你的第一个音色</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex flex-wrap gap-6">
+                                        {voices.map((voice) => (
+                                            <VoiceCard
+                                                key={voice.id}
+                                                voice={voice}
+                                                onDelete={handleDeleteVoice}
+                                                onEdit={handleEditVoice}
+                                            />
+                                        ))}
+                                    </div>
+
+                                    {voicesHasMore && (
+                                        <div className="flex justify-center pt-4">
+                                            <Button
+                                                variant="outline"
+                                                onClick={() => loadVoices(false)}
+                                                disabled={isLoadingMoreVoices}
+                                            >
+                                                {isLoadingMoreVoices ? (
+                                                    <>
+                                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                        加载中...
+                                                    </>
+                                                ) : (
+                                                    "加载更多"
+                                                )}
+                                            </Button>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+
                 </div>
             </div>
 
@@ -179,6 +344,30 @@ export default function ProfilePage() {
                     setCharacterToDelete(null);
                 }}
                 isDeleting={isDeleting}
+            />
+
+            <CreateVoiceCloneModal
+                isOpen={isCreateVoiceModalOpen}
+                onClose={() => setIsCreateVoiceModalOpen(false)}
+                onSuccess={handleVoiceCloneSuccess}
+            />
+
+            <EditVoiceModal
+                isOpen={isEditVoiceModalOpen}
+                onClose={() => {
+                    setIsEditVoiceModalOpen(false);
+                    setVoiceToEdit(null);
+                }}
+                onSuccess={() => loadVoices(true)}
+                voice={voiceToEdit}
+            />
+
+            <DeleteConfirmDialog
+                isOpen={!!voiceToDelete}
+                characterName="确定要删除这个音色吗？"
+                onConfirm={handleConfirmDeleteVoice}
+                onCancel={() => setVoiceToDelete(null)}
+                isDeleting={isDeletingVoice}
             />
         </WorkspaceFrame>
     );

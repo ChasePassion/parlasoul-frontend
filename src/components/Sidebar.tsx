@@ -28,6 +28,20 @@ export interface Character {
     visibility?: CharacterVisibility;
     creator_id?: string;
     creator_username?: string;
+    voice_provider?: string;
+    voice_model?: string;
+    voice_provider_voice_id?: string;
+    voice_source_type?: "system" | "clone" | "designed" | "imported";
+    voice?: {
+        id: string;
+        display_name: string;
+        source_type: "system" | "clone" | "designed" | "imported";
+        provider: string;
+        provider_model: string | null;
+        provider_voice_id: string;
+        preview_audio_url: string | null;
+        usage_hint: string | null;
+    };
 }
 
 function SidebarToggleIcon({ className = "" }: { className?: string }) {

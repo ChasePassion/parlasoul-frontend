@@ -19,6 +19,7 @@ export const getMarketCharacters =
   apiService.getMarketCharacters.bind(apiService);
 export const getCharacterById = apiService.getCharacterById.bind(apiService);
 export const getUserCharacters = apiService.getUserCharacters.bind(apiService);
+export const getMyCharacters = apiService.getMyCharacters.bind(apiService);
 export const updateCharacter = apiService.updateCharacter.bind(apiService);
 export const deleteCharacter = apiService.deleteCharacter.bind(apiService);
 
@@ -48,6 +49,14 @@ export const deleteSavedItem = apiService.deleteSavedItem.bind(apiService);
 // Phase 2: 语音相关
 export const sttTranscribe = apiService.sttTranscribe.bind(apiService);
 export const getTtsAudioStream = apiService.getTtsAudioStream.bind(apiService);
+
+// Phase 2.1: 音色相关
+export const listMyVoices = apiService.listMyVoices.bind(apiService);
+export const listSelectableVoices = apiService.listSelectableVoices.bind(apiService);
+export const createVoiceClone = apiService.createVoiceClone.bind(apiService);
+export const getVoiceById = apiService.getVoiceById.bind(apiService);
+export const patchVoiceById = apiService.patchVoiceById.bind(apiService);
+export const deleteVoiceById = apiService.deleteVoiceById.bind(apiService);
 
 // 导出类型和错误类
 export * from "./token-store";
@@ -90,4 +99,12 @@ export type {
   SavedItemsPage,
   // Phase 2 types
   STTTranscriptionResult,
+  // Phase 2.1 types
+  VoiceStatus,
+  VoiceSourceType,
+  VoiceSelectableItem,
+  VoiceProfile,
+  VoiceProfilesPage,
+  VoiceCatalogResponse,
+  VoiceProfileUpdate,
 } from "./api-service";

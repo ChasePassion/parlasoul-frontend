@@ -2,8 +2,19 @@
 
 import { useState, useRef, ChangeEvent, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { createCharacter, updateCharacter, uploadFile, CreateCharacterRequest, UpdateCharacterRequest, CharacterVisibility } from "@/lib/api";
+import {
+    createCharacter,
+    getVoiceById,
+    updateCharacter,
+    uploadFile,
+    CreateCharacterRequest,
+    UpdateCharacterRequest,
+    CharacterVisibility,
+    VoiceSelectableItem,
+} from "@/lib/api";
 import AvatarCropper from "./AvatarCropper";
+import VoiceSelector from "./voice/VoiceSelector";
+import { getErrorMessage } from "@/lib/error-map";
 import type { Character } from "./Sidebar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -30,6 +41,24 @@ const TAG_COLORS = [
     { name: "green", bg: "bg-green-50", text: "text-green-600", border: "border-green-200" },
 ];
 
+const DEFAULT_SYSTEM_VOICE_MODEL = "qwen3-tts-instruct-flash-realtime";
+
+function resolveVoiceModel(voice: VoiceSelectableItem): string | null {
+    if (voice.provider_model) {
+        return voice.provider_model;
+    }
+
+    if (voice.source_type === "system" && voice.id.startsWith("sys:")) {
+        const parts = voice.id.split(":", 4);
+        if (parts.length >= 4 && parts[2]) {
+            return parts[2];
+        }
+        return DEFAULT_SYSTEM_VOICE_MODEL;
+    }
+
+    return null;
+}
+
 export default function CreateCharacterModal({
     isOpen,
     onClose,
@@ -51,11 +80,32 @@ export default function CreateCharacterModal({
     const [isUploading, setIsUploading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [selectedVoice, setSelectedVoice] = useState<VoiceSelectableItem | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (isOpen && mode === 'edit' && character) {
+            let fallbackVoice: VoiceSelectableItem | null = null;
+            
+            if (character.voice) {
+                fallbackVoice = character.voice;
+            } else if (character.voice_provider && character.voice_model && character.voice_provider_voice_id && character.voice_source_type) {
+                fallbackVoice = {
+                    id:
+                        character.voice_source_type === "system"
+                            ? `sys:${character.voice_provider}:${character.voice_model}:${character.voice_provider_voice_id}`
+                            : `clone:${character.voice_provider}:${character.voice_provider_voice_id}`,
+                    display_name: character.voice_provider_voice_id,
+                    source_type: character.voice_source_type,
+                    provider: character.voice_provider,
+                    provider_model: character.voice_model,
+                    provider_voice_id: character.voice_provider_voice_id,
+                    preview_audio_url: null,
+                    usage_hint: null,
+                };
+            }
+            
             setName(character.name);
             setDescription(character.description);
             setGreetingMessage(character.greeting_message || "");
@@ -67,6 +117,7 @@ export default function CreateCharacterModal({
             }
             setAvatarFileName(character.avatar);
             setAvatarPreview(character.avatar);
+            setSelectedVoice(fallbackVoice);
 
             if (character.tags && character.tags.length > 0) {
                 const mappedTags = character.tags.map((tag, index) => ({
@@ -86,6 +137,7 @@ export default function CreateCharacterModal({
             setVisibility("PUBLIC");
             setAvatarFileName(null);
             setAvatarPreview(null);
+            setSelectedVoice(null);
         }
     }, [isOpen, mode, character]);
 
@@ -119,7 +171,7 @@ export default function CreateCharacterModal({
             const result = await uploadFile(file);
             setAvatarFileName(result.url);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "上传失败");
+            setError(getErrorMessage(err));
             setAvatarPreview(null);
         } finally {
             setIsUploading(false);
@@ -187,12 +239,31 @@ export default function CreateCharacterModal({
             setError("请填写系统提示词");
             return;
         }
-
+        if (!selectedVoice) {
+            setError("请选择角色音色");
+            return;
+        }
         setIsSubmitting(true);
         setError(null);
 
         try {
             if (!isAuthed) throw new Error("请先登录");
+            let voiceProvider = selectedVoice.provider;
+            let voiceModel = resolveVoiceModel(selectedVoice);
+            let voiceProviderVoiceId = selectedVoice.provider_voice_id;
+            let voiceSourceType = selectedVoice.source_type;
+
+            if (selectedVoice.source_type === "clone") {
+                const voiceProfile = await getVoiceById(selectedVoice.id);
+                voiceProvider = voiceProfile.provider;
+                voiceModel = voiceProfile.provider_model;
+                voiceProviderVoiceId = voiceProfile.provider_voice_id;
+                voiceSourceType = voiceProfile.source_type;
+            }
+
+            if (!voiceModel) {
+                throw new Error("所选音色缺少模型信息，请重新选择");
+            }
 
             const baseData = {
                 name: name.trim(),
@@ -202,15 +273,17 @@ export default function CreateCharacterModal({
                 avatar_file_name: avatarFileName || undefined,
                 tags: selectedTags.length > 0 ? selectedTags.map(tag => tag.label) : undefined,
                 visibility: visibility,
+                voice_provider: voiceProvider,
+                voice_model: voiceModel,
+                voice_provider_voice_id: voiceProviderVoiceId,
+                voice_source_type: voiceSourceType,
             };
 
             if (mode === 'edit' && character) {
                 const updateData: UpdateCharacterRequest = baseData;
-                console.log('📤 Updating character with data:', updateData);
                 await updateCharacter(character.id, updateData);
             } else {
                 const createData: CreateCharacterRequest = baseData;
-                console.log('📤 Creating character with data:', createData);
                 await createCharacter(createData);
             }
 
@@ -223,12 +296,13 @@ export default function CreateCharacterModal({
                 setVisibility("PUBLIC");
                 setAvatarFileName(null);
                 setAvatarPreview(null);
+                setSelectedVoice(null);
             }
 
             onSuccess();
             onClose();
         } catch (err) {
-            setError(err instanceof Error ? err.message : (mode === 'edit' ? "更新失败" : "创建角色失败"));
+            setError(getErrorMessage(err));
         } finally {
             setIsSubmitting(false);
         }
@@ -302,7 +376,7 @@ export default function CreateCharacterModal({
                             onChange={(e) => setName(e.target.value)}
                             placeholder="给角色起个名字"
                             maxLength={100}
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200 [&::selection]:bg-blue-500 [&::selection]:text-white"
                         />
                     </div>
 
@@ -317,7 +391,7 @@ export default function CreateCharacterModal({
                             onChange={(e) => setDescription(e.target.value)}
                             placeholder="简短描述角色特点（最多35个字符）"
                             maxLength={35}
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200 [&::selection]:bg-blue-500 [&::selection]:text-white"
                         />
                         <p className="text-xs text-gray-500 mt-1">
                             {description.length}/35 字符，将显示在角色卡片上
@@ -335,7 +409,7 @@ export default function CreateCharacterModal({
                             onChange={(e) => setGreetingMessage(e.target.value)}
                             placeholder="角色的第一句话（选填）"
                             maxLength={200}
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200 [&::selection]:bg-blue-500 [&::selection]:text-white"
                         />
                         <p className="text-xs text-gray-500 mt-1">
                             聊天时角色主动发送的第一条消息
@@ -352,7 +426,7 @@ export default function CreateCharacterModal({
                             onChange={(e) => setSystemPrompt(e.target.value)}
                             placeholder="定义角色的性格、背景和行为方式..."
                             rows={4}
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200 transition-all resize-none [&::selection]:bg-blue-500 [&::selection]:text-white"
                         />
                     </div>
 
@@ -371,7 +445,7 @@ export default function CreateCharacterModal({
                                     placeholder="输入标签名称..."
                                     maxLength={4}
                                     disabled={selectedTags.length >= 3}
-                                    className="w-full px-4 py-2.5 pr-12 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    className="w-full px-4 py-2.5 pr-12 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200 transition-all disabled:bg-gray-100 disabled:cursor-not-allowed [&::selection]:bg-blue-500 [&::selection]:text-white"
                                 />
                                 <button
                                     type="button"
@@ -446,6 +520,20 @@ export default function CreateCharacterModal({
                             {visibility === "PRIVATE" && "仅自己可见，用于编辑草稿"}
                         </p>
                     </div>
+
+                    <div className="py-2 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <Label className="text-sm font-medium text-gray-700">音色选择</Label>
+                            {!selectedVoice && (
+                                <span className="text-xs text-red-500">必选</span>
+                            )}
+                        </div>
+                        <VoiceSelector
+                            selectedVoiceId={selectedVoice?.id || null}
+                            onSelectVoice={setSelectedVoice}
+                            disabled={isSubmitting}
+                        />
+                    </div>
                 </div>
 
                 <DialogFooter className="flex-none flex gap-3 p-5 border-t border-gray-100 bg-white z-10">
@@ -453,14 +541,14 @@ export default function CreateCharacterModal({
                         variant="outline"
                         onClick={handleClose}
                         disabled={isSubmitting}
-                        className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                        className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
                     >
                         取消
                     </Button>
                     <Button
                         onClick={handleSubmit}
                         disabled={isSubmitting || isUploading}
-                        className="flex-1 px-4 py-2.5 bg-[#3964FE] text-white rounded-xl font-medium hover:bg-[#2a4fd6] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                        className="flex-1 px-4 py-2.5 bg-[#3964FE] text-white rounded-lg font-medium hover:bg-[#2a4fd6] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                         {isSubmitting ? (
                             <>

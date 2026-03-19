@@ -72,6 +72,54 @@ export type ChatType = "ONE_ON_ONE" | "ROOM";
 export type TurnAuthorType = "USER" | "CHARACTER" | "SYSTEM";
 export type TurnState = "OK" | "FILTERED" | "DELETED" | "ERROR";
 
+// Phase 2.1: Voice types
+export type VoiceSourceType = "system" | "clone" | "designed" | "imported";
+export type VoiceStatus = "creating" | "processing" | "ready" | "failed" | "deleting" | "deleted";
+
+export interface VoiceSelectableItem {
+  id: string;
+  display_name: string;
+  source_type: VoiceSourceType;
+  provider: string;
+  provider_model: string | null;
+  provider_voice_id: string;
+  preview_audio_url: string | null;
+  usage_hint: string | null;
+}
+
+export interface VoiceProfile {
+  id: string;
+  owner_user_id: string | null;
+  provider: string;
+  provider_voice_id: string;
+  provider_model: string | null;
+  source_type: VoiceSourceType;
+  display_name: string;
+  description: string | null;
+  status: VoiceStatus;
+  provider_status: string | null;
+  preview_audio_url: string | null;
+  language_tags: string[] | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VoiceProfilesPage {
+  items: VoiceProfile[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface VoiceCatalogResponse {
+  items: VoiceSelectableItem[];
+}
+
+export interface VoiceProfileUpdate {
+  display_name?: string;
+  description?: string | null;
+}
+
 export interface CreateCharacterRequest {
   name: string;
   description: string;
@@ -80,6 +128,10 @@ export interface CreateCharacterRequest {
   avatar_file_name?: string;
   tags?: string[];
   visibility?: CharacterVisibility;
+  voice_provider: string;
+  voice_model: string;
+  voice_provider_voice_id: string;
+  voice_source_type: VoiceSourceType;
 }
 
 export interface CharacterResponse {
@@ -89,6 +141,11 @@ export interface CharacterResponse {
   system_prompt: string;
   greeting_message?: string;
   avatar_file_name?: string;
+  voice_provider: string;
+  voice_model: string;
+  voice_provider_voice_id: string;
+  voice_source_type: VoiceSourceType;
+  voice?: VoiceSelectableItem | null;
   tags?: string[];
   creator_id: string;
   visibility: CharacterVisibility;
@@ -102,6 +159,11 @@ export interface CharacterBrief {
   description: string;
   greeting_message?: string;
   avatar_file_name?: string;
+  voice_provider?: string;
+  voice_model?: string;
+  voice_provider_voice_id?: string;
+  voice_source_type?: VoiceSourceType;
+  voice?: VoiceSelectableItem | null;
   tags?: string[];
   visibility: CharacterVisibility;
   creator_id?: string | null;
@@ -272,6 +334,10 @@ export interface UpdateCharacterRequest {
   system_prompt?: string;
   greeting_message?: string;
   avatar_file_name?: string;
+  voice_provider?: string;
+  voice_model?: string;
+  voice_provider_voice_id?: string;
+  voice_source_type?: VoiceSourceType;
   tags?: string[];
   visibility?: CharacterVisibility;
 }
@@ -1060,6 +1126,86 @@ export class ApiService {
     }
 
     return response.arrayBuffer();
+  }
+
+  // Phase 2.1: Voice APIs
+  async getMyCharacters(): Promise<CharacterResponse[]> {
+    return httpClient.get<CharacterResponse[]>("/v1/characters");
+  }
+
+  async listMyVoices(params?: {
+    status?: VoiceStatus;
+    source_type?: VoiceSourceType;
+    cursor?: string;
+    limit?: number;
+  }): Promise<VoiceProfilesPage> {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    if (params?.source_type) qs.set("source_type", params.source_type);
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return httpClient.get<VoiceProfilesPage>(`/v1/voices${suffix}`);
+  }
+
+  async listSelectableVoices(params?: {
+    provider?: string;
+    include_system?: boolean;
+    include_user_custom?: boolean;
+  }): Promise<VoiceCatalogResponse> {
+    const qs = new URLSearchParams();
+    if (params?.provider) qs.set("provider", params.provider);
+    if (params?.include_system !== undefined) qs.set("include_system", String(params.include_system));
+    if (params?.include_user_custom !== undefined) qs.set("include_user_custom", String(params.include_user_custom));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return httpClient.get<VoiceCatalogResponse>(`/v1/voices/catalog${suffix}`);
+  }
+
+  async createVoiceClone(formData: FormData): Promise<VoiceProfile> {
+    const token = tokenStore.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch("/v1/voices/clones", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData: { code?: string; message?: string; detail?: string } =
+        await response.json().catch(() => ({}));
+      const errorMessage =
+        errorData.message ||
+        errorData.detail ||
+        `API error! status: ${response.status}`;
+
+      if (response.status === 401) {
+        tokenStore.clearToken();
+        throw new UnauthorizedError(errorMessage);
+      }
+      throw new ApiError(response.status, errorData.code, errorMessage);
+    }
+
+    const payload = await response.json();
+    if (payload && typeof payload === "object" && "data" in payload) {
+      return (payload as { data: VoiceProfile }).data;
+    }
+    return payload as VoiceProfile;
+  }
+
+  async getVoiceById(voiceId: string): Promise<VoiceProfile> {
+    return httpClient.get<VoiceProfile>(`/v1/voices/${voiceId}`);
+  }
+
+  async patchVoiceById(voiceId: string, data: VoiceProfileUpdate): Promise<VoiceProfile> {
+    return httpClient.patch<VoiceProfile>(`/v1/voices/${voiceId}`, data);
+  }
+
+  async deleteVoiceById(voiceId: string): Promise<void> {
+    await httpClient.delete(`/v1/voices/${voiceId}`);
   }
 }
 

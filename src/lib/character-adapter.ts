@@ -1,6 +1,7 @@
 import type { Character } from "@/components/Sidebar";
 import type {
     CharacterVisibility,
+    VoiceSelectableItem,
 } from "./api-service";
 
 interface CharacterLike {
@@ -13,6 +14,11 @@ interface CharacterLike {
     tags?: string[];
     visibility?: CharacterVisibility;
     creator_id?: string | null;
+    voice_provider?: string;
+    voice_model?: string;
+    voice_provider_voice_id?: string;
+    voice_source_type?: VoiceSelectableItem["source_type"];
+    voice?: VoiceSelectableItem | null;
 }
 
 interface MapCharacterOptions {
@@ -34,5 +40,10 @@ export function mapCharacterToSidebar(
         visibility: source.visibility,
         creator_id: source.creator_id ?? undefined,
         creator_username: options.creatorUsername,
+        voice_provider: source.voice_provider,
+        voice_model: source.voice_model,
+        voice_provider_voice_id: source.voice_provider_voice_id,
+        voice_source_type: source.voice_source_type,
+        voice: source.voice ?? undefined,
     };
 }
