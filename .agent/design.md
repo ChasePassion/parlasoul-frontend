@@ -1,5 +1,7 @@
 # Design Knowledge
 
+This is an AI role-playing English learning website aimed at consumers. Users can create characters on the platform and talk with them, learning music during the conversations.
+
 ## DropdownMenu (shadcn) sideOffset Behavior
 
 `s ideOffset` controls the **vertical distance** between the trigger element and the dropdown menu, not the left margin.
@@ -66,79 +68,59 @@ className="... bg-transparent [&::selection]:bg-blue-500 [&::selection]:text-whi
 
 ---
 
-## CSS `grid-template-rows: 0fr` Shows Thin Line Instead of Hiding
+## Text Selection Overlay: Avoid React State for Selection Buttons
 
-**Phenomenon:**
-When setting `grid-template-rows: 0fr`, content is not fully hidden and only shows a thin line.
+When showing a floating action button after the user selects text, do not use React state just to reveal or position that button.
 
-**Relevant Code:**
+**Problem:**
+- `mouseup` reads `window.getSelection()`
+- calling `setState(...)` to show the button triggers a React re-render
+- if the selected text lives inside React-managed content such as `react-markdown`, the underlying text nodes may be replaced during commit
+- the browser selection is tied to those DOM nodes, so the highlight disappears even though the selected string was already captured
+
+**Incorrect pattern:**
 ```tsx
-style={{
-    display: "grid",
-    gridTemplateRows: "0fr",  // Bug: content visible, only shows thin line
-    transition: "grid-template-rows 400ms ease",
-}}
-```
+const [selectionButton, setSelectionButton] = useState(null);
 
-**Bug Explanation:**
-Browsers resolve `0fr` to `0px`, which means the `grid-template-rows` track has no actual height for animation transition. When set to `0fr`, the grid track collapses to its minimum size (usually one line height) rather than fully collapsing to 0, so content remains visible.
+function handleTextSelection() {
+  const selection = window.getSelection();
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  if (!range) return;
 
-**Solution (Actual Implementation):**
-Use `max-height` instead of `grid-template-rows`:
-
-```tsx
-style={{
-    maxHeight: isHovered ? "200px" : "42px",
-    overflow: "hidden",
-    transition: "max-height 400ms ease",
-}}
-```
-
----
-
-## CSS `group-hover` Makes Card Disappear on Hover
-
-**Phenomenon:**
-When hovering over any card, that card completely disappears instead of only collapsing other cards.
-
-**Relevant Code:**
-```tsx
-className={`
-    group/card relative cursor-pointer
-    flex-[1_1_0%] hover:flex-[1_0_100%]
-    group-hover/list:flex-[0_0_0%]  /* Bug: causes current card to also collapse */
-    group-hover/list:opacity-0        /* Bug: causes current card to also become transparent */
-`}
-```
-
-**Bug Explanation:**
-`group-hover/list` is a CSS group selector. When **any element within the group** is hovered, the rules apply to **all group members**. This means when hovering over the current card, its `flex` and `opacity` are also set to `0`, causing it to be completely invisible.
-
-**Solution (Actual Implementation):**
-Use React state to directly control styles instead of relying on CSS group-hover:
-
-```tsx
-function SuggestionCard({ ... }) {
-    const [visible, setVisible] = useState(false);
-    const [isHovered, setIsHovered] = useState(false);
-
-    return (
-        <div
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            style={{
-                flex: isHovered ? "1 0 100%" : visible ? "1 1 0%" : "0 0 0%",
-                opacity: visible ? 1 : 0,
-                transition: "flex 500ms ease-out, max-height 400ms ease",
-            }}
-        >
-            {/* content */}
-        </div>
-    );
+  setSelectionButton({
+    top: range.getBoundingClientRect().bottom,
+    left: range.getBoundingClientRect().left,
+  });
 }
 ```
 
-**Key Points:**
-- Remove `group-hover/list:flex-[0_0_0%]` and `group-hover/list:opacity-0`
-- Use `isHovered` state to control current card's expand/collapse
-- Use `visible` state to control entry animation opacity
+**Recommended pattern:**
+- keep the floating button mounted all the time in a portal
+- store selection metadata in `useRef`, not `useState`
+- update button position and visibility through the DOM node ref
+- only enter the normal React state flow when the user actually clicks the button
+- keep `onMouseDown(e => e.preventDefault())` on the button so clicking it does not clear the current selection
+
+**Correct approach:**
+```tsx
+const buttonRef = useRef<HTMLButtonElement | null>(null);
+const selectionDataRef = useRef<SelectionButtonData | null>(null);
+
+function showSelectionButton(data: SelectionButtonData) {
+  selectionDataRef.current = data;
+  const button = buttonRef.current;
+  if (!button) return;
+
+  button.style.top = `${data.top}px`;
+  button.style.left = `${data.left}px`;
+  button.style.visibility = "visible";
+  button.style.opacity = "1";
+  button.style.pointerEvents = "auto";
+}
+```
+
+**Rule of thumb:**
+- if an interaction depends on preserving the browser's native selection, avoid re-rendering the selected content subtree
+- for transient selection affordances, prefer `ref` + persistent overlay DOM over `state` + conditional rendering
+
+---
