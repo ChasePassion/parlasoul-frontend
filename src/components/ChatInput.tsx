@@ -27,6 +27,9 @@ interface ChatInputProps {
     // Phase 2
     onMicStart?: () => void;
     onMicCancel?: () => void;
+    // Streaming interrupt
+    isStreaming?: boolean;
+    onInterrupt?: () => void;
 }
 
 export default function ChatInput({
@@ -37,6 +40,8 @@ export default function ChatInput({
     onSelectSuggestion,
     onMicStart,
     onMicCancel,
+    isStreaming = false,
+    onInterrupt,
 }: ChatInputProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const [message, setMessage] = useState("");
@@ -622,41 +627,52 @@ export default function ChatInput({
                                                     </button>
                                                 </span>
 
-                                                {/* Send button */}
+                                                {/* Send button / Pause button */}
                                                 <div>
                                                     <span className="" data-state="closed">
                                                         <div>
                                                             <div className="relative">
-                                                                <button
-                                                                    type="button"
-                                                                    aria-label={hasText ? "Send message" : "Start Voice"}
-                                                                    className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white"
-                                                                    style={{
-                                                                        viewTransitionName:
-                                                                            "var(--vt-composer-speech-button)",
-                                                                    }}
-                                                                    disabled={disabled}
-                                                                    onClick={() => {
-                                                                        if (!hasText) {
-                                                                            showNotice("功能开发中");
-                                                                            return;
-                                                                        }
-                                                                        handleSend();
-                                                                    }}
-                                                                >
-                                                                    <Image
-                                                                        src={
-                                                                            hasText
-                                                                                ? "/icons/laptop-01bab7.svg"
-                                                                                : "/icons/sliders-f8aa74.svg"
-                                                                        }
-                                                                        width="20"
-                                                                        height="20"
-                                                                        aria-hidden="true"
-                                                                        className="h-5 w-5 brightness-0 invert"
-                                                                        alt=""
-                                                                    />
-                                                                </button>
+                                                                {isStreaming ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        aria-label="暂停生成"
+                                                                        className="composer-submit-button-color flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-black focus-visible:outline-none dark:focus-visible:outline-white"
+                                                                        onClick={onInterrupt}
+                                                                    >
+                                                                        <span className="bg-white rounded-[3px]" style={{ width: '16px', height: '16px' }} />
+                                                                    </button>
+                                                                ) : (
+                                                                    <button
+                                                                        type="button"
+                                                                        aria-label={hasText ? "Send message" : "Start Voice"}
+                                                                        className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white"
+                                                                        style={{
+                                                                            viewTransitionName:
+                                                                                "var(--vt-composer-speech-button)",
+                                                                        }}
+                                                                        disabled={disabled}
+                                                                        onClick={() => {
+                                                                            if (!hasText) {
+                                                                                showNotice("功能开发中");
+                                                                                return;
+                                                                            }
+                                                                            handleSend();
+                                                                        }}
+                                                                    >
+                                                                        <Image
+                                                                            src={
+                                                                                hasText
+                                                                                    ? "/icons/laptop-01bab7.svg"
+                                                                                    : "/icons/sliders-f8aa74.svg"
+                                                                            }
+                                                                            width="20"
+                                                                            height="20"
+                                                                            aria-hidden="true"
+                                                                            className="h-5 w-5 brightness-0 invert"
+                                                                            alt=""
+                                                                        />
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </span>

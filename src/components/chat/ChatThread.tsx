@@ -18,6 +18,8 @@ import {
 } from "@/hooks/useFloatingPosition";
 import { useUserSettings } from "@/lib/user-settings-context";
 import {
+  ApiError,
+  UnauthorizedError,
   createSavedItem,
   deleteSavedItem,
   createWordCard,
@@ -34,10 +36,21 @@ interface FeedbackCardState {
     feedbackCard: FeedbackCard | null;
     pendingOpen: boolean;
     requestId: number;
+    errorCode?: string | null;
 }
 
 const getMessageVersionKey = (message: Message): string =>
     `${message.id}:${message.candidateNo ?? 1}`;
+
+const deriveFeedbackErrorCode = (error: unknown): string => {
+    if (error instanceof ApiError) {
+        return error.code || `http_${error.status}`;
+    }
+    if (error instanceof UnauthorizedError) {
+        return "unauthorized";
+    }
+    return "feedback_card_request_failed";
+};
 
 interface ChatThreadProps {
     character: Character | null;
@@ -51,6 +64,7 @@ interface ChatThreadProps {
     onSelectCandidate: (turnId: string, candidateNo: number) => void;
     onRegenAssistant: (turnId: string) => void;
     onEditUser: (turnId: string, newContent: string) => void;
+    onRetrySentenceCard: (message: Message) => Promise<void>;
     // Phase 2: TTS
     playingCandidateId?: string | null;
     ttsLoadingCandidateId?: string | null;
@@ -71,6 +85,7 @@ export default function ChatThread({
     onSelectCandidate,
     onRegenAssistant,
     onEditUser,
+    onRetrySentenceCard,
     playingCandidateId,
     ttsLoadingCandidateId,
     isRecording,
@@ -170,6 +185,8 @@ export default function ChatThread({
 
     const handleOpenKnowledgeCard = useCallback((message: Message) => {
         const messageKey = getMessageVersionKey(message);
+        const sentenceCardStatus =
+            message.sentenceCardStatus ?? (message.sentenceCard ? "ready" : "idle");
 
         if (message.sentenceCard) {
             setPendingKnowledgeCardKey(null);
@@ -177,10 +194,21 @@ export default function ChatThread({
             return;
         }
 
-        if (message.knowledgeCardStatus === "loading") {
+        if (sentenceCardStatus === "loading") {
             setPendingKnowledgeCardKey(messageKey);
+            return;
         }
-    }, []);
+
+        if (
+            (sentenceCardStatus === "idle" || sentenceCardStatus === "error") &&
+            message.assistantCandidateId
+        ) {
+            setPendingKnowledgeCardKey(messageKey);
+            void onRetrySentenceCard(message).catch((err) => {
+                console.error("Failed to retry sentence card:", err);
+            });
+        }
+    }, [onRetrySentenceCard]);
 
     const handleCloseKnowledgeCard = useCallback(() => {
         setOpenKnowledgeCardKey(null);
@@ -498,6 +526,7 @@ export default function ChatThread({
                     feedbackCard: current?.feedbackCard ?? null,
                     pendingOpen: openWhenReady,
                     requestId,
+                    errorCode: null,
                 },
             }));
 
@@ -514,11 +543,13 @@ export default function ChatThread({
                             ...existing,
                             status: "ready",
                             feedbackCard: response.feedback_card,
+                            errorCode: null,
                         },
                     };
                 });
             } catch (err) {
                 console.error("Failed to create feedback card:", err);
+                const errorCode = deriveFeedbackErrorCode(err);
                 setFeedbackCardStates((prev) => {
                     const existing = prev[messageKey];
                     if (!existing || existing.requestId !== requestId) {
@@ -530,6 +561,7 @@ export default function ChatThread({
                             ...existing,
                             status: "error",
                             pendingOpen: false,
+                            errorCode,
                         },
                     };
                 });
@@ -627,8 +659,8 @@ export default function ChatThread({
         }
 
         if (
-            targetMessage.knowledgeCardStatus === "error" ||
-            targetMessage.knowledgeCardStatus === "idle"
+            targetMessage.sentenceCardStatus === "error" ||
+            targetMessage.sentenceCardStatus === "idle"
         ) {
             setPendingKnowledgeCardKey(null);
         }
@@ -859,8 +891,8 @@ export default function ChatThread({
                 const renderedMessage = applyFavoriteOverride(message);
                 const messageKey = getMessageVersionKey(renderedMessage);
                 const feedbackStatus = feedbackCardStates[messageKey]?.status ?? "idle";
-                const knowledgeCardStatus =
-                    renderedMessage.knowledgeCardStatus ??
+                const sentenceCardStatus =
+                    renderedMessage.sentenceCardStatus ??
                     (renderedMessage.sentenceCard ? "ready" : "idle");
                 const isUserTurn = message.role === "user";
                 const isLastTurn = index === visibleMessages.length - 1;
@@ -925,15 +957,16 @@ export default function ChatThread({
                                             userAvatar={userAvatar}
                                             assistantAvatar={character.avatar}
                                             messageFontSize={messageFontSize}
-                                            actionsDisabled={isStreaming}
+                                            actionsDisabled={false}
                                             knowledgeCardDisabled={isFavoriteSaving}
-                                            knowledgeCardStatus={knowledgeCardStatus}
+                                            sentenceCardStatus={sentenceCardStatus}
                                             feedbackStatus={feedbackStatus}
                                             displayMode={displayMode}
                                             knowledgeCardEnabled={knowledgeCardEnabled}
                                             playingCandidateId={playingCandidateId}
                                             ttsLoadingCandidateId={ttsLoadingCandidateId}
                                             isRecording={isRecording}
+                                            ttsStreamingDisabled={!message.isTemp && isStreaming}
                                             onPlayTts={onPlayTts}
                                             onStopTts={onStopTts}
                                             onSelectCandidate={onSelectCandidate}

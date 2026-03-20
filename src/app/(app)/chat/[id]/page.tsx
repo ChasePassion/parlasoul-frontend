@@ -52,7 +52,9 @@ export default function ChatPage() {
         handleSelectCandidate,
         handleRegenAssistant,
         handleEditUser,
+        handleRetrySentenceCard,
         handleSendMessage,
+        interruptStream,
     } = useChatSession({
         chatId,
         isAuthed,
@@ -140,6 +142,7 @@ export default function ChatPage() {
             onSelectCandidate={handleSelectCandidate}
             onRegenAssistant={handleRegenAssistant}
             onEditUser={handleEditUser}
+            onRetrySentenceCard={handleRetrySentenceCard}
             playingCandidateId={playingCandidateId}
             ttsLoadingCandidateId={ttsLoadingCandidateId}
             isRecording={isRecording}
@@ -151,7 +154,8 @@ export default function ChatPage() {
     const composerContent = character && !error ? (
         <ChatInput
             onSend={handleSendMessage}
-            disabled={isStreaming}
+            isStreaming={isStreaming}
+            onInterrupt={interruptStream}
             roleName={character.name}
             replySuggestions={currentReplySuggestions}
             onMicStart={handleMicStart}

@@ -1,10 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Message } from "@/components/ChatMessage";
+import type {
+  Message,
+  MessageActionStatus,
+} from "@/components/ChatMessage";
 import type { Character } from "@/components/Sidebar";
 import type { ReplySuggestion } from "@/lib/api";
 import {
+  ApiError,
+  UnauthorizedError,
+  createSentenceCard,
   editUserTurnAndStreamReply,
   getChatTurns,
   regenAssistantTurn,
@@ -20,7 +26,6 @@ interface UseChatSessionArgs {
   isAuthed: boolean;
   canSend: boolean;
   setSelectedCharacterId: (id: string | null) => void;
-  // Phase 2: TTS
   ttsPlaybackManager?: TtsPlaybackManager | null;
   autoReadAloudEnabled?: boolean;
 }
@@ -37,9 +42,51 @@ interface UseChatSessionResult {
   handleSelectCandidate: (turnId: string, candidateNo: number) => Promise<void>;
   handleRegenAssistant: (turnId: string) => Promise<void>;
   handleEditUser: (turnId: string, newContent: string) => Promise<void>;
+  handleRetrySentenceCard: (message: Message) => Promise<void>;
   handleSendMessage: (content: string) => Promise<void>;
   interruptAllTts: () => void;
+  interruptStream: () => void;
 }
+
+const deriveSentenceCardStatus = (message: {
+  sentenceCard?: Message["sentenceCard"];
+  sentenceCardStatus?: MessageActionStatus;
+}): MessageActionStatus =>
+  message.sentenceCardStatus ?? (message.sentenceCard ? "ready" : "idle");
+
+const deriveSentenceCardErrorCode = (error: unknown): string => {
+  if (error instanceof ApiError) {
+    return error.code || `http_${error.status}`;
+  }
+  if (error instanceof UnauthorizedError) {
+    return "unauthorized";
+  }
+  return "sentence_card_request_failed";
+};
+
+const mapTurnsPageMessage = (turn: TurnsPageResponse["turns"][number]): Message => {
+  const isAssistant = turn.author_type === "CHARACTER";
+  const sentenceCard = turn.primary_candidate.extra?.sentence_card ?? null;
+
+  return {
+    id: turn.id,
+    role: turn.author_type === "USER" ? "user" : "assistant",
+    content: turn.primary_candidate.content,
+    isGreeting:
+      turn.author_type === "CHARACTER" &&
+      turn.is_proactive &&
+      !turn.parent_turn_id,
+    candidateNo: turn.primary_candidate.candidate_no,
+    candidateCount: turn.candidate_count,
+    inputTransform: turn.primary_candidate.extra?.input_transform ?? null,
+    sentenceCard,
+    assistantTurnId: isAssistant ? turn.id : undefined,
+    assistantCandidateId: isAssistant ? turn.primary_candidate.id : undefined,
+    messageStreamStatus: isAssistant ? "done" : undefined,
+    sentenceCardStatus: isAssistant ? (sentenceCard ? "ready" : "idle") : undefined,
+    sentenceCardErrorCode: null,
+  };
+};
 
 export function useChatSession({
   chatId,
@@ -60,6 +107,7 @@ export function useChatSession({
 
   const streamAbortRef = useRef<AbortController | null>(null);
   const selectCandidateInFlightRef = useRef(false);
+  const sentenceCardRetryInFlightRef = useRef<Set<string>>(new Set());
   const characterIdRef = useRef<string | null>(null);
   const autoReadAloudRef = useRef(autoReadAloudEnabled);
   useEffect(() => {
@@ -93,38 +141,51 @@ export function useChatSession({
 
       const mappedMessages: Message[] = data.turns
         .filter(
-          (t) => t.author_type === "USER" || t.author_type === "CHARACTER",
+          (turn) => turn.author_type === "USER" || turn.author_type === "CHARACTER",
         )
         .filter(
-          (t) =>
-            t.primary_candidate.is_final ||
-            t.primary_candidate.content.trim() !== "",
+          (turn) =>
+            turn.primary_candidate.is_final ||
+            turn.primary_candidate.content.trim() !== "",
         )
-        .map((t) => ({
-          id: t.id,
-          role: t.author_type === "USER" ? "user" : "assistant",
-          content: t.primary_candidate.content,
-          isGreeting:
-            t.author_type === "CHARACTER" &&
-            t.is_proactive &&
-            !t.parent_turn_id,
-          candidateNo: t.primary_candidate.candidate_no,
-          candidateCount: t.candidate_count,
-          // Phase 1: learning data from candidate.extra
-          inputTransform: t.primary_candidate.extra?.input_transform ?? null,
-          sentenceCard: t.primary_candidate.extra?.sentence_card ?? null,
-          assistantTurnId: t.author_type === "CHARACTER" ? t.id : undefined,
-          assistantCandidateId:
-            t.author_type === "CHARACTER" ? t.primary_candidate.id : undefined,
-          knowledgeCardStatus:
-            t.author_type === "CHARACTER"
-              ? t.primary_candidate.extra?.sentence_card
-                ? "ready"
-                : "idle"
-              : undefined,
-        }));
+        .map(mapTurnsPageMessage);
 
-      setMessages(mappedMessages);
+      setMessages((prev) => {
+        const previousSentenceCardErrors = new Map<string, string | null>();
+        prev.forEach((message) => {
+          if (
+            message.assistantCandidateId &&
+            !message.sentenceCard &&
+            deriveSentenceCardStatus(message) === "error"
+          ) {
+            previousSentenceCardErrors.set(
+              message.assistantCandidateId,
+              message.sentenceCardErrorCode ?? null,
+            );
+          }
+        });
+
+        return mappedMessages.map((message) => {
+          if (
+            message.role !== "assistant" ||
+            message.sentenceCard ||
+            !message.assistantCandidateId
+          ) {
+            return message;
+          }
+
+          if (!previousSentenceCardErrors.has(message.assistantCandidateId)) {
+            return message;
+          }
+
+          return {
+            ...message,
+            sentenceCardStatus: "error",
+            sentenceCardErrorCode:
+              previousSentenceCardErrors.get(message.assistantCandidateId) ?? null,
+          };
+        });
+      });
     },
     [setSelectedCharacterId],
   );
@@ -195,23 +256,81 @@ export function useChatSession({
     [applyTurnsPage, isStreaming],
   );
 
+  const handleRetrySentenceCard = useCallback(
+    async (message: Message) => {
+      const candidateId = message.assistantCandidateId;
+      if (!candidateId || isStreaming || message.sentenceCard) return;
+      if (sentenceCardRetryInFlightRef.current.has(candidateId)) return;
+
+      sentenceCardRetryInFlightRef.current.add(candidateId);
+      setMessages((prev) =>
+        prev.map((current) =>
+          current.assistantCandidateId === candidateId
+            ? {
+                ...current,
+                sentenceCardStatus: "loading",
+                sentenceCardErrorCode: null,
+              }
+            : current,
+        ),
+      );
+
+      try {
+        const data = await createSentenceCard(candidateId);
+        setMessages((prev) =>
+          prev.map((current) =>
+            current.assistantCandidateId === candidateId
+              ? {
+                  ...current,
+                  sentenceCard: data.sentence_card,
+                  sentenceCardStatus: "ready",
+                  sentenceCardErrorCode: null,
+                }
+              : current,
+          ),
+        );
+      } catch (err) {
+        const errorCode = deriveSentenceCardErrorCode(err);
+        setMessages((prev) =>
+          prev.map((current) =>
+            current.assistantCandidateId === candidateId
+              ? {
+                  ...current,
+                  sentenceCardStatus: "error",
+                  sentenceCardErrorCode: errorCode,
+                }
+              : current,
+          ),
+        );
+        throw err;
+      } finally {
+        sentenceCardRetryInFlightRef.current.delete(candidateId);
+      }
+    },
+    [isStreaming],
+  );
+
   const handleRegenAssistant = useCallback(
     async (turnId: string) => {
       if (isStreaming) return;
       let shouldReloadAfterStream = false;
       let hasStreamError = false;
+      let resolvedAssistantCandidateId: string | undefined;
 
       setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== turnId) return m;
-          const nextCount = Math.min(10, (m.candidateCount ?? 1) + 1);
+        prev.map((message) => {
+          if (message.id !== turnId) return message;
+          const nextCount = Math.min(10, (message.candidateCount ?? 1) + 1);
           return {
-            ...m,
+            ...message,
             content: "",
             candidateNo: nextCount,
             candidateCount: nextCount,
             sentenceCard: null,
-            knowledgeCardStatus: "loading",
+            assistantCandidateId: undefined,
+            messageStreamStatus: "streaming",
+            sentenceCardStatus: "idle",
+            sentenceCardErrorCode: null,
           };
         }),
       );
@@ -223,17 +342,32 @@ export function useChatSession({
       try {
         await regenAssistantTurn(turnId, {
           signal: controller.signal,
+          onMeta: (meta) => {
+            if (controller.signal.aborted) return;
+            resolvedAssistantCandidateId = meta.assistant_turn.candidate_id;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === turnId
+                  ? {
+                      ...message,
+                      assistantTurnId: meta.assistant_turn.id,
+                      assistantCandidateId: meta.assistant_turn.candidate_id,
+                    }
+                  : message,
+              ),
+            );
+          },
           onChunk: (chunk) => {
             if (controller.signal.aborted) return;
             setMessages((prev) =>
-              prev.map((m) =>
-                m.id === turnId
+              prev.map((message) =>
+                message.id === turnId
                   ? {
-                      ...m,
-                      content: m.content + chunk,
-                      knowledgeCardStatus: "loading",
+                      ...message,
+                      content: message.content + chunk,
+                      messageStreamStatus: "streaming",
                     }
-                  : m,
+                  : message,
               ),
             );
           },
@@ -241,14 +375,14 @@ export function useChatSession({
             if (controller.signal.aborted) return;
             shouldReloadAfterStream = true;
             setMessages((prev) =>
-              prev.map((m) =>
-                m.id === turnId
+              prev.map((message) =>
+                message.id === turnId
                   ? {
-                      ...m,
+                      ...message,
                       content: fullContent,
-                      knowledgeCardStatus: "loading",
+                      messageStreamStatus: "done",
                     }
-                  : m,
+                  : message,
               ),
             );
             setIsStreaming(false);
@@ -260,18 +394,75 @@ export function useChatSession({
               setCurrentReplySuggestions(suggestions);
             }
           },
+          onSentenceCardStarted: (data) => {
+            if (controller.signal.aborted) return;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === turnId ||
+                message.assistantCandidateId === data.assistant_candidate_id
+                  ? {
+                      ...message,
+                      sentenceCardStatus: "loading",
+                      sentenceCardErrorCode: null,
+                    }
+                  : message,
+              ),
+            );
+          },
+          onSentenceCard: (data) => {
+            if (controller.signal.aborted) return;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === turnId ||
+                message.assistantCandidateId === data.assistant_candidate_id
+                  ? {
+                      ...message,
+                      assistantCandidateId:
+                        message.assistantCandidateId ?? data.assistant_candidate_id,
+                      sentenceCard: data.sentence_card,
+                      sentenceCardStatus: "ready",
+                      sentenceCardErrorCode: null,
+                    }
+                  : message,
+              ),
+            );
+          },
+          onSentenceCardError: (data) => {
+            if (controller.signal.aborted) return;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === turnId ||
+                message.assistantCandidateId === data.assistant_candidate_id ||
+                (!message.assistantCandidateId &&
+                  resolvedAssistantCandidateId === data.assistant_candidate_id &&
+                  message.id === turnId)
+                  ? {
+                      ...message,
+                      assistantCandidateId:
+                        message.assistantCandidateId ?? data.assistant_candidate_id,
+                      sentenceCardStatus: "error",
+                      sentenceCardErrorCode: data.code,
+                    }
+                  : message,
+              ),
+            );
+          },
           onError: async (errMsg) => {
             if (controller.signal.aborted) return;
             hasStreamError = true;
             setMessages((prev) =>
-              prev.map((m) =>
-                m.id === turnId
+              prev.map((message) =>
+                message.id === turnId
                   ? {
-                      ...m,
+                      ...message,
                       content: `Error: ${errMsg}`,
-                      knowledgeCardStatus: "error",
+                      messageStreamStatus: "error",
+                      sentenceCardStatus:
+                        deriveSentenceCardStatus(message) === "loading"
+                          ? "idle"
+                          : message.sentenceCardStatus,
                     }
-                  : m,
+                  : message,
               ),
             );
             setIsStreaming(false);
@@ -297,17 +488,19 @@ export function useChatSession({
       let shouldReloadAfterStream = false;
       let hasStreamError = false;
 
-      const idx = messages.findIndex((m) => m.id === turnId);
+      const idx = messages.findIndex((message) => message.id === turnId);
       if (idx < 0) return;
 
       const tempAssistantId = `assistant-edit-${Date.now()}`;
+      let resolvedAssistantMessageId = tempAssistantId;
+      let resolvedAssistantCandidateId: string | undefined;
 
       setMessages((prev) => {
-        const next = prev.slice(0, idx + 1).map((m) => {
-          if (m.id !== turnId) return m;
-          const nextCount = Math.min(10, (m.candidateCount ?? 1) + 1);
+        const next = prev.slice(0, idx + 1).map((message) => {
+          if (message.id !== turnId) return message;
+          const nextCount = Math.min(10, (message.candidateCount ?? 1) + 1);
           return {
-            ...m,
+            ...message,
             content: newContent,
             candidateNo: nextCount,
             candidateCount: nextCount,
@@ -318,7 +511,9 @@ export function useChatSession({
           role: "assistant",
           content: "",
           isTemp: true,
-          knowledgeCardStatus: "loading",
+          messageStreamStatus: "streaming",
+          sentenceCardStatus: "idle",
+          sentenceCardErrorCode: null,
         });
         return next;
       });
@@ -333,17 +528,36 @@ export function useChatSession({
           { content: newContent },
           {
             signal: controller.signal,
+            onMeta: (meta) => {
+              if (controller.signal.aborted) return;
+              resolvedAssistantMessageId = meta.assistant_turn.id;
+              resolvedAssistantCandidateId = meta.assistant_turn.candidate_id;
+              setMessages((prev) =>
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId
+                    ? {
+                        ...message,
+                        id: resolvedAssistantMessageId,
+                        assistantTurnId: meta.assistant_turn.id,
+                        assistantCandidateId: meta.assistant_turn.candidate_id,
+                      }
+                    : message,
+                ),
+              );
+            },
             onChunk: (chunk) => {
               if (controller.signal.aborted) return;
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempAssistantId
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId
                     ? {
-                        ...m,
-                        content: m.content + chunk,
-                        knowledgeCardStatus: "loading",
+                        ...message,
+                        content: message.content + chunk,
+                        messageStreamStatus: "streaming",
                       }
-                    : m,
+                    : message,
                 ),
               );
             },
@@ -351,14 +565,19 @@ export function useChatSession({
               if (controller.signal.aborted) return;
               shouldReloadAfterStream = true;
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempAssistantId
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId
                     ? {
-                        ...m,
+                        ...message,
+                        id: resolvedAssistantMessageId,
                         content: fullContent,
-                        knowledgeCardStatus: "loading",
+                        isTemp: false,
+                        assistantCandidateId:
+                          resolvedAssistantCandidateId ?? message.assistantCandidateId,
+                        messageStreamStatus: "done",
                       }
-                    : m,
+                    : message,
                 ),
               );
               setIsStreaming(false);
@@ -370,18 +589,80 @@ export function useChatSession({
                 setCurrentReplySuggestions(suggestions);
               }
             },
+            onSentenceCardStarted: (data) => {
+              if (controller.signal.aborted) return;
+              setMessages((prev) =>
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId ||
+                  message.assistantCandidateId === data.assistant_candidate_id
+                    ? {
+                        ...message,
+                        sentenceCardStatus: "loading",
+                        sentenceCardErrorCode: null,
+                      }
+                    : message,
+                ),
+              );
+            },
+            onSentenceCard: (data) => {
+              if (controller.signal.aborted) return;
+              setMessages((prev) =>
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId ||
+                  message.assistantCandidateId === data.assistant_candidate_id
+                    ? {
+                        ...message,
+                        id: resolvedAssistantMessageId,
+                        isTemp: false,
+                        assistantCandidateId:
+                          message.assistantCandidateId ?? data.assistant_candidate_id,
+                        sentenceCard: data.sentence_card,
+                        sentenceCardStatus: "ready",
+                        sentenceCardErrorCode: null,
+                      }
+                    : message,
+                ),
+              );
+            },
+            onSentenceCardError: (data) => {
+              if (controller.signal.aborted) return;
+              setMessages((prev) =>
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId ||
+                  message.assistantCandidateId === data.assistant_candidate_id
+                    ? {
+                        ...message,
+                        id: resolvedAssistantMessageId,
+                        assistantCandidateId:
+                          message.assistantCandidateId ?? data.assistant_candidate_id,
+                        sentenceCardStatus: "error",
+                        sentenceCardErrorCode: data.code,
+                      }
+                    : message,
+                ),
+              );
+            },
             onError: async (errMsg) => {
               if (controller.signal.aborted) return;
               hasStreamError = true;
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempAssistantId
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId
                     ? {
-                        ...m,
+                        ...message,
+                        id: resolvedAssistantMessageId,
                         content: `Error: ${errMsg}`,
-                        knowledgeCardStatus: "error",
+                        messageStreamStatus: "error",
+                        sentenceCardStatus:
+                          deriveSentenceCardStatus(message) === "loading"
+                            ? "idle"
+                            : message.sentenceCardStatus,
                       }
-                    : m,
+                    : message,
                 ),
               );
               setIsStreaming(false);
@@ -406,19 +687,17 @@ export function useChatSession({
     async (content: string) => {
       if (!character || !canSend || isStreaming) return;
 
-      // Phase 2: Interrupt all TTS before sending
       ttsPlaybackManager?.interruptAll();
-      // Ensure AudioContext is resumed within user gesture to allow auto read-aloud.
       void ttsPlaybackManager?.ensureResumed().catch(() => {});
 
       const tempUserId = `user-${Date.now()}`;
       const tempAssistantId = `assistant-${Date.now()}`;
       let resolvedUserMessageId = tempUserId;
       let resolvedAssistantMessageId = tempAssistantId;
+      let resolvedAssistantCandidateId: string | undefined;
       let shouldReloadAfterStream = false;
       let hasStreamError = false;
 
-      // Immediately add user message
       const userMessage: Message = {
         id: tempUserId,
         role: "user",
@@ -427,10 +706,8 @@ export function useChatSession({
       };
       setMessages((prev) => [...prev, userMessage]);
 
-      // Clear previous suggestions when new message is sent
       setCurrentReplySuggestions(null);
 
-      // Add placeholder assistant message
       setMessages((prev) => [
         ...prev,
         {
@@ -438,7 +715,9 @@ export function useChatSession({
           role: "assistant",
           content: "",
           isTemp: true,
-          knowledgeCardStatus: "loading",
+          messageStreamStatus: "streaming",
+          sentenceCardStatus: "idle",
+          sentenceCardErrorCode: null,
         },
       ]);
 
@@ -455,50 +734,51 @@ export function useChatSession({
               if (controller.signal.aborted) return;
               resolvedUserMessageId = meta.user_turn.id;
               resolvedAssistantMessageId = meta.assistant_turn.id;
+              resolvedAssistantCandidateId = meta.assistant_turn.candidate_id;
 
               setMessages((prev) =>
-                prev.map((m) => {
-                  if (m.id === tempUserId || m.id === resolvedUserMessageId) {
+                prev.map((message) => {
+                  if (message.id === tempUserId || message.id === resolvedUserMessageId) {
                     return {
-                      ...m,
+                      ...message,
                       id: resolvedUserMessageId,
                       isTemp: false,
-                      candidateNo: m.candidateNo ?? 1,
-                      candidateCount: m.candidateCount ?? 1,
+                      candidateNo: message.candidateNo ?? 1,
+                      candidateCount: message.candidateCount ?? 1,
                     };
                   }
 
                   if (
-                    m.id === tempAssistantId ||
-                    m.id === resolvedAssistantMessageId
+                    message.id === tempAssistantId ||
+                    message.id === resolvedAssistantMessageId
                   ) {
                     return {
-                      ...m,
+                      ...message,
                       id: resolvedAssistantMessageId,
                       assistantTurnId: meta.assistant_turn.id,
                       assistantCandidateId: meta.assistant_turn.candidate_id,
-                      candidateNo: m.candidateNo ?? 1,
-                      candidateCount: m.candidateCount ?? 1,
-                      knowledgeCardStatus: "loading",
+                      candidateNo: message.candidateNo ?? 1,
+                      candidateCount: message.candidateCount ?? 1,
+                      messageStreamStatus: "streaming",
+                      sentenceCardStatus: "idle",
+                      sentenceCardErrorCode: null,
                     };
                   }
 
-                  return m;
+                  return message;
                 }),
               );
             },
-
-            // Phase 1: Transform events (mixed-input translation)
             onTransformChunk: (chunk) => {
               if (controller.signal.aborted) return;
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempUserId || m.id === resolvedUserMessageId
+                prev.map((message) =>
+                  message.id === tempUserId || message.id === resolvedUserMessageId
                     ? {
-                        ...m,
-                        transformChunks: (m.transformChunks || "") + chunk,
+                        ...message,
+                        transformChunks: (message.transformChunks || "") + chunk,
                       }
-                    : m,
+                    : message,
                 ),
               );
             },
@@ -506,45 +786,42 @@ export function useChatSession({
               if (controller.signal.aborted) return;
               if (data.applied) {
                 setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === tempUserId || m.id === resolvedUserMessageId
+                  prev.map((message) =>
+                    message.id === tempUserId || message.id === resolvedUserMessageId
                       ? {
-                          ...m,
+                          ...message,
                           transformChunks: undefined,
                           inputTransform: {
                             applied: true,
                             transformed_content: data.transformed_content,
                           },
                         }
-                      : m,
+                      : message,
                   ),
                 );
               } else {
-                // Transform was not applied, clear streaming state
                 setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === tempUserId || m.id === resolvedUserMessageId
-                      ? { ...m, transformChunks: undefined }
-                      : m,
+                  prev.map((message) =>
+                    message.id === tempUserId || message.id === resolvedUserMessageId
+                      ? { ...message, transformChunks: undefined }
+                      : message,
                   ),
                 );
               }
             },
-
-            // Assistant streaming
             onChunk: (chunk) => {
               if (controller.signal.aborted) return;
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempAssistantId ||
-                  m.id === resolvedAssistantMessageId
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId
                     ? {
-                        ...m,
-                        content: m.content + chunk,
-                        isTemp: (m.content + chunk).trim().length === 0,
-                        knowledgeCardStatus: "loading",
+                        ...message,
+                        content: message.content + chunk,
+                        isTemp: (message.content + chunk).trim().length === 0,
+                        messageStreamStatus: "streaming",
                       }
-                    : m,
+                    : message,
                 ),
               );
             },
@@ -558,44 +835,45 @@ export function useChatSession({
               if (assistantTurnId) {
                 resolvedAssistantMessageId = assistantTurnId;
               }
+              if (assistantCandidateId) {
+                resolvedAssistantCandidateId = assistantCandidateId;
+              }
 
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempAssistantId ||
-                  m.id === resolvedAssistantMessageId
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId
                     ? {
-                        ...m,
+                        ...message,
                         id: resolvedAssistantMessageId,
                         content: fullContent,
-                        assistantTurnId: assistantTurnId ?? m.assistantTurnId,
+                        assistantTurnId: assistantTurnId ?? message.assistantTurnId,
                         assistantCandidateId:
-                          assistantCandidateId ?? m.assistantCandidateId,
+                          assistantCandidateId ?? message.assistantCandidateId,
                         isTemp: false,
-                        candidateNo: m.candidateNo ?? 1,
-                        candidateCount: m.candidateCount ?? 1,
-                        knowledgeCardStatus: "loading",
+                        candidateNo: message.candidateNo ?? 1,
+                        candidateCount: message.candidateCount ?? 1,
+                        messageStreamStatus: "done",
                       }
-                    : m,
+                    : message,
                 ),
               );
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempUserId || m.id === resolvedUserMessageId
+                prev.map((message) =>
+                  message.id === tempUserId || message.id === resolvedUserMessageId
                     ? {
-                        ...m,
+                        ...message,
                         id: resolvedUserMessageId,
                         isTemp: false,
-                        candidateNo: m.candidateNo ?? 1,
-                        candidateCount: m.candidateCount ?? 1,
+                        candidateNo: message.candidateNo ?? 1,
+                        candidateCount: message.candidateCount ?? 1,
                       }
-                    : m,
+                    : message,
                 ),
               );
               setIsStreaming(false);
               clearActiveStream(controller);
             },
-
-            // Phase 1: Reply suggestions (streamed one at a time after done)
             onReplySuggestions: (suggestions) => {
               if (controller.signal.aborted) return;
               if (suggestions && suggestions.length > 0) {
@@ -605,29 +883,63 @@ export function useChatSession({
                 });
               }
             },
-
-            // Phase 1: Sentence card
-            onSentenceCard: (data) => {
+            onSentenceCardStarted: (data) => {
               if (controller.signal.aborted) return;
-              const targetAssistantId =
-                data.message_id || resolvedAssistantMessageId;
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === targetAssistantId ||
-                  m.id === resolvedAssistantMessageId ||
-                  m.id === tempAssistantId ||
-                  m.assistantTurnId === targetAssistantId
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId ||
+                  message.assistantCandidateId === data.assistant_candidate_id
                     ? {
-                        ...m,
-                        sentenceCard: data.sentence_card,
-                        knowledgeCardStatus: "ready",
+                        ...message,
+                        sentenceCardStatus: "loading",
+                        sentenceCardErrorCode: null,
                       }
-                    : m,
+                    : message,
                 ),
               );
             },
-
-            // Phase 2: TTS realtime callbacks
+            onSentenceCard: (data) => {
+              if (controller.signal.aborted) return;
+              setMessages((prev) =>
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId ||
+                  message.assistantCandidateId === data.assistant_candidate_id
+                    ? {
+                        ...message,
+                        assistantCandidateId:
+                          message.assistantCandidateId ?? data.assistant_candidate_id,
+                        sentenceCard: data.sentence_card,
+                        sentenceCardStatus: "ready",
+                        sentenceCardErrorCode: null,
+                      }
+                    : message,
+                ),
+              );
+            },
+            onSentenceCardError: (data) => {
+              if (controller.signal.aborted) return;
+              setMessages((prev) =>
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId ||
+                  message.assistantCandidateId === data.assistant_candidate_id ||
+                  (!message.assistantCandidateId &&
+                    resolvedAssistantCandidateId === data.assistant_candidate_id &&
+                    (message.id === tempAssistantId ||
+                      message.id === resolvedAssistantMessageId))
+                    ? {
+                        ...message,
+                        assistantCandidateId:
+                          message.assistantCandidateId ?? data.assistant_candidate_id,
+                        sentenceCardStatus: "error",
+                        sentenceCardErrorCode: data.code,
+                      }
+                    : message,
+                ),
+              );
+            },
             onTtsAudioDelta: (data) => {
               if (controller.signal.aborted) return;
               if (!autoReadAloudRef.current) return;
@@ -646,21 +958,24 @@ export function useChatSession({
               if (controller.signal.aborted) return;
               ttsPlaybackManager?.handleTtsError(data.code, data.message);
             },
-
             onError: async (streamError) => {
               if (controller.signal.aborted) return;
               hasStreamError = true;
               console.error("Chat error:", streamError);
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempAssistantId ||
-                  m.id === resolvedAssistantMessageId
+                prev.map((message) =>
+                  message.id === tempAssistantId ||
+                  message.id === resolvedAssistantMessageId
                     ? {
-                        ...m,
+                        ...message,
                         content: `Error: ${streamError}`,
-                        knowledgeCardStatus: "error",
+                        messageStreamStatus: "error",
+                        sentenceCardStatus:
+                          deriveSentenceCardStatus(message) === "loading"
+                            ? "idle"
+                            : message.sentenceCardStatus,
                       }
-                    : m,
+                    : message,
                 ),
               );
               setIsStreaming(false);
@@ -697,6 +1012,13 @@ export function useChatSession({
     ttsPlaybackManager?.interruptAll();
   }, [ttsPlaybackManager]);
 
+  const interruptStream = useCallback(() => {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    setIsStreaming(false);
+    setMessages((prev) => prev.filter((msg) => msg.role === "user" || !msg.isTemp));
+  }, []);
+
   return {
     character,
     messages,
@@ -709,7 +1031,9 @@ export function useChatSession({
     handleSelectCandidate,
     handleRegenAssistant,
     handleEditUser,
+    handleRetrySentenceCard,
     handleSendMessage,
     interruptAllTts,
+    interruptStream,
   };
 }

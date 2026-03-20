@@ -9,6 +9,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import type { InputTransform, SentenceCard, ReplySuggestion, DisplayMode } from "@/lib/api";
 
 export type MessageActionStatus = "idle" | "loading" | "ready" | "error";
+export type MessageStreamStatus = "idle" | "streaming" | "done" | "error";
 
 export interface Message {
     id: string;
@@ -25,17 +26,18 @@ export interface Message {
     transformChunks?: string;
     assistantTurnId?: string;
     assistantCandidateId?: string;
-    knowledgeCardStatus?: MessageActionStatus;
+    messageStreamStatus?: MessageStreamStatus;
+    sentenceCardStatus?: MessageActionStatus;
+    sentenceCardErrorCode?: string | null;
 }
 
-interface ChatMessageProps {
-    message: Message;
+interface ChatMessageProps {message: Message;
     userAvatar: string;
     assistantAvatar: string;
     messageFontSize: number;
     actionsDisabled?: boolean;
     knowledgeCardDisabled?: boolean;
-    knowledgeCardStatus?: MessageActionStatus;
+    sentenceCardStatus?: MessageActionStatus;
     feedbackStatus?: MessageActionStatus;
     displayMode?: DisplayMode;
     knowledgeCardEnabled?: boolean;
@@ -43,11 +45,12 @@ interface ChatMessageProps {
     playingCandidateId?: string | null;
     ttsLoadingCandidateId?: string | null;
     isRecording?: boolean;
+    ttsStreamingDisabled?: boolean;
     onPlayTts?: (candidateId: string) => void;
     onStopTts?: (candidateId: string) => void;
-    onSelectCandidate?: (turnId: string, candidateNo: number) => void;
-    onRegenAssistant?: (turnId: string) => void;
-    onEditUser?: (turnId: string, newContent: string) => void;
+    onSelectCandidate?: (turnId: string, candidateNo: number) => Promise<void>;
+    onRegenAssistant?: (turnId: string) => Promise<void>;
+    onEditUser?: (turnId: string, newContent: string) => Promise<void>;
     onOpenKnowledgeCard?: (message: Message) => void;
     onRequestFeedback?: (message: Message) => void;
 }
@@ -59,13 +62,14 @@ export default function ChatMessage({
     messageFontSize,
     actionsDisabled = false,
     knowledgeCardDisabled = false,
-    knowledgeCardStatus = message.knowledgeCardStatus ?? (message.sentenceCard ? "ready" : "idle"),
+    sentenceCardStatus = message.sentenceCardStatus ?? (message.sentenceCard ? "ready" : "idle"),
     feedbackStatus = "idle",
     displayMode = "concise",
     knowledgeCardEnabled = false,
     playingCandidateId,
     ttsLoadingCandidateId,
     isRecording = false,
+    ttsStreamingDisabled = false,
     onPlayTts,
     onStopTts,
     onSelectCandidate,
@@ -90,7 +94,7 @@ export default function ChatMessage({
     const k = message.candidateNo ?? 1;
     const n = message.candidateCount ?? 1;
     const showNav =
-        !message.isTemp &&
+        (isUser|| !message.isTemp) &&
         !message.isGreeting &&
         message.candidateNo !== undefined &&
         message.candidateCount !== undefined;
@@ -325,7 +329,7 @@ export default function ChatMessage({
         !isUser &&
         knowledgeCardEnabled &&
         !message.isTemp &&
-        (knowledgeCardStatus === "loading" || knowledgeCardStatus === "ready" || !!message.sentenceCard);
+        (!!message.sentenceCard || !!message.assistantCandidateId);
     // Phase 2: Whether to show speaker button
     const showSpeakerBtn = !isUser && !message.isTemp && !!message.assistantCandidateId;
     const isSpeakerPlaying = showSpeakerBtn && playingCandidateId === message.assistantCandidateId;
@@ -520,10 +524,14 @@ export default function ChatMessage({
                                     onClick={() => onOpenKnowledgeCard?.(message)}
                                     disabled={knowledgeCardDisabled}
                                     aria-label={
-                                        knowledgeCardStatus === "loading" ? "知识卡加载中" : "知识卡"
+                                        sentenceCardStatus === "loading"
+                                            ? "知识卡加载中"
+                                            : sentenceCardStatus === "error"
+                                                ? "知识卡加载失败，点击重试"
+                                                : "知识卡"
                                     }
                                 >
-                                    {knowledgeCardStatus === "loading"
+                                    {sentenceCardStatus === "loading"
                                         ? renderLoadingSpinner()
                                         : renderActionIcon(knowledgeCardIcon)}
                                 </button>
@@ -535,14 +543,14 @@ export default function ChatMessage({
                                     type="button"
                                     className={actionButtonClass}
                                     onClick={() => {
-                                        if (isRecording) return;
+                                        if (isRecording || ttsStreamingDisabled) return;
                                         if (isSpeakerPlaying) {
                                             onStopTts?.(message.assistantCandidateId!);
                                         } else {
                                             onPlayTts?.(message.assistantCandidateId!);
                                         }
                                     }}
-                                    disabled={isRecording}
+                                    disabled={isRecording || ttsStreamingDisabled}
                                     aria-label={isSpeakerPlaying ? "停止朗读" : isSpeakerLoading ? "加载中" : "朗读"}
                                 >
                                     <span className="flex h-8 w-8 items-center justify-center">
