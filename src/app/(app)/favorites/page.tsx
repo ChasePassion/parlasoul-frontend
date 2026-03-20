@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import WorkspaceFrame from "@/components/layout/WorkspaceFrame";
 import { useSidebar } from "../layout";
-import { deleteSavedItem, listSavedItems, type SavedItemResponse } from "@/lib/api";
+import {
+    deleteSavedItem,
+    listSavedItemsPhase3,
+    type SavedItemKind,
+    type SavedItemResponse,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
 export default function FavoritesPage() {
@@ -23,8 +28,7 @@ export default function FavoritesPage() {
         if (!isAuthed) return;
         setFavoritesLoading(true);
         try {
-            const page = await listSavedItems({
-                kind: "sentence_card",
+            const page = await listSavedItemsPhase3({
                 cursor: cursor ?? undefined,
                 limit: 20,
             });
@@ -57,13 +61,55 @@ export default function FavoritesPage() {
         }
     }, [savedItems]);
 
+    const kindLabel: Record<SavedItemKind, string> = {
+        sentence_card: "句子卡",
+        word_card: "单词卡",
+        feedback_card: "更好表达",
+    };
+
+    const renderSavedItemBody = (item: SavedItemResponse) => {
+        if (item.kind === "word_card" && "pos_groups" in item.card) {
+            return (
+                <div className="mt-3 pt-2 border-t border-gray-100">
+                    <p className="text-xs text-gray-400 font-mono">{item.card.ipa_us}</p>
+                    <p className="mt-2 text-sm text-gray-800 leading-relaxed">
+                        {item.card.example.surface}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-500">
+                        {item.card.example.zh}
+                    </p>
+                </div>
+            );
+        }
+
+        if ("key_phrases" in item.card && item.card.key_phrases.length > 0) {
+            return (
+                <div className="mt-3 pt-2 border-t border-gray-100">
+                    <div className="flex flex-wrap gap-1.5">
+                        {item.card.key_phrases.map((kp, idx) => (
+                            <span
+                                key={idx}
+                                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs text-blue-700"
+                            >
+                                {kp.surface}
+                                <span className="text-blue-400 font-mono text-[10px]">{kp.ipa_us}</span>
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        return null;
+    };
+
     return (
         <WorkspaceFrame>
             <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
                 <div className="mx-auto max-w-7xl">
                     <div className="mb-8">
                         <h1 className="text-3xl font-bold text-gray-900">收藏夹</h1>
-                        <p className="mt-2 text-sm text-gray-500">你收藏的知识卡会显示在这里。</p>
+                        <p className="mt-2 text-sm text-gray-500">你收藏的表达和卡片会显示在这里。</p>
                     </div>
 
                     {favoritesLoading && savedItems.length === 0 ? (
@@ -100,21 +146,11 @@ export default function FavoritesPage() {
                                             {item.display.zh}
                                         </p>
 
-                                        {item.card?.key_phrases && item.card.key_phrases.length > 0 && (
-                                            <div className="mt-3 pt-2 border-t border-gray-100">
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {item.card.key_phrases.map((kp, idx) => (
-                                                        <span
-                                                            key={idx}
-                                                            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs text-blue-700"
-                                                        >
-                                                            {kp.surface}
-                                                            <span className="text-blue-400 font-mono text-[10px]">{kp.ipa_us}</span>
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
+                                        <p className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-300">
+                                            {kindLabel[item.kind]}
+                                        </p>
+
+                                        {renderSavedItemBody(item)}
 
                                         <p className="mt-2 text-[10px] text-gray-300">
                                             {new Date(item.created_at).toLocaleDateString("zh-CN")}
@@ -146,4 +182,3 @@ export default function FavoritesPage() {
         </WorkspaceFrame>
     );
 }
-

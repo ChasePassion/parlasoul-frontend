@@ -116,6 +116,12 @@ export function useChatSession({
           assistantTurnId: t.author_type === "CHARACTER" ? t.id : undefined,
           assistantCandidateId:
             t.author_type === "CHARACTER" ? t.primary_candidate.id : undefined,
+          knowledgeCardStatus:
+            t.author_type === "CHARACTER"
+              ? t.primary_candidate.extra?.sentence_card
+                ? "ready"
+                : "idle"
+              : undefined,
         }));
 
       setMessages(mappedMessages);
@@ -192,6 +198,8 @@ export function useChatSession({
   const handleRegenAssistant = useCallback(
     async (turnId: string) => {
       if (isStreaming) return;
+      let shouldReloadAfterStream = false;
+      let hasStreamError = false;
 
       setMessages((prev) =>
         prev.map((m) => {
@@ -203,6 +211,7 @@ export function useChatSession({
             candidateNo: nextCount,
             candidateCount: nextCount,
             sentenceCard: null,
+            knowledgeCardStatus: "loading",
           };
         }),
       );
@@ -218,20 +227,32 @@ export function useChatSession({
             if (controller.signal.aborted) return;
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === turnId ? { ...m, content: m.content + chunk } : m,
+                m.id === turnId
+                  ? {
+                      ...m,
+                      content: m.content + chunk,
+                      knowledgeCardStatus: "loading",
+                    }
+                  : m,
               ),
             );
           },
           onDone: async (fullContent) => {
             if (controller.signal.aborted) return;
+            shouldReloadAfterStream = true;
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === turnId ? { ...m, content: fullContent } : m,
+                m.id === turnId
+                  ? {
+                      ...m,
+                      content: fullContent,
+                      knowledgeCardStatus: "loading",
+                    }
+                  : m,
               ),
             );
             setIsStreaming(false);
             clearActiveStream(controller);
-            await reloadChatTurns();
           },
           onReplySuggestions: (suggestions) => {
             if (controller.signal.aborted) return;
@@ -241,16 +262,28 @@ export function useChatSession({
           },
           onError: async (errMsg) => {
             if (controller.signal.aborted) return;
+            hasStreamError = true;
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === turnId ? { ...m, content: `Error: ${errMsg}` } : m,
+                m.id === turnId
+                  ? {
+                      ...m,
+                      content: `Error: ${errMsg}`,
+                      knowledgeCardStatus: "error",
+                    }
+                  : m,
               ),
             );
             setIsStreaming(false);
             clearActiveStream(controller);
-            await reloadChatTurns();
           },
         });
+        if (
+          !controller.signal.aborted &&
+          (shouldReloadAfterStream || hasStreamError)
+        ) {
+          await reloadChatTurns();
+        }
       } finally {
         clearActiveStream(controller);
       }
@@ -261,6 +294,8 @@ export function useChatSession({
   const handleEditUser = useCallback(
     async (turnId: string, newContent: string) => {
       if (isStreaming) return;
+      let shouldReloadAfterStream = false;
+      let hasStreamError = false;
 
       const idx = messages.findIndex((m) => m.id === turnId);
       if (idx < 0) return;
@@ -283,6 +318,7 @@ export function useChatSession({
           role: "assistant",
           content: "",
           isTemp: true,
+          knowledgeCardStatus: "loading",
         });
         return next;
       });
@@ -302,21 +338,31 @@ export function useChatSession({
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === tempAssistantId
-                    ? { ...m, content: m.content + chunk }
+                    ? {
+                        ...m,
+                        content: m.content + chunk,
+                        knowledgeCardStatus: "loading",
+                      }
                     : m,
                 ),
               );
             },
             onDone: async (fullContent) => {
               if (controller.signal.aborted) return;
+              shouldReloadAfterStream = true;
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === tempAssistantId ? { ...m, content: fullContent } : m,
+                  m.id === tempAssistantId
+                    ? {
+                        ...m,
+                        content: fullContent,
+                        knowledgeCardStatus: "loading",
+                      }
+                    : m,
                 ),
               );
               setIsStreaming(false);
               clearActiveStream(controller);
-              await reloadChatTurns();
             },
             onReplySuggestions: (suggestions) => {
               if (controller.signal.aborted) return;
@@ -326,19 +372,29 @@ export function useChatSession({
             },
             onError: async (errMsg) => {
               if (controller.signal.aborted) return;
+              hasStreamError = true;
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === tempAssistantId
-                    ? { ...m, content: `Error: ${errMsg}` }
+                    ? {
+                        ...m,
+                        content: `Error: ${errMsg}`,
+                        knowledgeCardStatus: "error",
+                      }
                     : m,
                 ),
               );
               setIsStreaming(false);
               clearActiveStream(controller);
-              await reloadChatTurns();
             },
           },
         );
+        if (
+          !controller.signal.aborted &&
+          (shouldReloadAfterStream || hasStreamError)
+        ) {
+          await reloadChatTurns();
+        }
       } finally {
         clearActiveStream(controller);
       }
@@ -377,7 +433,13 @@ export function useChatSession({
       // Add placeholder assistant message
       setMessages((prev) => [
         ...prev,
-        { id: tempAssistantId, role: "assistant", content: "", isTemp: true },
+        {
+          id: tempAssistantId,
+          role: "assistant",
+          content: "",
+          isTemp: true,
+          knowledgeCardStatus: "loading",
+        },
       ]);
 
       const controller = beginStream();
@@ -417,6 +479,7 @@ export function useChatSession({
                       assistantCandidateId: meta.assistant_turn.candidate_id,
                       candidateNo: m.candidateNo ?? 1,
                       candidateCount: m.candidateCount ?? 1,
+                      knowledgeCardStatus: "loading",
                     };
                   }
 
@@ -479,6 +542,7 @@ export function useChatSession({
                         ...m,
                         content: m.content + chunk,
                         isTemp: (m.content + chunk).trim().length === 0,
+                        knowledgeCardStatus: "loading",
                       }
                     : m,
                 ),
@@ -509,6 +573,7 @@ export function useChatSession({
                         isTemp: false,
                         candidateNo: m.candidateNo ?? 1,
                         candidateCount: m.candidateCount ?? 1,
+                        knowledgeCardStatus: "loading",
                       }
                     : m,
                 ),
@@ -552,7 +617,11 @@ export function useChatSession({
                   m.id === resolvedAssistantMessageId ||
                   m.id === tempAssistantId ||
                   m.assistantTurnId === targetAssistantId
-                    ? { ...m, sentenceCard: data.sentence_card }
+                    ? {
+                        ...m,
+                        sentenceCard: data.sentence_card,
+                        knowledgeCardStatus: "ready",
+                      }
                     : m,
                 ),
               );
@@ -586,7 +655,11 @@ export function useChatSession({
                 prev.map((m) =>
                   m.id === tempAssistantId ||
                   m.id === resolvedAssistantMessageId
-                    ? { ...m, content: `Error: ${streamError}` }
+                    ? {
+                        ...m,
+                        content: `Error: ${streamError}`,
+                        knowledgeCardStatus: "error",
+                      }
                     : m,
                 ),
               );

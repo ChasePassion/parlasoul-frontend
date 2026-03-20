@@ -53,6 +53,7 @@ export interface UserSettingsResponse {
   knowledge_card_enabled: boolean;
   mixed_input_auto_translate_enabled: boolean;
   auto_read_aloud_enabled: boolean;
+  preferred_expression_bias_enabled: boolean;
   message_font_size: number;
   updated_at: string;
 }
@@ -62,6 +63,7 @@ export interface UpdateUserSettingsRequest {
   knowledge_card_enabled?: boolean;
   mixed_input_auto_translate_enabled?: boolean;
   auto_read_aloud_enabled?: boolean;
+  preferred_expression_bias_enabled?: boolean;
   message_font_size?: number;
 }
 
@@ -226,6 +228,8 @@ export interface SavedItemDisplay {
   zh: string;
 }
 
+export type SavedItemKind = "sentence_card" | "word_card" | "feedback_card";
+
 export interface SavedItemSource {
   role_id: string;
   chat_id: string;
@@ -236,9 +240,9 @@ export interface SavedItemSource {
 }
 
 export interface SavedItemPayload {
-  kind: string;
+  kind: SavedItemKind;
   display: SavedItemDisplay;
-  card: SentenceCard;
+  card: SentenceCard | WordCard | FeedbackCard;
   source: SavedItemSource;
 }
 
@@ -447,6 +451,90 @@ export interface STTTranscriptionResult {
   text: string;
   model: string;
   request_id?: string | null;
+}
+
+// =============================================================================
+// Phase 3: Learning types
+// =============================================================================
+
+// Word Card (from text selection)
+export interface WordCardSense {
+  zh: string;
+  note: string | null;
+}
+
+export interface WordCardPosGroup {
+  pos: string;
+  senses: WordCardSense[];
+}
+
+export interface WordCardExample {
+  surface: string;
+  zh: string;
+}
+
+export interface WordCardFavoriteState {
+  enabled: boolean;
+  is_favorited: boolean;
+  saved_item_id?: string | null;
+}
+
+export interface WordCard {
+  surface: string;
+  ipa_us: string;
+  pos_groups: WordCardPosGroup[];
+  example: WordCardExample;
+  favorite: WordCardFavoriteState;
+}
+
+export interface WordCardGenerateRequest {
+  selected_text: string;
+  context_text?: string | null;
+}
+
+// Feedback Card (for user message improvement)
+export interface KeyPhrase {
+  surface: string;
+  ipa_us: string;
+  zh: string;
+}
+
+export interface FeedbackCard {
+  surface: string;
+  zh: string;
+  key_phrases: KeyPhrase[];
+  favorite: WordCardFavoriteState;
+}
+
+// Phase 3: SavedItem types with kind support
+export type SavedItemKindPhase3 = SavedItemKind;
+
+export interface SavedItemPayloadPhase3 {
+  kind: SavedItemKindPhase3;
+  display: {
+    surface: string;
+    zh: string;
+  };
+  card: WordCard | SentenceCard | FeedbackCard;
+  source: {
+    role_id: string;
+    chat_id: string;
+    message_id: string;
+    turn_id?: string | null;
+    candidate_id?: string | null;
+    meta?: Record<string, unknown> | null;
+  };
+}
+
+export interface SavedItemResponsePhase3 extends SavedItemPayloadPhase3 {
+  id: string;
+  created_at: string;
+}
+
+export interface SavedItemsPagePhase3 {
+  items: SavedItemResponsePhase3[];
+  next_cursor: string | null;
+  has_more: boolean;
 }
 
 type ChatStreamEvent =
@@ -1241,7 +1329,7 @@ export class ApiService {
       const errorMessage =
         errorData.message ||
         errorData.detail ||
-        `HTTP error! status: ${response.status}`;
+        `API error! status: ${response.status}`;
 
       if (response.status === 401) {
         tokenStore.clearToken();
@@ -1251,6 +1339,46 @@ export class ApiService {
     }
 
     return response.arrayBuffer();
+  }
+
+  async createWordCard(
+    request: WordCardGenerateRequest,
+  ): Promise<{ word_card: WordCard }> {
+    return httpClient.post<{ word_card: WordCard }>("/v1/learning/word-card", request);
+  }
+
+  async createFeedbackCard(
+    turnId: string,
+  ): Promise<{ feedback_card: FeedbackCard }> {
+    return httpClient.post<{ feedback_card: FeedbackCard }>(
+      `/v1/turns/${turnId}/feedback-card`,
+      {},
+    );
+  }
+
+  async createSavedItemPhase3(
+    payload: SavedItemPayloadPhase3,
+  ): Promise<SavedItemResponsePhase3> {
+    return httpClient.post<SavedItemResponsePhase3>("/v1/saved-items", {
+      saved_item: payload,
+    });
+  }
+
+  async listSavedItemsPhase3(params?: {
+    kind?: SavedItemKindPhase3;
+    role_id?: string;
+    chat_id?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<SavedItemsPagePhase3> {
+    const qs = new URLSearchParams();
+    if (params?.kind) qs.set("kind", params.kind);
+    if (params?.role_id) qs.set("role_id", params.role_id);
+    if (params?.chat_id) qs.set("chat_id", params.chat_id);
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return httpClient.get<SavedItemsPagePhase3>(`/v1/saved-items${suffix}`);
   }
 }
 

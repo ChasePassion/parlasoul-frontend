@@ -1,0 +1,835 @@
+openapi: 3.1.0
+info:
+  title: NeuraChar Phase 3 Incremental API
+  version: 3.0.0-draft
+  description: |
+    Incremental API contract for Phase 3.
+    Scope is intentionally narrow:
+    - global text-selection word card
+    - user-message feedback card
+    - favorites-driven preferred-expressions bias for assistant reply generation
+
+    Unchanged APIs from Phase 1 / Phase 2 are omitted on purpose.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+
+x-phase3-change-log:
+  modified:
+    - POST /v1/chats/{chat_id}/stream
+    - POST /v1/turns/{turn_id}/regen/stream
+    - POST /v1/turns/{turn_id}/edit/stream
+    - POST /v1/saved-items
+    - GET /v1/saved-items
+    - DELETE /v1/saved-items/{saved_item_id}
+  added:
+    - POST /v1/learning/word-card
+    - POST /v1/turns/{turn_id}/feedback-card
+  removed: []
+
+x-phase3-expression-bias:
+  saved_items_window: 100
+  ordering: newest_first
+  extraction_rules:
+    sentence_card: sentence_card.surface
+    word_card: word_card.surface
+    feedback_card: feedback_card.surface
+  generation_surfaces:
+    - assistant reply generation
+    - reply suggestions generation
+  hard_rules:
+    - use favorites naturally
+    - do not force usage
+    - do not mention that favorites are being used
+
+x-phase3-excluded-scope:
+  - no review / spaced repetition / reminder / check-in / study plan
+  - no favorite usage counters or statistics
+  - no badge, popup, or copy that pushes user into favorites page
+  - no highlight of favorited words in chat
+  - no feedback grading, scoring, error classification, or long explanation
+
+tags:
+  - name: learning
+  - name: turns
+  - name: chats
+  - name: saved-items
+
+paths:
+  /v1/learning/word-card:
+    post:
+      tags: [learning]
+      summary: "[NEW] Generate a global text-selection word card"
+      operationId: createWordCardPhase3
+      x-change-type: added
+      description: |
+        Called when user selects English text on the chat page and taps the inline logo.
+
+        Product rules:
+        - `word_card.surface` must echo the original selection exactly, without rewriting
+        - `word_card.pos_groups` must always be an array; use `[]` when unavailable
+        - `word_card.example` must always exist
+        - `word_card.favorite.enabled` is always `true`
+
+        Backend may attach optional `favorite.saved_item_id` when the same user already
+        has a saved favorite for the same `word_card.surface`, so the client can un-favorite
+        without an extra lookup call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WordCardGenerateRequest"
+      responses:
+        "200":
+          description: Word card generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_WordCardPayload"
+        "400":
+          description: Invalid selection, empty selection, or non-English source text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/turns/{turn_id}/feedback-card:
+    post:
+      tags: [turns]
+      summary: "[NEW] Generate one feedback card for a user turn"
+      operationId: createFeedbackCardPhase3
+      x-change-type: added
+      description: |
+        Called when user taps the lightbulb button below one user message bubble.
+
+        Behavior:
+        - target turn must be a USER turn on the active branch
+        - backend loads chat context around that turn and runs the fixed Phase 3 feedback prompt
+        - response returns exactly one `feedback_card`
+        - endpoint does not create a new turn and does not mutate chat flow
+        - `feedback_card.favorite.enabled` is always `true`
+
+        Backend may attach optional `favorite.saved_item_id` when the same user already
+        has a saved favorite for the same `feedback_card.surface`.
+      parameters:
+        - name: turn_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Feedback card generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_FeedbackCardPayload"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Turn belongs to another user or inaccessible chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Turn not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Target turn is not a user turn or has no usable primary candidate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/chats/{chat_id}/stream:
+    post:
+      tags: [chats]
+      summary: "[MODIFIED] Chat stream uses favorites as preferred-expression bias"
+      operationId: streamChatPhase3
+      x-change-type: modified
+      description: |
+        SSE shape is unchanged from Phase 2.
+
+        New Phase 3 behavior before assistant generation:
+        1. Query the current user's latest 100 saved items ordered by `created_at DESC, id DESC`
+        2. Build `preferred_expressions` from saved items using Phase 3 extraction rules
+        3. Inject a system-level style bias telling the model:
+           - prefer these expressions only when natural
+           - never force awkward usage
+           - never mention the bias source
+
+        The same preferred-expression pool is also supplied when generating reply suggestions.
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatStreamRequest"
+      responses:
+        "200":
+          description: text/event-stream; event schema is unchanged
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Chat or character not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Chat state conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/turns/{turn_id}/regen/stream:
+    post:
+      tags: [turns]
+      summary: "[MODIFIED] Regen stream uses favorites as preferred-expression bias"
+      operationId: regenTurnPhase3
+      x-change-type: modified
+      description: |
+        SSE payload is unchanged.
+        Before regenerating the assistant candidate, backend injects Phase 3
+        `preferred_expressions` built from the user's latest 100 saved items.
+
+        The same bias also applies to reply suggestions emitted after `done`.
+      parameters:
+        - name: turn_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: text/event-stream; event schema is unchanged
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Turn not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Turn state conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/turns/{turn_id}/edit/stream:
+    post:
+      tags: [turns]
+      summary: "[MODIFIED] User-edit stream uses favorites as preferred-expression bias"
+      operationId: editUserTurnPhase3
+      x-change-type: modified
+      description: |
+        SSE payload is unchanged.
+        After user edits a historical user turn and backend streams the new assistant reply,
+        Phase 3 `preferred_expressions` bias is applied to:
+        - the regenerated assistant reply
+        - the reply suggestions emitted after `done`
+      parameters:
+        - name: turn_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserTurnEditStreamRequest"
+      responses:
+        "200":
+          description: text/event-stream; event schema is unchanged
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Turn not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Turn state conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/saved-items:
+    post:
+      tags: [saved-items]
+      summary: "[MODIFIED] Save sentence_card / word_card / feedback_card"
+      operationId: createSavedItemPhase3
+      x-change-type: modified
+      description: |
+        Phase 3 favorites are a minimal store that serves one core purpose:
+        build `preferred_expressions` for later assistant generations.
+
+        Supported `saved_item.kind` values:
+        - `sentence_card`
+        - `word_card`
+        - `feedback_card`
+
+        Deduplication changes in Phase 3:
+        - old behavior: duplicate judged by `(user_id, kind, source_message_id)`
+        - new behavior: duplicate judged by `(user_id, kind, canonical surface)`
+
+        Canonical surface extraction rules:
+        - `sentence_card`: use `card.surface`
+        - `word_card`: use `card.surface`
+        - `feedback_card`: use `card.surface`
+
+        For backward compatibility during rollout, backend may also accept legacy nested
+        card payloads such as `card.sentence_card.surface`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SavedItemCreateRequestPhase3"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_SavedItemResponsePhase3"
+        "400":
+          description: Invalid kind or invalid card payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Duplicate favorite with the same user + kind + canonical surface
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    get:
+      tags: [saved-items]
+      summary: "[MODIFIED] List favorites across Phase 3 card kinds"
+      operationId: listSavedItemsPhase3
+      x-change-type: modified
+      description: |
+        Existing cursor pagination contract is unchanged.
+        `kind` filter now supports `sentence_card`, `word_card`, and `feedback_card`.
+
+        Server-side preferred-expression injection uses the same ordering rule:
+        latest saved items first, capped at 100.
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/SavedItemKindPhase3"
+        - name: role_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: chat_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_SavedItemsPagePhase3"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/saved-items/{saved_item_id}:
+    delete:
+      tags: [saved-items]
+      summary: "[MODIFIED] Delete any Phase 3 favorite item"
+      operationId: deleteSavedItemPhase3
+      x-change-type: modified
+      description: |
+        Path and response shape are unchanged.
+        Phase 3 only expands coverage so delete works for `sentence_card`, `word_card`,
+        and `feedback_card` records.
+      parameters:
+        - name: saved_item_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: Invalid saved_item_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Saved item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [code, message, status]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        status:
+          type: integer
+
+    SuccessEnvelope_WordCardPayload:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: success
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/WordCardPayload"
+
+    SuccessEnvelope_FeedbackCardPayload:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: success
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/FeedbackCardPayload"
+
+    SuccessEnvelope_SavedItemResponsePhase3:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: success
+        status:
+          type: integer
+          example: 201
+        data:
+          $ref: "#/components/schemas/SavedItemResponsePhase3"
+
+    SuccessEnvelope_SavedItemsPagePhase3:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: success
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/SavedItemsPagePhase3"
+
+    ChatStreamRequest:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    UserTurnEditStreamRequest:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    WordCardGenerateRequest:
+      type: object
+      additionalProperties: false
+      required: [selected_text]
+      properties:
+        selected_text:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The exact English text the user selected.
+        context_text:
+          type: string
+          maxLength: 4000
+          nullable: true
+          description: Optional surrounding context to disambiguate the selection.
+
+    WordCardPayload:
+      type: object
+      additionalProperties: false
+      required: [word_card]
+      properties:
+        word_card:
+          $ref: "#/components/schemas/WordCard"
+
+    FeedbackCardPayload:
+      type: object
+      additionalProperties: false
+      required: [feedback_card]
+      properties:
+        feedback_card:
+          $ref: "#/components/schemas/FeedbackCard"
+
+    CardFavoriteStatePhase3:
+      type: object
+      required: [enabled, is_favorited]
+      properties:
+        enabled:
+          type: boolean
+          example: true
+        is_favorited:
+          type: boolean
+          example: false
+        saved_item_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Optional compatibility field for client-side un-favorite flow.
+            Product-visible behavior only depends on `enabled` and `is_favorited`.
+
+    KeyPhrase:
+      type: object
+      required: [surface, ipa_us, zh]
+      properties:
+        surface:
+          type: string
+        ipa_us:
+          type: string
+        zh:
+          type: string
+
+    SentenceCard:
+      type: object
+      required: [surface, zh, key_phrases, favorite]
+      properties:
+        surface:
+          type: string
+        zh:
+          type: string
+        key_phrases:
+          type: array
+          items:
+            $ref: "#/components/schemas/KeyPhrase"
+        favorite:
+          $ref: "#/components/schemas/CardFavoriteStatePhase3"
+
+    WordCardSense:
+      type: object
+      required: [zh]
+      properties:
+        zh:
+          type: string
+        note:
+          type: string
+          nullable: true
+
+    WordCardPosGroup:
+      type: object
+      required: [pos, senses]
+      properties:
+        pos:
+          type: string
+        senses:
+          type: array
+          items:
+            $ref: "#/components/schemas/WordCardSense"
+
+    WordCardExample:
+      type: object
+      required: [surface, zh]
+      properties:
+        surface:
+          type: string
+        zh:
+          type: string
+
+    WordCard:
+      type: object
+      required: [surface, ipa_us, pos_groups, example, favorite]
+      properties:
+        surface:
+          type: string
+          description: Must match the original selected text exactly.
+        ipa_us:
+          type: string
+        pos_groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/WordCardPosGroup"
+        example:
+          $ref: "#/components/schemas/WordCardExample"
+        favorite:
+          $ref: "#/components/schemas/CardFavoriteStatePhase3"
+
+    FeedbackCard:
+      type: object
+      required: [surface, zh, key_phrases, favorite]
+      properties:
+        surface:
+          type: string
+        zh:
+          type: string
+        key_phrases:
+          type: array
+          items:
+            $ref: "#/components/schemas/KeyPhrase"
+        favorite:
+          $ref: "#/components/schemas/CardFavoriteStatePhase3"
+
+    SavedItemKindPhase3:
+      type: string
+      enum: [sentence_card, word_card, feedback_card]
+
+    SavedItemDisplayPhase3:
+      type: object
+      required: [surface, zh]
+      properties:
+        surface:
+          type: string
+        zh:
+          type: string
+
+    SavedItemSourcePhase3:
+      type: object
+      required: [role_id, chat_id, message_id]
+      properties:
+        role_id:
+          type: string
+          format: uuid
+        chat_id:
+          type: string
+          format: uuid
+        message_id:
+          type: string
+        turn_id:
+          type: string
+          format: uuid
+          nullable: true
+        candidate_id:
+          type: string
+          format: uuid
+          nullable: true
+        meta:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    SavedItemCardPhase3:
+      oneOf:
+        - $ref: "#/components/schemas/SentenceCard"
+        - $ref: "#/components/schemas/WordCard"
+        - $ref: "#/components/schemas/FeedbackCard"
+      description: |
+        Kind-specific raw card payload. Server may also accept legacy nested payloads
+        during rollout, but Phase 3 client target is the flat raw card object.
+
+    SavedItemPayloadPhase3:
+      type: object
+      additionalProperties: false
+      required: [kind, display, card, source]
+      properties:
+        kind:
+          $ref: "#/components/schemas/SavedItemKindPhase3"
+        display:
+          $ref: "#/components/schemas/SavedItemDisplayPhase3"
+        card:
+          $ref: "#/components/schemas/SavedItemCardPhase3"
+        source:
+          $ref: "#/components/schemas/SavedItemSourcePhase3"
+
+    SavedItemCreateRequestPhase3:
+      type: object
+      additionalProperties: false
+      required: [saved_item]
+      properties:
+        saved_item:
+          $ref: "#/components/schemas/SavedItemPayloadPhase3"
+
+    SavedItemResponsePhase3:
+      allOf:
+        - $ref: "#/components/schemas/SavedItemPayloadPhase3"
+        - type: object
+          required: [id, created_at]
+          properties:
+            id:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+              format: date-time
+
+    SavedItemsPagePhase3:
+      type: object
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SavedItemResponsePhase3"
+        next_cursor:
+          type: string
+          format: uuid
+          nullable: true
+        has_more:
+          type: boolean

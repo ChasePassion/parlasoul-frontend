@@ -1,0 +1,12 @@
+.fav-icon .star-shape {
+    fill: transparent;
+    stroke: #2c2c2c;
+    stroke-width: 64;
+    stroke-linejoin: round;
+    transition: fill 160ms ease, stroke 160ms ease;
+}
+
+.fav-icon.favorited .star-shape {
+    fill: #eab308;
+    stroke: #eab308;
+}

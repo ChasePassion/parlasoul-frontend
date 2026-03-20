@@ -60,6 +60,12 @@ export const deleteVoiceById = apiService.deleteVoiceById.bind(apiService);
 export const getVoicePreviewAudioStream =
   apiService.getVoicePreviewAudioStream.bind(apiService);
 
+// Phase 3: Learning相关
+export const createWordCard = apiService.createWordCard.bind(apiService);
+export const createFeedbackCard = apiService.createFeedbackCard.bind(apiService);
+export const createSavedItemPhase3 = apiService.createSavedItemPhase3.bind(apiService);
+export const listSavedItemsPhase3 = apiService.listSavedItemsPhase3.bind(apiService);
+
 // 导出类型和错误类
 export * from "./token-store";
 export type {
@@ -94,6 +100,7 @@ export type {
   ReplySuggestion,
   InputTransform,
   CandidateExtra,
+  SavedItemKind,
   SavedItemDisplay,
   SavedItemSource,
   SavedItemPayload,
@@ -109,4 +116,17 @@ export type {
   VoiceProfilesPage,
   VoiceCatalogResponse,
   VoiceProfileUpdate,
+  // Phase 3 types
+  WordCard,
+  WordCardGenerateRequest,
+  WordCardSense,
+  WordCardPosGroup,
+  WordCardExample,
+  WordCardFavoriteState,
+  FeedbackCard,
+  KeyPhrase,
+  SavedItemKindPhase3,
+  SavedItemPayloadPhase3,
+  SavedItemResponsePhase3,
+  SavedItemsPagePhase3,
 } from "./api-service";

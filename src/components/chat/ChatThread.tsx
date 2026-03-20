@@ -2,13 +2,42 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createPortal } from "react-dom";
-import ChatMessage, { type Message } from "@/components/ChatMessage";
+import ChatMessage, {
+    type Message,
+    type MessageActionStatus,
+} from "@/components/ChatMessage";
 import SentenceCardPopover from "@/components/SentenceCardPopover";
+import WordCardPopover from "@/components/WordCardPopover";
+import FeedbackCardPopover from "@/components/FeedbackCardPopover";
 import type { Character } from "@/components/Sidebar";
+import {
+    useFloatingPosition,
+    type FloatingAnchorRect,
+} from "@/hooks/useFloatingPosition";
 import { useUserSettings } from "@/lib/user-settings-context";
-import { createSavedItem, deleteSavedItem } from "@/lib/api";
-import type { SavedItemPayload } from "@/lib/api";
+import {
+  createSavedItem,
+  deleteSavedItem,
+  createWordCard,
+  createFeedbackCard,
+  createSavedItemPhase3,
+  type WordCard,
+  type FeedbackCard,
+  type SavedItemPayloadPhase3,
+  type SavedItemPayload,
+} from "@/lib/api";
+
+interface FeedbackCardState {
+    status: MessageActionStatus;
+    feedbackCard: FeedbackCard | null;
+    pendingOpen: boolean;
+    requestId: number;
+}
+
+const getMessageVersionKey = (message: Message): string =>
+    `${message.id}:${message.candidateNo ?? 1}`;
 
 interface ChatThreadProps {
     character: Character | null;
@@ -46,8 +75,6 @@ export default function ChatThread({
     onPlayTts,
     onStopTts,
 }: ChatThreadProps) {
-    const CARD_WIDTH = 320;
-    const CARD_HEIGHT = 360;
     const CARD_GAP = 12;
     const VIEWPORT_PADDING = 12;
 
@@ -55,23 +82,81 @@ export default function ChatThread({
     const { messageFontSize, displayMode, knowledgeCardEnabled } = useUserSettings();
 
     // Knowledge card popover state
-    const [openCardMessageId, setOpenCardMessageId] = useState<string | null>(null);
+    const [openKnowledgeCardKey, setOpenKnowledgeCardKey] = useState<string | null>(null);
+    const [pendingKnowledgeCardKey, setPendingKnowledgeCardKey] = useState<string | null>(null);
     const [isFavoriteSaving, setIsFavoriteSaving] = useState(false);
     const cardAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-    const [cardPosition, setCardPosition] = useState<{ top: number; left: number } | null>(null);
+    const knowledgeCardWrapperRef = useRef<HTMLDivElement | null>(null);
     const [favoriteOverrides, setFavoriteOverrides] = useState<
         Record<string, { isFavorited: boolean; savedItemId: string | null }>
     >({});
 
+    // Phase 3: Word card popover state
+    const [wordCard, setWordCard] = useState<WordCard | null>(null);
+    const wordCardWrapperRef = useRef<HTMLDivElement | null>(null);
+    const [wordCardAnchorRect, setWordCardAnchorRect] = useState<FloatingAnchorRect | null>(null);
+    const [isWordCardLoading, setIsWordCardLoading] = useState(false);
+    const [isWordCardFavoriteSaving, setIsWordCardFavoriteSaving] = useState(false);
+    const [wordCardFavoriteOverride, setWordCardFavoriteOverride] = useState<{
+        isFavorited: boolean;
+        savedItemId: string | null;
+    } | null>(null);
+    const selectionButtonRef = useRef<HTMLButtonElement | null>(null);
+    const selectionButtonDataRef = useRef<{
+        text: string;
+        contextText: string | null;
+        top: number;
+        left: number;
+        anchorRect: FloatingAnchorRect;
+    } | null>(null);
+
+    // Phase 3: Feedback card popover state
+    const [feedbackCard, setFeedbackCard] = useState<FeedbackCard | null>(null);
+    const [feedbackCardKey, setFeedbackCardKey] = useState<string | null>(null);
+    const feedbackCardWrapperRef = useRef<HTMLDivElement | null>(null);
+    const [feedbackCardStates, setFeedbackCardStates] = useState<
+        Record<string, FeedbackCardState>
+    >({});
+    const [feedbackFavoriteOverrides, setFeedbackFavoriteOverrides] = useState<
+        Record<string, { isFavorited: boolean; savedItemId: string | null }>
+    >({});
+    const messageAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+    const feedbackCardStatesRef = useRef<Record<string, FeedbackCardState>>({});
+    const feedbackRequestIdRef = useRef(0);
+    const feedbackPrefetchInitializedRef = useRef(false);
+    const previousUserVersionsRef = useRef<Map<string, { key: string; candidateCount: number }>>(
+        new Map()
+    );
+
+    useEffect(() => {
+        feedbackCardStatesRef.current = feedbackCardStates;
+    }, [feedbackCardStates]);
+
+    useEffect(() => {
+        setOpenKnowledgeCardKey(null);
+        setPendingKnowledgeCardKey(null);
+        setFavoriteOverrides({});
+        setFeedbackCard(null);
+        setFeedbackCardKey(null);
+        setFeedbackCardStates({});
+        setFeedbackFavoriteOverrides({});
+        previousUserVersionsRef.current = new Map();
+        feedbackPrefetchInitializedRef.current = false;
+    }, [chatId]);
+
     useEffect(() => {
         setFavoriteOverrides((prev) => {
-            const validIds = new Set(messages.map((message) => message.id));
+            const validKeys = new Set(
+                messages
+                    .filter((message) => message.role === "assistant" && message.sentenceCard)
+                    .map(getMessageVersionKey)
+            );
             const next: Record<string, { isFavorited: boolean; savedItemId: string | null }> = {};
             let changed = false;
 
-            Object.entries(prev).forEach(([messageId, value]) => {
-                if (validIds.has(messageId)) {
-                    next[messageId] = value;
+            Object.entries(prev).forEach(([messageKey, value]) => {
+                if (validKeys.has(messageKey)) {
+                    next[messageKey] = value;
                 } else {
                     changed = true;
                 }
@@ -81,75 +166,24 @@ export default function ChatThread({
         });
     }, [messages]);
 
-    const handleOpenKnowledgeCard = useCallback((messageId: string) => {
-        setOpenCardMessageId((prev) => (prev === messageId ? null : messageId));
-    }, []);
+    const handleOpenKnowledgeCard = useCallback((message: Message) => {
+        const messageKey = getMessageVersionKey(message);
 
-    const handleCloseKnowledgeCard = useCallback(() => {
-        setOpenCardMessageId(null);
-    }, []);
-
-    const applyFavoriteOverride = useCallback(
-        (message: Message): Message => {
-            if (!message.sentenceCard) return message;
-            const override = favoriteOverrides[message.id];
-            if (!override) return message;
-
-            return {
-                ...message,
-                sentenceCard: {
-                    ...message.sentenceCard,
-                    favorite: {
-                        ...message.sentenceCard.favorite,
-                        is_favorited: override.isFavorited,
-                        saved_item_id: override.savedItemId,
-                    },
-                },
-            };
-        },
-        [favoriteOverrides]
-    );
-
-    useEffect(() => {
-        if (!openCardMessageId) {
-            setCardPosition(null);
+        if (message.sentenceCard) {
+            setPendingKnowledgeCardKey(null);
+            setOpenKnowledgeCardKey((prev) => (prev === messageKey ? null : messageKey));
             return;
         }
 
-        const updateCardPosition = () => {
-            const anchor = cardAnchorRefs.current.get(openCardMessageId);
-            if (!anchor) {
-                setCardPosition(null);
-                return;
-            }
+        if (message.knowledgeCardStatus === "loading") {
+            setPendingKnowledgeCardKey(messageKey);
+        }
+    }, []);
 
-            const rect = anchor.getBoundingClientRect();
-            const viewportWidth = window.innerWidth;
-            const viewportHeight = window.innerHeight;
-
-            let left = rect.left - CARD_WIDTH - CARD_GAP;
-            if (left < VIEWPORT_PADDING) {
-                left = rect.right + CARD_GAP;
-            }
-            left = Math.max(VIEWPORT_PADDING, Math.min(left, viewportWidth - CARD_WIDTH - VIEWPORT_PADDING));
-
-            const minTop = VIEWPORT_PADDING;
-            const maxTop = Math.max(minTop, viewportHeight - CARD_HEIGHT - VIEWPORT_PADDING);
-            const centeredTop = rect.top + rect.height / 2 - CARD_HEIGHT / 2;
-            const top = Math.max(minTop, Math.min(centeredTop, maxTop));
-
-            setCardPosition({ top, left });
-        };
-
-        updateCardPosition();
-        window.addEventListener("resize", updateCardPosition);
-        window.addEventListener("scroll", updateCardPosition, true);
-
-        return () => {
-            window.removeEventListener("resize", updateCardPosition);
-            window.removeEventListener("scroll", updateCardPosition, true);
-        };
-    }, [openCardMessageId]);
+    const handleCloseKnowledgeCard = useCallback(() => {
+        setOpenKnowledgeCardKey(null);
+        setPendingKnowledgeCardKey(null);
+    }, []);
 
     const handleToggleFavorite = useCallback(
         async (
@@ -158,7 +192,8 @@ export default function ChatThread({
             message: Message
         ): Promise<string | null> => {
             if (!character || !message.sentenceCard) return null;
-            const previous = favoriteOverrides[message.id] ?? {
+            const messageKey = getMessageVersionKey(message);
+            const previous = favoriteOverrides[messageKey] ?? {
                 isFavorited: message.sentenceCard.favorite.is_favorited,
                 savedItemId: message.sentenceCard.favorite.saved_item_id ?? null,
             };
@@ -166,7 +201,7 @@ export default function ChatThread({
             // optimistic state
             setFavoriteOverrides((prev) => ({
                 ...prev,
-                [message.id]: {
+                [messageKey]: {
                     isFavorited,
                     savedItemId: isFavorited
                         ? previous.savedItemId
@@ -197,7 +232,7 @@ export default function ChatThread({
                     const nextSavedId = created.id ?? null;
                     setFavoriteOverrides((prev) => ({
                         ...prev,
-                        [message.id]: {
+                        [messageKey]: {
                             isFavorited: true,
                             savedItemId: nextSavedId,
                         },
@@ -211,7 +246,7 @@ export default function ChatThread({
                     }
                     setFavoriteOverrides((prev) => ({
                         ...prev,
-                        [message.id]: {
+                        [messageKey]: {
                             isFavorited: false,
                             savedItemId: null,
                         },
@@ -222,7 +257,7 @@ export default function ChatThread({
                 console.error("Failed to toggle favorite:", err);
                 setFavoriteOverrides((prev) => ({
                     ...prev,
-                    [message.id]: previous,
+                    [messageKey]: previous,
                 }));
                 throw err;
             } finally {
@@ -231,6 +266,566 @@ export default function ChatThread({
         },
         [character, chatId, favoriteOverrides]
     );
+
+    const hideSelectionButton = useCallback(() => {
+        selectionButtonDataRef.current = null;
+        const button = selectionButtonRef.current;
+        if (!button) return;
+        button.style.visibility = "hidden";
+        button.style.opacity = "0";
+        button.style.pointerEvents = "none";
+        button.style.transform = "translateX(-50%) scale(0.96)";
+    }, []);
+
+    const showSelectionButton = useCallback(
+        (buttonData: {
+            text: string;
+            contextText: string | null;
+            top: number;
+            left: number;
+            anchorRect: FloatingAnchorRect;
+        }) => {
+            selectionButtonDataRef.current = buttonData;
+            const button = selectionButtonRef.current;
+            if (!button) return;
+            button.style.top = `${buttonData.top}px`;
+            button.style.left = `${buttonData.left}px`;
+            button.style.visibility = "visible";
+            button.style.opacity = "1";
+            button.style.pointerEvents = "auto";
+            button.style.transform = "translateX(-50%) scale(1)";
+        },
+        []
+    );
+
+    // Phase 3: Text selection handling for word card
+    const handleTextSelection = useCallback(() => {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+            hideSelectionButton();
+            return;
+        }
+
+        const selectedText = selection.toString().trim();
+        if (selectedText.length < 2 || selectedText.length > 200) {
+            hideSelectionButton();
+            return;
+        }
+
+        // Only trigger on English text (basic check - contains letters)
+        if (!/[a-zA-Z]/.test(selectedText)) {
+            hideSelectionButton();
+            return;
+        }
+
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+
+        showSelectionButton({
+            text: selectedText,
+            contextText: range.commonAncestorContainer.textContent?.trim() || null,
+            top: rect.bottom + 10,
+            left: rect.left + rect.width / 2,
+            anchorRect: {
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+            },
+        });
+    }, [hideSelectionButton, showSelectionButton]);
+
+    const handleOpenWordCard = useCallback(async () => {
+        const selectionButton = selectionButtonDataRef.current;
+        if (!selectionButton) return;
+
+        setIsWordCardLoading(true);
+        setWordCardAnchorRect(selectionButton.anchorRect);
+        try {
+            const response = await createWordCard({
+                selected_text: selectionButton.text,
+                context_text: selectionButton.contextText,
+            });
+            setWordCard(response.word_card);
+            setWordCardFavoriteOverride(null);
+            hideSelectionButton();
+        } catch (err) {
+            console.error("Failed to create word card:", err);
+            setWordCard(null);
+            setWordCardFavoriteOverride(null);
+            hideSelectionButton();
+        } finally {
+            setIsWordCardLoading(false);
+        }
+    }, [hideSelectionButton]);
+
+    useEffect(() => {
+        document.addEventListener("mouseup", handleTextSelection);
+        return () => {
+            document.removeEventListener("mouseup", handleTextSelection);
+        };
+    }, [handleTextSelection]);
+
+    useEffect(() => {
+        const handlePointerDown = (e: MouseEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (target?.closest("[data-selection-word-trigger='true']")) {
+                return;
+            }
+            const selection = window.getSelection();
+            if (!selection || selection.isCollapsed) {
+                hideSelectionButton();
+            }
+        };
+
+        document.addEventListener("mousedown", handlePointerDown);
+        return () => {
+            document.removeEventListener("mousedown", handlePointerDown);
+        };
+    }, [hideSelectionButton]);
+
+    const handleCloseWordCard = useCallback(() => {
+        setWordCard(null);
+        setWordCardAnchorRect(null);
+        setWordCardFavoriteOverride(null);
+        hideSelectionButton();
+        window.getSelection()?.removeAllRanges();
+    }, [hideSelectionButton]);
+
+    const handleToggleWordCardFavorite = useCallback(
+        async (
+            isFavorited: boolean,
+            savedItemId: string | null | undefined,
+            wordCardData: WordCard
+        ): Promise<string | null> => {
+            if (!character) return null;
+
+            const previous = wordCardFavoriteOverride ?? {
+                isFavorited: wordCardData.favorite.is_favorited,
+                savedItemId: wordCardData.favorite.saved_item_id ?? null,
+            };
+
+            setWordCardFavoriteOverride({
+                isFavorited,
+                savedItemId: isFavorited ? previous.savedItemId : null,
+            });
+
+            setIsWordCardFavoriteSaving(true);
+            try {
+                if (isFavorited) {
+                    const payload: SavedItemPayloadPhase3 = {
+                        kind: "word_card",
+                        display: {
+                            surface: wordCardData.surface,
+                            zh: wordCardData.pos_groups[0]?.senses[0]?.zh || "",
+                        },
+                        card: wordCardData,
+                        source: {
+                            role_id: character.id,
+                            chat_id: chatId,
+                            message_id: `word:${wordCardData.surface}`,
+                        },
+                    };
+                    const created = await createSavedItemPhase3(payload);
+                    const nextSavedItemId = created.id ?? null;
+                    setWordCardFavoriteOverride({
+                        isFavorited: true,
+                        savedItemId: nextSavedItemId,
+                    });
+                    return nextSavedItemId;
+                }
+
+                const effectiveSavedItemId = savedItemId ?? previous.savedItemId;
+                if (effectiveSavedItemId) {
+                    await deleteSavedItem(effectiveSavedItemId);
+                }
+                setWordCardFavoriteOverride({
+                    isFavorited: false,
+                    savedItemId: null,
+                });
+                return null;
+            } catch (err) {
+                console.error("Failed to toggle word favorite:", err);
+                setWordCardFavoriteOverride(previous);
+                throw err;
+            } finally {
+                setIsWordCardFavoriteSaving(false);
+            }
+        },
+        [character, chatId, wordCardFavoriteOverride]
+    );
+
+    // Phase 3: Feedback card handling
+    const ensureFeedbackCard = useCallback(
+        async (message: Message, openWhenReady = false) => {
+            const messageKey = getMessageVersionKey(message);
+            const current = feedbackCardStatesRef.current[messageKey];
+
+            if (current?.status === "ready" && current.feedbackCard) {
+                if (openWhenReady) {
+                    setFeedbackCard(current.feedbackCard);
+                    setFeedbackCardKey(messageKey);
+                }
+                return;
+            }
+
+            if (current?.status === "loading") {
+                if (openWhenReady && !current.pendingOpen) {
+                    setFeedbackCardStates((prev) => {
+                        const existing = prev[messageKey];
+                        if (!existing || existing.pendingOpen) return prev;
+                        return {
+                            ...prev,
+                            [messageKey]: {
+                                ...existing,
+                                pendingOpen: true,
+                            },
+                        };
+                    });
+                }
+                return;
+            }
+
+            const requestId = ++feedbackRequestIdRef.current;
+            setFeedbackCardStates((prev) => ({
+                ...prev,
+                [messageKey]: {
+                    status: "loading",
+                    feedbackCard: current?.feedbackCard ?? null,
+                    pendingOpen: openWhenReady,
+                    requestId,
+                },
+            }));
+
+            try {
+                const response = await createFeedbackCard(message.id);
+                setFeedbackCardStates((prev) => {
+                    const existing = prev[messageKey];
+                    if (!existing || existing.requestId !== requestId) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        [messageKey]: {
+                            ...existing,
+                            status: "ready",
+                            feedbackCard: response.feedback_card,
+                        },
+                    };
+                });
+            } catch (err) {
+                console.error("Failed to create feedback card:", err);
+                setFeedbackCardStates((prev) => {
+                    const existing = prev[messageKey];
+                    if (!existing || existing.requestId !== requestId) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        [messageKey]: {
+                            ...existing,
+                            status: "error",
+                            pendingOpen: false,
+                        },
+                    };
+                });
+            }
+        },
+        []
+    );
+
+    useEffect(() => {
+        if (isLoading) return;
+
+        const currentUsers = messages.filter(
+            (message) => message.role === "user" && !message.isTemp
+        );
+        const nextVersions = new Map(
+            currentUsers.map((message) => [
+                message.id,
+                {
+                    key: getMessageVersionKey(message),
+                    candidateCount: message.candidateCount ?? 1,
+                },
+            ])
+        );
+
+        if (!feedbackPrefetchInitializedRef.current) {
+            previousUserVersionsRef.current = nextVersions;
+            feedbackPrefetchInitializedRef.current = true;
+            return;
+        }
+
+        const previousVersions = previousUserVersionsRef.current;
+        previousUserVersionsRef.current = nextVersions;
+
+        currentUsers.forEach((message) => {
+            const previous = previousVersions.get(message.id);
+            const currentKey = getMessageVersionKey(message);
+            const shouldPrefetch =
+                !previous ||
+                (previous.key !== currentKey &&
+                    (message.candidateCount ?? 1) > previous.candidateCount);
+
+            if (shouldPrefetch) {
+                void ensureFeedbackCard(message);
+            }
+        });
+    }, [ensureFeedbackCard, isLoading, messages]);
+
+    useEffect(() => {
+        const readyEntry = Object.entries(feedbackCardStates).find(
+            ([, state]) =>
+                state.pendingOpen && state.status === "ready" && !!state.feedbackCard
+        );
+        if (!readyEntry) return;
+
+        const [messageKey, state] = readyEntry;
+        const targetMessage = messages.find(
+            (message) => getMessageVersionKey(message) === messageKey
+        );
+
+        setFeedbackCardStates((prev) => {
+            const existing = prev[messageKey];
+            if (!existing || !existing.pendingOpen) return prev;
+            return {
+                ...prev,
+                [messageKey]: {
+                    ...existing,
+                    pendingOpen: false,
+                },
+            };
+        });
+
+        if (!targetMessage || !state.feedbackCard) {
+            return;
+        }
+
+        setFeedbackCard(state.feedbackCard);
+        setFeedbackCardKey(messageKey);
+    }, [feedbackCardStates, messages]);
+
+    useEffect(() => {
+        if (!pendingKnowledgeCardKey) return;
+
+        const targetMessage = messages.find(
+            (message) => getMessageVersionKey(message) === pendingKnowledgeCardKey
+        );
+        if (!targetMessage) {
+            setPendingKnowledgeCardKey(null);
+            return;
+        }
+
+        if (targetMessage.sentenceCard) {
+            setOpenKnowledgeCardKey(pendingKnowledgeCardKey);
+            setPendingKnowledgeCardKey(null);
+            return;
+        }
+
+        if (
+            targetMessage.knowledgeCardStatus === "error" ||
+            targetMessage.knowledgeCardStatus === "idle"
+        ) {
+            setPendingKnowledgeCardKey(null);
+        }
+    }, [messages, pendingKnowledgeCardKey]);
+
+    useEffect(() => {
+        if (!feedbackCardKey) return;
+        const targetMessage = messages.find(
+            (message) => getMessageVersionKey(message) === feedbackCardKey
+        );
+        if (!targetMessage) {
+            setFeedbackCard(null);
+            setFeedbackCardKey(null);
+        }
+    }, [feedbackCardKey, messages]);
+
+    useEffect(() => {
+        setFeedbackFavoriteOverrides((prev) => {
+            const validKeys = new Set(
+                messages
+                    .filter((message) => message.role === "user" && !message.isTemp)
+                    .map(getMessageVersionKey)
+            );
+            const next: Record<string, { isFavorited: boolean; savedItemId: string | null }> = {};
+            let changed = false;
+
+            Object.entries(prev).forEach(([messageKey, value]) => {
+                if (validKeys.has(messageKey)) {
+                    next[messageKey] = value;
+                } else {
+                    changed = true;
+                }
+            });
+
+            return changed ? next : prev;
+        });
+    }, [messages]);
+
+    const handleRequestFeedback = useCallback(
+        (message: Message) => {
+            void ensureFeedbackCard(message, true);
+        },
+        [ensureFeedbackCard]
+    );
+
+    const handleCloseFeedbackCard = useCallback(() => {
+        setFeedbackCard(null);
+        setFeedbackCardKey(null);
+    }, []);
+
+    const feedbackCardMessage = feedbackCardKey
+        ? messages.find((message) => getMessageVersionKey(message) === feedbackCardKey) ?? null
+        : null;
+
+    const handleToggleFeedbackFavorite = useCallback(
+        async (
+            isFavorited: boolean,
+            savedItemId: string | null | undefined,
+            feedbackCardData: FeedbackCard
+        ): Promise<string | null> => {
+            if (!character || !feedbackCardKey || !feedbackCardMessage) return null;
+            const previous = feedbackFavoriteOverrides[feedbackCardKey] ?? {
+                isFavorited: feedbackCardData.favorite.is_favorited,
+                savedItemId: feedbackCardData.favorite.saved_item_id ?? null,
+            };
+
+            setFeedbackFavoriteOverrides((prev) => ({
+                ...prev,
+                [feedbackCardKey]: {
+                    isFavorited,
+                    savedItemId: isFavorited ? previous.savedItemId : null,
+                },
+            }));
+
+            try {
+                if (isFavorited) {
+                    const payload: SavedItemPayloadPhase3 = {
+                        kind: "feedback_card",
+                        display: {
+                            surface: feedbackCardData.surface,
+                            zh: feedbackCardData.zh,
+                        },
+                        card: feedbackCardData,
+                        source: {
+                            role_id: character.id,
+                            chat_id: chatId,
+                            message_id: feedbackCardMessage.id,
+                            turn_id: feedbackCardMessage.id,
+                            candidate_id: null,
+                        },
+                    };
+                    const created = await createSavedItemPhase3(payload);
+                    setFeedbackFavoriteOverrides((prev) => ({
+                        ...prev,
+                        [feedbackCardKey]: {
+                            isFavorited: true,
+                            savedItemId: created.id,
+                        },
+                    }));
+                    return created.id;
+                } else {
+                    const effectiveSavedItemId = savedItemId ?? previous.savedItemId;
+                    if (effectiveSavedItemId) {
+                        await deleteSavedItem(effectiveSavedItemId);
+                    }
+                    setFeedbackFavoriteOverrides((prev) => ({
+                        ...prev,
+                        [feedbackCardKey]: {
+                            isFavorited: false,
+                            savedItemId: null,
+                        },
+                    }));
+                    return null;
+                }
+            } catch (err) {
+                console.error("Failed to toggle feedback favorite:", err);
+                setFeedbackFavoriteOverrides((prev) => ({
+                    ...prev,
+                    [feedbackCardKey]: previous,
+                }));
+                throw err;
+            }
+        },
+        [character, chatId, feedbackCardKey, feedbackCardMessage, feedbackFavoriteOverrides]
+    );
+
+    const applyFavoriteOverride = useCallback(
+        (message: Message): Message => {
+            if (!message.sentenceCard) return message;
+            const override = favoriteOverrides[getMessageVersionKey(message)];
+            if (!override) return message;
+
+            return {
+                ...message,
+                sentenceCard: {
+                    ...message.sentenceCard,
+                    favorite: {
+                        ...message.sentenceCard.favorite,
+                        is_favorited: override.isFavorited,
+                        saved_item_id: override.savedItemId,
+                    },
+                },
+            };
+        },
+        [favoriteOverrides]
+    );
+
+    const openCardMessage = openKnowledgeCardKey
+        ? messages
+            .map(applyFavoriteOverride)
+            .find((message) => getMessageVersionKey(message) === openKnowledgeCardKey)
+        : null;
+    const knowledgeCardMessage = openCardMessage?.sentenceCard ? openCardMessage : null;
+    const visibleMessages = messages.filter(
+        (message) =>
+            !(
+                message.role === "assistant" &&
+                message.isTemp &&
+                message.content.trim().length === 0
+            )
+    );
+    const knowledgeCardPosition = useFloatingPosition({
+        isOpen: Boolean(openKnowledgeCardKey && openCardMessage?.sentenceCard),
+        overlayRef: knowledgeCardWrapperRef,
+        getAnchorRect: () => {
+            if (!openCardMessage?.id) return null;
+            const anchor = cardAnchorRefs.current.get(openCardMessage.id);
+            return anchor?.getBoundingClientRect() ?? null;
+        },
+        preferredPlacement: "left",
+        gap: CARD_GAP,
+        padding: VIEWPORT_PADDING,
+    });
+
+    const wordCardPosition = useFloatingPosition({
+        isOpen: Boolean(wordCard && wordCardAnchorRect),
+        overlayRef: wordCardWrapperRef,
+        getAnchorRect: () => wordCardAnchorRect,
+        preferredPlacement: "bottom",
+        gap: CARD_GAP,
+        padding: VIEWPORT_PADDING,
+    });
+
+    const feedbackCardPosition = useFloatingPosition({
+        isOpen: Boolean(feedbackCard && feedbackCardMessage),
+        overlayRef: feedbackCardWrapperRef,
+        getAnchorRect: () => {
+            if (!feedbackCardMessage?.id) return null;
+            const anchor = messageAnchorRefs.current.get(feedbackCardMessage.id);
+            return anchor?.getBoundingClientRect() ?? null;
+        },
+        preferredPlacement: "right",
+        gap: CARD_GAP,
+        padding: VIEWPORT_PADDING,
+    });
+
+    const shouldRenderKnowledgeCard =
+        Boolean(openKnowledgeCardKey && knowledgeCardMessage) &&
+        typeof document !== "undefined";
 
     if (isLoading) {
         return (
@@ -256,28 +851,15 @@ export default function ChatThread({
         );
     }
 
-    const openCardMessage = openCardMessageId
-        ? messages.map(applyFavoriteOverride).find((m) => m.id === openCardMessageId)
-        : null;
-    const visibleMessages = messages.filter(
-        (message) =>
-            !(
-                message.role === "assistant" &&
-                message.isTemp &&
-                message.content.trim().length === 0
-            )
-    );
-    const shouldRenderFloatingCard = !!(
-        openCardMessageId &&
-        openCardMessage?.sentenceCard &&
-        cardPosition &&
-        typeof document !== "undefined"
-    );
-
     return (
         <>
             {visibleMessages.map((message, index) => {
                 const renderedMessage = applyFavoriteOverride(message);
+                const messageKey = getMessageVersionKey(renderedMessage);
+                const feedbackStatus = feedbackCardStates[messageKey]?.status ?? "idle";
+                const knowledgeCardStatus =
+                    renderedMessage.knowledgeCardStatus ??
+                    (renderedMessage.sentenceCard ? "ready" : "idle");
                 const isUserTurn = message.role === "user";
                 const isLastTurn = index === visibleMessages.length - 1;
                 const topPaddingClass = message.isGreeting
@@ -322,6 +904,11 @@ export default function ChatThread({
                                         dir="auto"
                                         className="min-h-8 text-message relative flex w-full flex-col items-end gap-2 text-start break-words whitespace-normal [.text-message+&]:mt-1"
                                         ref={(el) => {
+                                            if (el) {
+                                                messageAnchorRefs.current.set(message.id, el);
+                                            } else {
+                                                messageAnchorRefs.current.delete(message.id);
+                                            }
                                             if (!isUserTurn) {
                                                 if (el) {
                                                     cardAnchorRefs.current.set(message.id, el);
@@ -338,6 +925,8 @@ export default function ChatThread({
                                             messageFontSize={messageFontSize}
                                             actionsDisabled={isStreaming}
                                             knowledgeCardDisabled={isFavoriteSaving}
+                                            knowledgeCardStatus={knowledgeCardStatus}
+                                            feedbackStatus={feedbackStatus}
                                             displayMode={displayMode}
                                             knowledgeCardEnabled={knowledgeCardEnabled}
                                             playingCandidateId={playingCandidateId}
@@ -348,6 +937,7 @@ export default function ChatThread({
                                             onRegenAssistant={onRegenAssistant}
                                             onEditUser={onEditUser}
                                             onOpenKnowledgeCard={handleOpenKnowledgeCard}
+                                            onRequestFeedback={handleRequestFeedback}
                                         />
                                     </div>
                                 </div>
@@ -359,23 +949,26 @@ export default function ChatThread({
                     </article>
                 );
             })}
-            {shouldRenderFloatingCard &&
+            {shouldRenderKnowledgeCard &&
                 createPortal(
                     <div
+                        ref={knowledgeCardWrapperRef}
                         style={{
                             position: "fixed",
-                            top: `${cardPosition.top}px`,
-                            left: `${cardPosition.left}px`,
+                            top: knowledgeCardPosition ? `${knowledgeCardPosition.top}px` : "0px",
+                            left: knowledgeCardPosition ? `${knowledgeCardPosition.left}px` : "0px",
                             zIndex: 60,
+                            visibility: knowledgeCardPosition ? "visible" : "hidden",
+                            pointerEvents: knowledgeCardPosition ? "auto" : "none",
                         }}
                     >
                         <SentenceCardPopover
-                            sentenceCard={openCardMessage.sentenceCard!}
+                            sentenceCard={knowledgeCardMessage!.sentenceCard!}
                             onToggleFavorite={(isFavorited, savedItemId) =>
                                 handleToggleFavorite(
                                     isFavorited,
                                     savedItemId,
-                                    openCardMessage
+                                    knowledgeCardMessage!
                                 )
                             }
                             isSaving={isFavoriteSaving}
@@ -384,6 +977,134 @@ export default function ChatThread({
                     </div>,
                     document.body
                 )}
+
+            {wordCard && typeof document !== "undefined" && (
+                createPortal(
+                    <div
+                        ref={wordCardWrapperRef}
+                        style={{
+                            position: "fixed",
+                            top: wordCardPosition ? `${wordCardPosition.top}px` : "0px",
+                            left: wordCardPosition ? `${wordCardPosition.left}px` : "0px",
+                            zIndex: 60,
+                            visibility: wordCardPosition ? "visible" : "hidden",
+                            pointerEvents: wordCardPosition ? "auto" : "none",
+                        }}
+                    >
+                        <WordCardPopover
+                            wordCard={{
+                                ...wordCard,
+                                favorite: {
+                                    ...wordCard.favorite,
+                                    is_favorited: wordCardFavoriteOverride?.isFavorited ?? wordCard.favorite.is_favorited,
+                                    saved_item_id: wordCardFavoriteOverride?.savedItemId ?? wordCard.favorite.saved_item_id,
+                                },
+                            }}
+                            onToggleFavorite={(isFavorited, savedItemId) =>
+                                handleToggleWordCardFavorite(isFavorited, savedItemId, wordCard)
+                            }
+                            isSaving={isWordCardLoading || isWordCardFavoriteSaving}
+                            onClose={handleCloseWordCard}
+                        />
+                    </div>,
+                    document.body
+                )
+            )}
+
+            {typeof document !== "undefined" &&
+                createPortal(
+                    <button
+                        ref={selectionButtonRef}
+                        type="button"
+                        data-selection-word-trigger="true"
+                        onClick={() => {
+                            void handleOpenWordCard();
+                        }}
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                        }}
+                        disabled={isWordCardLoading}
+                        style={{
+                            position: "fixed",
+                            top: "0px",
+                            left: "0px",
+                            transform: "translateX(-50%) scale(0.96)",
+                            zIndex: 65,
+                            visibility: "hidden",
+                            opacity: 0,
+                            pointerEvents: "none",
+                            paddingLeft: isWordCardLoading ? "8px" : "4px",
+                            paddingRight: isWordCardLoading ? "8px" : "4px",
+                        }}
+                        className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white shadow-lg transition-[opacity,transform] duration-150 hover:scale-[1.03] disabled:pointer-events-auto disabled:cursor-not-allowed"
+                        aria-label="打开单词卡"
+                    >
+                        {isWordCardLoading ? (
+                            <svg
+                                className="animate-spin h-4 w-4 text-blue-600"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                            >
+                                <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                />
+                                <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                />
+                            </svg>
+                        ) : (
+                            <Image src="/translate.svg" alt="" width={24} height={24} />
+                        )}
+                    </button>,
+                    document.body
+                )
+            }
+
+            {feedbackCard && typeof document !== "undefined" && (
+                createPortal(
+                    <div
+                        ref={feedbackCardWrapperRef}
+                        style={{
+                            position: "fixed",
+                            top: feedbackCardPosition ? `${feedbackCardPosition.top}px` : "0px",
+                            left: feedbackCardPosition ? `${feedbackCardPosition.left}px` : "0px",
+                            zIndex: 60,
+                            visibility: feedbackCardPosition ? "visible" : "hidden",
+                            pointerEvents: feedbackCardPosition ? "auto" : "none",
+                        }}
+                    >
+                        <FeedbackCardPopover
+                            feedbackCard={{
+                                ...feedbackCard,
+                                favorite: {
+                                    ...feedbackCard.favorite,
+                                    is_favorited:
+                                        feedbackFavoriteOverrides[feedbackCardKey || ""]?.isFavorited ??
+                                        feedbackCard.favorite.is_favorited,
+                                    saved_item_id:
+                                        feedbackFavoriteOverrides[feedbackCardKey || ""]?.savedItemId ??
+                                        feedbackCard.favorite.saved_item_id,
+                                },
+                            }}
+                            onToggleFavorite={(isFavorited, savedItemId) =>
+                                handleToggleFeedbackFavorite(isFavorited, savedItemId, feedbackCard)
+                            }
+                            isSaving={false}
+                            onClose={handleCloseFeedbackCard}
+                        />
+                    </div>,
+                    document.body
+                )
+            )}
+
             <div className="h-24 sm:h-28" aria-hidden="true" />
             <div ref={messagesEndRef} />
         </>

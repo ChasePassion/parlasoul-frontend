@@ -21,6 +21,7 @@ const DEFAULT_DISPLAY_MODE: DisplayMode = "concise";
 const DEFAULT_KNOWLEDGE_CARD_ENABLED = true;
 const DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED = true;
 const DEFAULT_AUTO_READ_ALOUD_ENABLED = true;
+const DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED = true;
 const SETTINGS_SYNC_DEBOUNCE_MS = 400;
 
 interface SettingsState {
@@ -29,6 +30,7 @@ interface SettingsState {
     knowledgeCardEnabled: boolean;
     mixedInputAutoTranslateEnabled: boolean;
     autoReadAloudEnabled: boolean;
+    preferredExpressionBiasEnabled: boolean;
 }
 
 interface UserSettingsContextType extends SettingsState {
@@ -37,6 +39,7 @@ interface UserSettingsContextType extends SettingsState {
     setKnowledgeCardEnabled: (enabled: boolean) => void;
     setMixedInputAutoTranslateEnabled: (enabled: boolean) => void;
     setAutoReadAloudEnabled: (enabled: boolean) => void;
+    setPreferredExpressionBiasEnabled: (enabled: boolean) => void;
     minMessageFontSize: number;
     maxMessageFontSize: number;
     isLoading: boolean;
@@ -60,6 +63,7 @@ const defaultState: SettingsState = {
     knowledgeCardEnabled: DEFAULT_KNOWLEDGE_CARD_ENABLED,
     mixedInputAutoTranslateEnabled: DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED,
     autoReadAloudEnabled: DEFAULT_AUTO_READ_ALOUD_ENABLED,
+    preferredExpressionBiasEnabled: DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED,
 };
 
 const saveToLocalStorage = (state: SettingsState) => {
@@ -79,6 +83,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     const [knowledgeCardEnabled, setKnowledgeCardEnabledState] = useState(defaultState.knowledgeCardEnabled);
     const [mixedInputAutoTranslateEnabled, setMixedInputAutoTranslateEnabledState] = useState(defaultState.mixedInputAutoTranslateEnabled);
     const [autoReadAloudEnabled, setAutoReadAloudEnabledState] = useState(defaultState.autoReadAloudEnabled);
+    const [preferredExpressionBiasEnabled, setPreferredExpressionBiasEnabledState] = useState(defaultState.preferredExpressionBiasEnabled);
 
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -88,8 +93,22 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Track the latest values for sync without stale closure issues
-    const latestRef = useRef({ messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled });
-    latestRef.current = { messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled };
+    const latestRef = useRef({
+        messageFontSize,
+        displayMode,
+        knowledgeCardEnabled,
+        mixedInputAutoTranslateEnabled,
+        autoReadAloudEnabled,
+        preferredExpressionBiasEnabled,
+    });
+    latestRef.current = {
+        messageFontSize,
+        displayMode,
+        knowledgeCardEnabled,
+        mixedInputAutoTranslateEnabled,
+        autoReadAloudEnabled,
+        preferredExpressionBiasEnabled,
+    };
 
     const syncSettings = useCallback(async () => {
         const current = latestRef.current;
@@ -101,6 +120,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
                 knowledge_card_enabled: current.knowledgeCardEnabled,
                 mixed_input_auto_translate_enabled: current.mixedInputAutoTranslateEnabled,
                 auto_read_aloud_enabled: current.autoReadAloudEnabled,
+                preferred_expression_bias_enabled: current.preferredExpressionBiasEnabled,
             });
             setError(null);
         } catch {
@@ -135,6 +155,9 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
                     if (typeof parsed.autoReadAloudEnabled === "boolean") {
                         setAutoReadAloudEnabledState(parsed.autoReadAloudEnabled);
                     }
+                    if (typeof parsed.preferredExpressionBiasEnabled === "boolean") {
+                        setPreferredExpressionBiasEnabledState(parsed.preferredExpressionBiasEnabled);
+                    }
                 }
             } catch {
                 // Ignore malformed/blocked local storage reads.
@@ -150,12 +173,14 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
                     setKnowledgeCardEnabledState(remote.knowledge_card_enabled ?? DEFAULT_KNOWLEDGE_CARD_ENABLED);
                     setMixedInputAutoTranslateEnabledState(remote.mixed_input_auto_translate_enabled ?? DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED);
                     setAutoReadAloudEnabledState(remote.auto_read_aloud_enabled ?? DEFAULT_AUTO_READ_ALOUD_ENABLED);
+                    setPreferredExpressionBiasEnabledState(remote.preferred_expression_bias_enabled ?? DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED);
                     saveToLocalStorage({
                         messageFontSize: nextFontSize,
                         displayMode: remote.display_mode ?? DEFAULT_DISPLAY_MODE,
                         knowledgeCardEnabled: remote.knowledge_card_enabled ?? DEFAULT_KNOWLEDGE_CARD_ENABLED,
                         mixedInputAutoTranslateEnabled: remote.mixed_input_auto_translate_enabled ?? DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED,
                         autoReadAloudEnabled: remote.auto_read_aloud_enabled ?? DEFAULT_AUTO_READ_ALOUD_ENABLED,
+                        preferredExpressionBiasEnabled: remote.preferred_expression_bias_enabled ?? DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED,
                     });
                     setError(null);
                 }
@@ -180,8 +205,23 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     // Persist to localStorage on every change after loading
     useEffect(() => {
         if (isLoading) return;
-        saveToLocalStorage({ messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled });
-    }, [isLoading, messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled]);
+        saveToLocalStorage({
+            messageFontSize,
+            displayMode,
+            knowledgeCardEnabled,
+            mixedInputAutoTranslateEnabled,
+            autoReadAloudEnabled,
+            preferredExpressionBiasEnabled,
+        });
+    }, [
+        isLoading,
+        messageFontSize,
+        displayMode,
+        knowledgeCardEnabled,
+        mixedInputAutoTranslateEnabled,
+        autoReadAloudEnabled,
+        preferredExpressionBiasEnabled,
+    ]);
 
     // Debounced remote sync
     useEffect(() => {
@@ -240,6 +280,11 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         bumpVersion();
     }, [bumpVersion]);
 
+    const setPreferredExpressionBiasEnabled = useCallback((enabled: boolean) => {
+        setPreferredExpressionBiasEnabledState(enabled);
+        bumpVersion();
+    }, [bumpVersion]);
+
     const retrySync = useCallback(async () => {
         await syncSettings();
     }, [syncSettings]);
@@ -251,11 +296,13 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             knowledgeCardEnabled,
             mixedInputAutoTranslateEnabled,
             autoReadAloudEnabled,
+            preferredExpressionBiasEnabled,
             setMessageFontSize,
             setDisplayMode,
             setKnowledgeCardEnabled,
             setMixedInputAutoTranslateEnabled,
             setAutoReadAloudEnabled,
+            setPreferredExpressionBiasEnabled,
             minMessageFontSize: MIN_MESSAGE_FONT_SIZE,
             maxMessageFontSize: MAX_MESSAGE_FONT_SIZE,
             isLoading,
@@ -264,8 +311,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             retrySync,
         }),
         [
-            messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled,
-            setMessageFontSize, setDisplayMode, setKnowledgeCardEnabled, setMixedInputAutoTranslateEnabled, setAutoReadAloudEnabled,
+            messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled, preferredExpressionBiasEnabled,
+            setMessageFontSize, setDisplayMode, setKnowledgeCardEnabled, setMixedInputAutoTranslateEnabled, setAutoReadAloudEnabled, setPreferredExpressionBiasEnabled,
             isLoading, isSaving, error, retrySync,
         ]
     );

@@ -24,6 +24,8 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
         setMixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
         setAutoReadAloudEnabled,
+        preferredExpressionBiasEnabled,
+        setPreferredExpressionBiasEnabled,
         isLoading,
         isSaving,
         error,
@@ -190,6 +192,18 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
                                     <Switch
                                         checked={autoReadAloudEnabled}
                                         onCheckedChange={setAutoReadAloudEnabled}
+                                    />
+                                </div>
+                                <Separator className="opacity-60" />
+
+                                <div className="flex items-center justify-between py-5">
+                                    <div className="space-y-0.5 pr-6">
+                                        <h4 className="font-medium text-gray-900 text-[15px]">收藏复用</h4>
+                                        <p className="text-[13px] text-gray-500 leading-relaxed">开启后，AI 会自然优先使用你收藏过的单词和句子。</p>
+                                    </div>
+                                    <Switch
+                                        checked={preferredExpressionBiasEnabled}
+                                        onCheckedChange={setPreferredExpressionBiasEnabled}
                                     />
                                 </div>
                             </div>

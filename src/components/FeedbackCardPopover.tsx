@@ -1,6 +1,6 @@
 "use client";
 
-import type { SentenceCard } from "@/lib/api";
+import type { FeedbackCard as FeedbackCardType } from "@/lib/api";
 import CardPopoverShell from "@/components/ui/CardPopoverShell";
 import {
     useOptimisticFavorite,
@@ -8,24 +8,24 @@ import {
 } from "@/hooks/useOptimisticFavorite";
 import { useDismissiblePopover } from "@/hooks/useDismissiblePopover";
 
-interface SentenceCardPopoverProps {
-    sentenceCard: SentenceCard;
+interface FeedbackCardPopoverProps {
+    feedbackCard: FeedbackCardType;
     onToggleFavorite: FavoriteToggleHandler;
     isSaving?: boolean;
     onClose: () => void;
 }
 
-export default function SentenceCardPopover({
-    sentenceCard,
+export default function FeedbackCardPopover({
+    feedbackCard,
     onToggleFavorite,
     isSaving = false,
     onClose,
-}: SentenceCardPopoverProps) {
+}: FeedbackCardPopoverProps) {
     const popoverRef = useDismissiblePopover<HTMLDivElement>(onClose);
     const { isFavorited: localFavorited, handleToggleFavorite } =
         useOptimisticFavorite({
-            isFavorited: sentenceCard.favorite.is_favorited,
-            savedItemId: sentenceCard.favorite.saved_item_id ?? null,
+            isFavorited: feedbackCard.favorite.is_favorited,
+            savedItemId: feedbackCard.favorite.saved_item_id ?? null,
             isSaving,
             onToggleFavorite,
         });
@@ -33,26 +33,26 @@ export default function SentenceCardPopover({
     return (
         <CardPopoverShell
             ref={popoverRef}
-            title="Knowledge Card"
+            title="Better Expression"
             isFavorited={localFavorited}
             isSaving={isSaving}
             onToggleFavorite={handleToggleFavorite}
         >
             <p className="text-sm font-semibold text-gray-900 leading-relaxed">
-                {sentenceCard.surface}
+                {feedbackCard.surface}
             </p>
 
             <p className="mt-1.5 text-sm text-gray-500 leading-relaxed">
-                {sentenceCard.zh}
+                {feedbackCard.zh}
             </p>
 
-            {sentenceCard.key_phrases.length > 0 && (
+            {feedbackCard.key_phrases.length > 0 && (
                 <div className="mt-4 pt-3 border-t border-gray-100">
                     <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
                         Key Phrases
                     </p>
                     <div className="space-y-2">
-                        {sentenceCard.key_phrases.map((kp, idx) => (
+                        {feedbackCard.key_phrases.map((kp, idx) => (
                             <div key={idx} className="flex flex-col gap-0.5">
                                 <div className="flex items-baseline gap-2">
                                     <span className="text-sm font-medium text-gray-800">

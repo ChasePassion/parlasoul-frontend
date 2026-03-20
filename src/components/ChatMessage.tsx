@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import type { InputTransform, SentenceCard, ReplySuggestion, DisplayMode } from "@/lib/api";
 
+export type MessageActionStatus = "idle" | "loading" | "ready" | "error";
+
 export interface Message {
     id: string;
     role: "user" | "assistant";
@@ -23,6 +25,7 @@ export interface Message {
     transformChunks?: string;
     assistantTurnId?: string;
     assistantCandidateId?: string;
+    knowledgeCardStatus?: MessageActionStatus;
 }
 
 interface ChatMessageProps {
@@ -32,6 +35,8 @@ interface ChatMessageProps {
     messageFontSize: number;
     actionsDisabled?: boolean;
     knowledgeCardDisabled?: boolean;
+    knowledgeCardStatus?: MessageActionStatus;
+    feedbackStatus?: MessageActionStatus;
     displayMode?: DisplayMode;
     knowledgeCardEnabled?: boolean;
     // Phase 2: TTS
@@ -42,7 +47,8 @@ interface ChatMessageProps {
     onSelectCandidate?: (turnId: string, candidateNo: number) => void;
     onRegenAssistant?: (turnId: string) => void;
     onEditUser?: (turnId: string, newContent: string) => void;
-    onOpenKnowledgeCard?: (messageId: string) => void;
+    onOpenKnowledgeCard?: (message: Message) => void;
+    onRequestFeedback?: (message: Message) => void;
 }
 
 export default function ChatMessage({
@@ -52,6 +58,8 @@ export default function ChatMessage({
     messageFontSize,
     actionsDisabled = false,
     knowledgeCardDisabled = false,
+    knowledgeCardStatus = message.knowledgeCardStatus ?? (message.sentenceCard ? "ready" : "idle"),
+    feedbackStatus = "idle",
     displayMode = "concise",
     knowledgeCardEnabled = false,
     playingCandidateId,
@@ -62,13 +70,15 @@ export default function ChatMessage({
     onRegenAssistant,
     onEditUser,
     onOpenKnowledgeCard,
+    onRequestFeedback,
 }: ChatMessageProps) {
     const userActionRowHideDelayMs = 500;
     const chevronLeftIcon = "/icons/chevron-left-8ee2e9.svg";
     const duplicateIcon = "/icons/duplicate-ce3544.svg";
     const checkIcon = "/icons/check-fa1dbd.svg";
     const editIcon = "/icons/edit-6d87e1.svg";
-    const ideaIcon = "/os-icon-idea.svg";
+    const ideaIcon = "/icons/os-icon-idea.svg";
+    const knowledgeCardIcon = "/book.svg";
     const volumeIcon = "/icons/volume-54f145.svg";
     const branchButtonClass =
         "text-token-text-secondary hover:bg-token-bg-secondary rounded-md disabled:opacity-50";
@@ -103,6 +113,30 @@ export default function ChatMessage({
                 }}
                 data-icon-src={iconSrc}
             />
+        </span>
+    );
+    const renderLoadingSpinner = () => (
+        <span className="flex h-8 w-8 items-center justify-center" aria-hidden="true">
+            <svg
+                className="h-4 w-4 animate-spin text-blue-600"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+            >
+                <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                />
+                <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+            </svg>
         </span>
     );
 
@@ -285,11 +319,17 @@ export default function ChatMessage({
     const showDetailedExtras = !isUser && displayMode === "detailed" && message.sentenceCard;
 
     // Phase 1: Whether to show knowledge card (lightbulb) button
-    const showKnowledgeCardBtn = !isUser && knowledgeCardEnabled && message.sentenceCard && !message.isTemp;
+    const showKnowledgeCardBtn =
+        !isUser &&
+        knowledgeCardEnabled &&
+        !message.isTemp &&
+        (knowledgeCardStatus === "loading" || knowledgeCardStatus === "ready" || !!message.sentenceCard);
     // Phase 2: Whether to show speaker button
     const showSpeakerBtn = !isUser && !message.isTemp && !!message.assistantCandidateId;
     const isSpeakerPlaying = showSpeakerBtn && playingCandidateId === message.assistantCandidateId;
-    const showActionRow = showNav || showKnowledgeCardBtn || showSpeakerBtn;
+    // Phase 3: Whether to show feedback button (for user messages)
+    const showFeedbackBtn = isUser && !message.isTemp && !isEditing && !!onRequestFeedback;
+    const showActionRow = showNav || showKnowledgeCardBtn || showSpeakerBtn || showFeedbackBtn;
 
     return (
         <div className="relative flex w-full min-w-0 flex-col">
@@ -443,6 +483,20 @@ export default function ChatMessage({
                                 </button>
                             )}
 
+                            {/* Phase 3: Feedback button for user messages */}
+                            {showFeedbackBtn && (
+                                <button
+                                    type="button"
+                                    className={actionButtonClass}
+                                    onClick={() => onRequestFeedback?.(message)}
+                                    aria-label={feedbackStatus === "loading" ? "改进表达加载中" : "改进表达"}
+                                >
+                                    {feedbackStatus === "loading"
+                                        ? renderLoadingSpinner()
+                                        : renderActionIcon(ideaIcon)}
+                                </button>
+                            )}
+
                             {showNav && message.role === "user" && (
                                 <button
                                     type="button"
@@ -460,11 +514,15 @@ export default function ChatMessage({
                                 <button
                                     type="button"
                                     className={actionButtonClass}
-                                    onClick={() => onOpenKnowledgeCard?.(message.id)}
+                                    onClick={() => onOpenKnowledgeCard?.(message)}
                                     disabled={knowledgeCardDisabled}
-                                    aria-label="知识卡"
+                                    aria-label={
+                                        knowledgeCardStatus === "loading" ? "知识卡加载中" : "知识卡"
+                                    }
                                 >
-                                    {renderActionIcon(ideaIcon)}
+                                    {knowledgeCardStatus === "loading"
+                                        ? renderLoadingSpinner()
+                                        : renderActionIcon(knowledgeCardIcon)}
                                 </button>
                             )}
 
