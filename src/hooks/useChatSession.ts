@@ -47,6 +47,9 @@ interface UseChatSessionResult {
   handleSendMessage: (content: string) => Promise<void>;
   interruptAllTts: () => void;
   interruptStream: () => void;
+  loadOlderMessages: () => Promise<void>;
+  hasOlderMessages: boolean;
+  isLoadingOlder: boolean;
 }
 
 const deriveReplyCardStatus = (message: {
@@ -105,6 +108,11 @@ export function useChatSession({
   const [currentReplySuggestions, setCurrentReplySuggestions] = useState<
     ReplySuggestion[] | null
   >(null);
+
+  // Pagination state for loading older messages
+  const [hasOlderMessages, setHasOlderMessages] = useState(true);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const beforeTurnIdRef = useRef<string | null>(null);
 
   const streamAbortRef = useRef<AbortController | null>(null);
   const selectCandidateInFlightRef = useRef(false);
@@ -197,8 +205,50 @@ export function useChatSession({
     setError(null);
 
     const data: TurnsPageResponse = await getChatTurns(chatId, { limit: 50 });
+    
+    beforeTurnIdRef.current = data.next_before_turn_id ?? null;
+    setHasOlderMessages(data.has_more);
+    
     applyTurnsPage(data);
   }, [applyTurnsPage, chatId, isAuthed]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!chatId || !isAuthed || isLoadingOlder || !hasOlderMessages) return;
+    if (!beforeTurnIdRef.current) return;
+
+    setIsLoadingOlder(true);
+    try {
+      const data = await getChatTurns(chatId, {
+        before_turn_id: beforeTurnIdRef.current,
+        limit: 50,
+      });
+
+      beforeTurnIdRef.current = data.next_before_turn_id ?? null;
+      setHasOlderMessages(data.has_more);
+
+      setMessages((prev) => {
+        const newMessages = data.turns
+          .filter(
+            (turn) => turn.author_type === "USER" || turn.author_type === "CHARACTER",
+          )
+          .filter(
+            (turn) =>
+              turn.primary_candidate.is_final ||
+              turn.primary_candidate.content.trim() !== "",
+          )
+          .map(mapTurnsPageMessage);
+
+        const existingIds = new Set(prev.map((m) => m.id));
+        const uniqueNew = newMessages.filter((m) => !existingIds.has(m.id));
+
+        return [...uniqueNew, ...prev];
+      });
+    } catch (err) {
+      console.error("Failed to load older messages:", err);
+    } finally {
+      setIsLoadingOlder(false);
+    }
+  }, [chatId, isAuthed, isLoadingOlder, hasOlderMessages]);
 
   useEffect(() => {
     async function loadChat() {
@@ -214,6 +264,9 @@ export function useChatSession({
       setCurrentReplySuggestions(null);
 
       try {
+        beforeTurnIdRef.current = null;
+        setHasOlderMessages(true);
+        setIsLoadingOlder(false);
         await reloadChatTurns();
       } catch (err) {
         console.error("Failed to load chat:", err);
@@ -1132,5 +1185,8 @@ export function useChatSession({
     handleSendMessage,
     interruptAllTts,
     interruptStream,
+    loadOlderMessages,
+    hasOlderMessages,
+    isLoadingOlder,
   };
 }

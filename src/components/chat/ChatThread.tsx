@@ -60,17 +60,19 @@ interface ChatThreadProps {
     isStreaming: boolean;
     userAvatar: string;
     messagesEndRef: RefObject<HTMLDivElement | null>;
+    messagesStartRef?: RefObject<HTMLDivElement | null>;
     chatId: string;
     onSelectCandidate: (turnId: string, candidateNo: number) => void;
     onRegenAssistant: (turnId: string) => void;
     onEditUser: (turnId: string, newContent: string) => void;
     onRetryReplyCard: (message: Message) => Promise<void>;
-    // Phase 2: TTS
     playingCandidateId?: string | null;
     ttsLoadingCandidateId?: string | null;
     isRecording?: boolean;
     onPlayTts?: (candidateId: string) => void;
     onStopTts?: (candidateId: string) => void;
+    isLoadingOlder?: boolean;
+    hasOlderMessages?: boolean;
 }
 
 export default function ChatThread({
@@ -81,6 +83,7 @@ export default function ChatThread({
     isStreaming,
     userAvatar,
     messagesEndRef,
+    messagesStartRef,
     chatId,
     onSelectCandidate,
     onRegenAssistant,
@@ -91,6 +94,8 @@ export default function ChatThread({
     isRecording,
     onPlayTts,
     onStopTts,
+    isLoadingOlder = false,
+    hasOlderMessages = true,
 }: ChatThreadProps) {
     const CARD_GAP = 12;
     const VIEWPORT_PADDING = 12;
@@ -887,6 +892,16 @@ export default function ChatThread({
 
     return (
         <>
+            <div
+                ref={messagesStartRef}
+                className="h-px w-full"
+                aria-hidden="true"
+            />
+            {isLoadingOlder && (
+                <div className="flex justify-center py-4">
+                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                </div>
+            )}
             {visibleMessages.map((message, index) => {
                 const renderedMessage = applyFavoriteOverride(message);
                 const messageKey = getMessageVersionKey(renderedMessage);

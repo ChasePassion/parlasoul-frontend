@@ -55,6 +55,9 @@ export default function ChatPage() {
         handleRetryReplyCard,
         handleSendMessage,
         interruptStream,
+        loadOlderMessages,
+        hasOlderMessages,
+        isLoadingOlder,
     } = useChatSession({
         chatId,
         isAuthed,
@@ -65,6 +68,7 @@ export default function ChatPage() {
     });
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesStartRef = useRef<HTMLDivElement | null>(null);
     const scrollRootRef = useRef<HTMLDivElement>(null);
     const shouldAutoScrollRef = useRef(true);
 
@@ -84,6 +88,35 @@ export default function ChatPage() {
             root.removeEventListener("scroll", updateShouldAutoScroll);
         };
     }, []);
+
+    useEffect(() => {
+        const root = scrollRootRef.current;
+        const sentinel = messagesStartRef.current;
+        if (!root || !sentinel) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const [entry] = entries;
+                if (
+                    entry.isIntersecting &&
+                    !isLoading &&
+                    hasOlderMessages &&
+                    !isLoadingOlder
+                ) {
+                    loadOlderMessages();
+                }
+            },
+            {
+                root: root,
+                rootMargin: "200px",
+                threshold: 0,
+            },
+        );
+
+        observer.observe(sentinel);
+
+        return () => observer.disconnect();
+    }, [isLoading, hasOlderMessages, isLoadingOlder, loadOlderMessages]);
 
     useEffect(() => {
         if (!shouldAutoScrollRef.current) return;
@@ -138,6 +171,7 @@ export default function ChatPage() {
             isStreaming={isStreaming}
             userAvatar={user?.avatar_url || "/default-avatar.svg"}
             messagesEndRef={messagesEndRef}
+            messagesStartRef={messagesStartRef}
             chatId={chatId}
             onSelectCandidate={handleSelectCandidate}
             onRegenAssistant={handleRegenAssistant}
@@ -148,6 +182,8 @@ export default function ChatPage() {
             isRecording={isRecording}
             onPlayTts={handlePlayTts}
             onStopTts={handleStopTts}
+            isLoadingOlder={isLoadingOlder}
+            hasOlderMessages={hasOlderMessages}
         />
     );
 
