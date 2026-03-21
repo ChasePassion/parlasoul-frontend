@@ -18,7 +18,7 @@ const DEFAULT_MESSAGE_FONT_SIZE = 16;
 const MIN_MESSAGE_FONT_SIZE = 14;
 const MAX_MESSAGE_FONT_SIZE = 24;
 const DEFAULT_DISPLAY_MODE: DisplayMode = "concise";
-const DEFAULT_KNOWLEDGE_CARD_ENABLED = true;
+const DEFAULT_REPLY_CARD_ENABLED = true;
 const DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED = true;
 const DEFAULT_AUTO_READ_ALOUD_ENABLED = true;
 const DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED = true;
@@ -27,7 +27,7 @@ const SETTINGS_SYNC_DEBOUNCE_MS = 400;
 interface SettingsState {
     messageFontSize: number;
     displayMode: DisplayMode;
-    knowledgeCardEnabled: boolean;
+    replyCardEnabled: boolean;
     mixedInputAutoTranslateEnabled: boolean;
     autoReadAloudEnabled: boolean;
     preferredExpressionBiasEnabled: boolean;
@@ -36,7 +36,7 @@ interface SettingsState {
 interface UserSettingsContextType extends SettingsState {
     setMessageFontSize: (size: number) => void;
     setDisplayMode: (mode: DisplayMode) => void;
-    setKnowledgeCardEnabled: (enabled: boolean) => void;
+    setReplyCardEnabled: (enabled: boolean) => void;
     setMixedInputAutoTranslateEnabled: (enabled: boolean) => void;
     setAutoReadAloudEnabled: (enabled: boolean) => void;
     setPreferredExpressionBiasEnabled: (enabled: boolean) => void;
@@ -60,7 +60,7 @@ const clampMessageFontSize = (size: number): number => {
 const defaultState: SettingsState = {
     messageFontSize: DEFAULT_MESSAGE_FONT_SIZE,
     displayMode: DEFAULT_DISPLAY_MODE,
-    knowledgeCardEnabled: DEFAULT_KNOWLEDGE_CARD_ENABLED,
+    replyCardEnabled: DEFAULT_REPLY_CARD_ENABLED,
     mixedInputAutoTranslateEnabled: DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED,
     autoReadAloudEnabled: DEFAULT_AUTO_READ_ALOUD_ENABLED,
     preferredExpressionBiasEnabled: DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED,
@@ -80,7 +80,7 @@ const saveToLocalStorage = (state: SettingsState) => {
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
     const [messageFontSize, setMessageFontSizeState] = useState(defaultState.messageFontSize);
     const [displayMode, setDisplayModeState] = useState<DisplayMode>(defaultState.displayMode);
-    const [knowledgeCardEnabled, setKnowledgeCardEnabledState] = useState(defaultState.knowledgeCardEnabled);
+    const [replyCardEnabled, setReplyCardEnabledState] = useState(defaultState.replyCardEnabled);
     const [mixedInputAutoTranslateEnabled, setMixedInputAutoTranslateEnabledState] = useState(defaultState.mixedInputAutoTranslateEnabled);
     const [autoReadAloudEnabled, setAutoReadAloudEnabledState] = useState(defaultState.autoReadAloudEnabled);
     const [preferredExpressionBiasEnabled, setPreferredExpressionBiasEnabledState] = useState(defaultState.preferredExpressionBiasEnabled);
@@ -96,7 +96,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     const latestRef = useRef({
         messageFontSize,
         displayMode,
-        knowledgeCardEnabled,
+        replyCardEnabled,
         mixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
         preferredExpressionBiasEnabled,
@@ -104,7 +104,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     latestRef.current = {
         messageFontSize,
         displayMode,
-        knowledgeCardEnabled,
+        replyCardEnabled,
         mixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
         preferredExpressionBiasEnabled,
@@ -117,7 +117,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             await updateMySettings({
                 message_font_size: current.messageFontSize,
                 display_mode: current.displayMode,
-                knowledge_card_enabled: current.knowledgeCardEnabled,
+                reply_card_enabled: current.replyCardEnabled,
                 mixed_input_auto_translate_enabled: current.mixedInputAutoTranslateEnabled,
                 auto_read_aloud_enabled: current.autoReadAloudEnabled,
                 preferred_expression_bias_enabled: current.preferredExpressionBiasEnabled,
@@ -146,8 +146,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
                     if (parsed.displayMode === "concise" || parsed.displayMode === "detailed") {
                         setDisplayModeState(parsed.displayMode);
                     }
-                    if (typeof parsed.knowledgeCardEnabled === "boolean") {
-                        setKnowledgeCardEnabledState(parsed.knowledgeCardEnabled);
+                    if (typeof parsed.replyCardEnabled === "boolean") {
+                        setReplyCardEnabledState(parsed.replyCardEnabled);
                     }
                     if (typeof parsed.mixedInputAutoTranslateEnabled === "boolean") {
                         setMixedInputAutoTranslateEnabledState(parsed.mixedInputAutoTranslateEnabled);
@@ -170,14 +170,14 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
                     const nextFontSize = clampMessageFontSize(remote.message_font_size);
                     setMessageFontSizeState(nextFontSize);
                     setDisplayModeState(remote.display_mode ?? DEFAULT_DISPLAY_MODE);
-                    setKnowledgeCardEnabledState(remote.knowledge_card_enabled ?? DEFAULT_KNOWLEDGE_CARD_ENABLED);
+                    setReplyCardEnabledState(remote.reply_card_enabled ?? DEFAULT_REPLY_CARD_ENABLED);
                     setMixedInputAutoTranslateEnabledState(remote.mixed_input_auto_translate_enabled ?? DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED);
                     setAutoReadAloudEnabledState(remote.auto_read_aloud_enabled ?? DEFAULT_AUTO_READ_ALOUD_ENABLED);
                     setPreferredExpressionBiasEnabledState(remote.preferred_expression_bias_enabled ?? DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED);
                     saveToLocalStorage({
                         messageFontSize: nextFontSize,
                         displayMode: remote.display_mode ?? DEFAULT_DISPLAY_MODE,
-                        knowledgeCardEnabled: remote.knowledge_card_enabled ?? DEFAULT_KNOWLEDGE_CARD_ENABLED,
+                        replyCardEnabled: remote.reply_card_enabled ?? DEFAULT_REPLY_CARD_ENABLED,
                         mixedInputAutoTranslateEnabled: remote.mixed_input_auto_translate_enabled ?? DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED,
                         autoReadAloudEnabled: remote.auto_read_aloud_enabled ?? DEFAULT_AUTO_READ_ALOUD_ENABLED,
                         preferredExpressionBiasEnabled: remote.preferred_expression_bias_enabled ?? DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED,
@@ -208,7 +208,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         saveToLocalStorage({
             messageFontSize,
             displayMode,
-            knowledgeCardEnabled,
+            replyCardEnabled,
             mixedInputAutoTranslateEnabled,
             autoReadAloudEnabled,
             preferredExpressionBiasEnabled,
@@ -217,7 +217,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         isLoading,
         messageFontSize,
         displayMode,
-        knowledgeCardEnabled,
+        replyCardEnabled,
         mixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
         preferredExpressionBiasEnabled,
@@ -265,8 +265,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         bumpVersion();
     }, [bumpVersion]);
 
-    const setKnowledgeCardEnabled = useCallback((enabled: boolean) => {
-        setKnowledgeCardEnabledState(enabled);
+    const setReplyCardEnabled = useCallback((enabled: boolean) => {
+        setReplyCardEnabledState(enabled);
         bumpVersion();
     }, [bumpVersion]);
 
@@ -293,13 +293,13 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         () => ({
             messageFontSize,
             displayMode,
-            knowledgeCardEnabled,
+            replyCardEnabled,
             mixedInputAutoTranslateEnabled,
             autoReadAloudEnabled,
             preferredExpressionBiasEnabled,
             setMessageFontSize,
             setDisplayMode,
-            setKnowledgeCardEnabled,
+            setReplyCardEnabled,
             setMixedInputAutoTranslateEnabled,
             setAutoReadAloudEnabled,
             setPreferredExpressionBiasEnabled,
@@ -311,8 +311,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             retrySync,
         }),
         [
-            messageFontSize, displayMode, knowledgeCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled, preferredExpressionBiasEnabled,
-            setMessageFontSize, setDisplayMode, setKnowledgeCardEnabled, setMixedInputAutoTranslateEnabled, setAutoReadAloudEnabled, setPreferredExpressionBiasEnabled,
+            messageFontSize, displayMode, replyCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled, preferredExpressionBiasEnabled,
+            setMessageFontSize, setDisplayMode, setReplyCardEnabled, setMixedInputAutoTranslateEnabled, setAutoReadAloudEnabled, setPreferredExpressionBiasEnabled,
             isLoading, isSaving, error, retrySync,
         ]
     );

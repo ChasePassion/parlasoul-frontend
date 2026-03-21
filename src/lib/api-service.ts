@@ -50,7 +50,7 @@ export type DisplayMode = "concise" | "detailed";
 
 export interface UserSettingsResponse {
   display_mode: DisplayMode;
-  knowledge_card_enabled: boolean;
+  reply_card_enabled: boolean;
   mixed_input_auto_translate_enabled: boolean;
   auto_read_aloud_enabled: boolean;
   preferred_expression_bias_enabled: boolean;
@@ -60,7 +60,7 @@ export interface UserSettingsResponse {
 
 export interface UpdateUserSettingsRequest {
   display_mode?: DisplayMode;
-  knowledge_card_enabled?: boolean;
+  reply_card_enabled?: boolean;
   mixed_input_auto_translate_enabled?: boolean;
   auto_read_aloud_enabled?: boolean;
   preferred_expression_bias_enabled?: boolean;
@@ -79,7 +79,7 @@ export type VoiceSourceType = "system" | "clone" | "designed" | "imported";
 export type VoiceStatus = "creating" | "processing" | "ready" | "failed" | "deleting" | "deleted";
 
 // Phase 4: LLM Model types
-export type LLMProvider = "deepseek" | "openrouter";
+export type LLMProvider = "deepseek" | "openrouter" | "xiaomi";
 
 export interface CharacterLLMRoute {
   provider: LLMProvider;
@@ -225,23 +225,23 @@ export interface ChatResponse {
   meta?: Record<string, unknown> | null;
 }
 
-export interface SentenceCardPhrase {
+export interface ReplyCardPhrase {
   surface: string;
   zh: string;
   ipa_us: string;
 }
 
-export interface SentenceCardFavoriteState {
+export interface ReplyCardFavoriteState {
   enabled: boolean;
   is_favorited: boolean;
   saved_item_id?: string | null;
 }
 
-export interface SentenceCard {
+export interface ReplyCard {
   surface: string;
   zh: string;
-  key_phrases: SentenceCardPhrase[];
-  favorite: SentenceCardFavoriteState;
+  key_phrases: ReplyCardPhrase[];
+  favorite: ReplyCardFavoriteState;
 }
 
 export interface ReplySuggestion {
@@ -260,7 +260,7 @@ export interface SavedItemDisplay {
   zh: string;
 }
 
-export type SavedItemKind = "sentence_card" | "word_card" | "feedback_card";
+export type SavedItemKind = "reply_card" | "word_card" | "feedback_card";
 
 export interface SavedItemSource {
   role_id: string;
@@ -274,7 +274,7 @@ export interface SavedItemSource {
 export interface SavedItemPayload {
   kind: SavedItemKind;
   display: SavedItemDisplay;
-  card: SentenceCard | WordCard | FeedbackCard;
+  card: ReplyCard | WordCard | FeedbackCard;
   source: SavedItemSource;
 }
 
@@ -291,7 +291,7 @@ export interface SavedItemsPage {
 
 export interface CandidateExtra {
   input_transform?: InputTransform | null;
-  sentence_card?: SentenceCard | null;
+  reply_card?: ReplyCard | null;
 }
 
 export interface CandidateResponse {
@@ -391,6 +391,8 @@ interface StreamChunkEvent {
 interface StreamDoneEvent {
   type: "done";
   full_content: string;
+  assistant_turn_id?: string;
+  assistant_candidate_id?: string;
 }
 
 interface StreamErrorEvent {
@@ -421,20 +423,46 @@ interface TurnStreamReplySuggestionsEvent {
   suggestions: ReplySuggestion[];
 }
 
-interface TurnStreamSentenceCardStartedEvent {
-  type: "sentence_card_started";
+interface TurnStreamTransformDoneEvent {
+  type: "transform_done";
+  original_content: string;
+  transformed_content: string;
+  applied: boolean;
+}
+
+interface TurnStreamReplyCardStartedEvent {
+  type: "reply_card_started";
   assistant_candidate_id: string;
 }
 
-interface TurnStreamSentenceCardEvent {
-  type: "sentence_card";
+interface TurnStreamReplyCardEvent {
+  type: "reply_card";
   assistant_candidate_id: string;
-  sentence_card: SentenceCard;
+  reply_card: ReplyCard;
 }
 
-interface TurnStreamSentenceCardErrorEvent {
-  type: "sentence_card_error";
+interface TurnStreamReplyCardErrorEvent {
+  type: "reply_card_error";
   assistant_candidate_id: string;
+  code: string;
+  message: string;
+}
+
+interface TurnStreamTtsAudioDeltaEvent {
+  type: "tts_audio_delta";
+  assistant_candidate_id: string;
+  seq: number;
+  audio_b64: string;
+  mime_type: string;
+}
+
+interface TurnStreamTtsAudioDoneEvent {
+  type: "tts_audio_done";
+  assistant_candidate_id: string;
+}
+
+interface TurnStreamTtsErrorEvent {
+  type: "tts_error";
   code: string;
   message: string;
 }
@@ -442,10 +470,14 @@ interface TurnStreamSentenceCardErrorEvent {
 type TurnStreamEvent =
   | StreamEvent
   | TurnStreamMetaEvent
+  | TurnStreamTransformDoneEvent
   | TurnStreamReplySuggestionsEvent
-  | TurnStreamSentenceCardStartedEvent
-  | TurnStreamSentenceCardEvent
-  | TurnStreamSentenceCardErrorEvent;
+  | TurnStreamReplyCardStartedEvent
+  | TurnStreamReplyCardEvent
+  | TurnStreamReplyCardErrorEvent
+  | TurnStreamTtsAudioDeltaEvent
+  | TurnStreamTtsAudioDoneEvent
+  | TurnStreamTtsErrorEvent;
 
 interface ChatStreamMetaEvent {
   type: "meta";
@@ -482,19 +514,19 @@ interface ChatStreamReplySuggestionsEvent {
   suggestions: ReplySuggestion[];
 }
 
-interface ChatStreamSentenceCardStartedEvent {
-  type: "sentence_card_started";
+interface ChatStreamReplyCardStartedEvent {
+  type: "reply_card_started";
   assistant_candidate_id: string;
 }
 
-interface ChatStreamSentenceCardEvent {
-  type: "sentence_card";
+interface ChatStreamReplyCardEvent {
+  type: "reply_card";
   assistant_candidate_id: string;
-  sentence_card: SentenceCard;
+  reply_card: ReplyCard;
 }
 
-interface ChatStreamSentenceCardErrorEvent {
-  type: "sentence_card_error";
+interface ChatStreamReplyCardErrorEvent {
+  type: "reply_card_error";
   assistant_candidate_id: string;
   code: string;
   message: string;
@@ -600,7 +632,7 @@ export interface SavedItemPayloadPhase3 {
     surface: string;
     zh: string;
   };
-  card: WordCard | SentenceCard | FeedbackCard;
+  card: WordCard | ReplyCard | FeedbackCard;
   source: {
     role_id: string;
     chat_id: string;
@@ -629,9 +661,9 @@ type ChatStreamEvent =
   | ChatStreamChunkEvent
   | ChatStreamDoneEvent
   | ChatStreamReplySuggestionsEvent
-  | ChatStreamSentenceCardStartedEvent
-  | ChatStreamSentenceCardEvent
-  | ChatStreamSentenceCardErrorEvent
+  | ChatStreamReplyCardStartedEvent
+  | ChatStreamReplyCardEvent
+  | ChatStreamReplyCardErrorEvent
   | ChatStreamMemoryQueuedEvent
   | ChatStreamErrorEvent
   | ChatStreamTtsAudioDeltaEvent
@@ -786,18 +818,30 @@ export class ApiService {
       signal?: AbortSignal;
       onMeta?: (meta: TurnStreamMetaEvent) => void;
       onChunk: (content: string) => void;
-      onDone: (fullContent: string) => void;
+      onDone: (
+        fullContent: string,
+        assistantTurnId?: string,
+        assistantCandidateId?: string,
+      ) => void;
       onReplySuggestions?: (suggestions: ReplySuggestion[]) => void;
-      onSentenceCardStarted?: (data: { assistant_candidate_id: string }) => void;
-      onSentenceCard?: (data: {
+      onReplyCardStarted?: (data: { assistant_candidate_id: string }) => void;
+      onReplyCard?: (data: {
         assistant_candidate_id: string;
-        sentence_card: SentenceCard;
+        reply_card: ReplyCard;
       }) => void;
-      onSentenceCardError?: (data: {
+      onReplyCardError?: (data: {
         assistant_candidate_id: string;
         code: string;
         message: string;
       }) => void;
+      onTtsAudioDelta?: (data: {
+        assistant_candidate_id: string;
+        seq: number;
+        audio_b64: string;
+        mime_type: string;
+      }) => void;
+      onTtsAudioDone?: (data: { assistant_candidate_id: string }) => void;
+      onTtsError?: (data: { code: string; message: string }) => void;
       onError: (error: string) => void;
     },
   ): Promise<void> {
@@ -865,21 +909,41 @@ export class ApiService {
             } else if (data.type === "chunk") {
               handlers.onChunk(data.content);
             } else if (data.type === "done") {
-              handlers.onDone(data.full_content);
+              handlers.onDone(
+                data.full_content,
+                data.assistant_turn_id,
+                data.assistant_candidate_id,
+              );
             } else if (data.type === "reply_suggestions") {
               handlers.onReplySuggestions?.(data.suggestions);
-            } else if (data.type === "sentence_card_started") {
-              handlers.onSentenceCardStarted?.({
+            } else if (data.type === "reply_card_started") {
+              handlers.onReplyCardStarted?.({
                 assistant_candidate_id: data.assistant_candidate_id,
               });
-            } else if (data.type === "sentence_card") {
-              handlers.onSentenceCard?.({
+            } else if (data.type === "reply_card") {
+              handlers.onReplyCard?.({
                 assistant_candidate_id: data.assistant_candidate_id,
-                sentence_card: data.sentence_card,
+                reply_card: data.reply_card,
               });
-            } else if (data.type === "sentence_card_error") {
-              handlers.onSentenceCardError?.({
+            } else if (data.type === "reply_card_error") {
+              handlers.onReplyCardError?.({
                 assistant_candidate_id: data.assistant_candidate_id,
+                code: data.code,
+                message: data.message,
+              });
+            } else if (data.type === "tts_audio_delta") {
+              handlers.onTtsAudioDelta?.({
+                assistant_candidate_id: data.assistant_candidate_id,
+                seq: data.seq,
+                audio_b64: data.audio_b64,
+                mime_type: data.mime_type,
+              });
+            } else if (data.type === "tts_audio_done") {
+              handlers.onTtsAudioDone?.({
+                assistant_candidate_id: data.assistant_candidate_id,
+              });
+            } else if (data.type === "tts_error") {
+              handlers.onTtsError?.({
                 code: data.code,
                 message: data.message,
               });
@@ -926,18 +990,35 @@ export class ApiService {
       signal?: AbortSignal;
       onMeta?: (meta: TurnStreamMetaEvent) => void;
       onChunk: (content: string) => void;
-      onDone: (fullContent: string) => void;
-      onReplySuggestions?: (suggestions: ReplySuggestion[]) => void;
-      onSentenceCardStarted?: (data: { assistant_candidate_id: string }) => void;
-      onSentenceCard?: (data: {
-        assistant_candidate_id: string;
-        sentence_card: SentenceCard;
+      onTransformDone?: (data: {
+        original_content: string;
+        transformed_content: string;
+        applied: boolean;
       }) => void;
-      onSentenceCardError?: (data: {
+      onDone: (
+        fullContent: string,
+        assistantTurnId?: string,
+        assistantCandidateId?: string,
+      ) => void;
+      onReplySuggestions?: (suggestions: ReplySuggestion[]) => void;
+      onReplyCardStarted?: (data: { assistant_candidate_id: string }) => void;
+      onReplyCard?: (data: {
+        assistant_candidate_id: string;
+        reply_card: ReplyCard;
+      }) => void;
+      onReplyCardError?: (data: {
         assistant_candidate_id: string;
         code: string;
         message: string;
       }) => void;
+      onTtsAudioDelta?: (data: {
+        assistant_candidate_id: string;
+        seq: number;
+        audio_b64: string;
+        mime_type: string;
+      }) => void;
+      onTtsAudioDone?: (data: { assistant_candidate_id: string }) => void;
+      onTtsError?: (data: { code: string; message: string }) => void;
       onError: (error: string) => void;
     },
   ): Promise<void> {
@@ -1004,22 +1085,48 @@ export class ApiService {
               handlers.onMeta?.(data);
             } else if (data.type === "chunk") {
               handlers.onChunk(data.content);
+            } else if (data.type === "transform_done") {
+              handlers.onTransformDone?.({
+                original_content: data.original_content,
+                transformed_content: data.transformed_content,
+                applied: data.applied,
+              });
             } else if (data.type === "done") {
-              handlers.onDone(data.full_content);
+              handlers.onDone(
+                data.full_content,
+                data.assistant_turn_id,
+                data.assistant_candidate_id,
+              );
             } else if (data.type === "reply_suggestions") {
               handlers.onReplySuggestions?.(data.suggestions);
-            } else if (data.type === "sentence_card_started") {
-              handlers.onSentenceCardStarted?.({
+            } else if (data.type === "reply_card_started") {
+              handlers.onReplyCardStarted?.({
                 assistant_candidate_id: data.assistant_candidate_id,
               });
-            } else if (data.type === "sentence_card") {
-              handlers.onSentenceCard?.({
+            } else if (data.type === "reply_card") {
+              handlers.onReplyCard?.({
                 assistant_candidate_id: data.assistant_candidate_id,
-                sentence_card: data.sentence_card,
+                reply_card: data.reply_card,
               });
-            } else if (data.type === "sentence_card_error") {
-              handlers.onSentenceCardError?.({
+            } else if (data.type === "reply_card_error") {
+              handlers.onReplyCardError?.({
                 assistant_candidate_id: data.assistant_candidate_id,
+                code: data.code,
+                message: data.message,
+              });
+            } else if (data.type === "tts_audio_delta") {
+              handlers.onTtsAudioDelta?.({
+                assistant_candidate_id: data.assistant_candidate_id,
+                seq: data.seq,
+                audio_b64: data.audio_b64,
+                mime_type: data.mime_type,
+              });
+            } else if (data.type === "tts_audio_done") {
+              handlers.onTtsAudioDone?.({
+                assistant_candidate_id: data.assistant_candidate_id,
+              });
+            } else if (data.type === "tts_error") {
+              handlers.onTtsError?.({
                 code: data.code,
                 message: data.message,
               });
@@ -1078,14 +1185,14 @@ export class ApiService {
         assistantCandidateId?: string,
       ) => void;
       onReplySuggestions?: (suggestions: ReplySuggestion[]) => void;
-      onSentenceCardStarted?: (data: {
+      onReplyCardStarted?: (data: {
         assistant_candidate_id: string;
       }) => void;
-      onSentenceCard?: (data: {
+      onReplyCard?: (data: {
         assistant_candidate_id: string;
-        sentence_card: SentenceCard;
+        reply_card: ReplyCard;
       }) => void;
-      onSentenceCardError?: (data: {
+      onReplyCardError?: (data: {
         assistant_candidate_id: string;
         code: string;
         message: string;
@@ -1181,17 +1288,17 @@ export class ApiService {
               );
             } else if (data.type === "reply_suggestions") {
               handlers.onReplySuggestions?.(data.suggestions);
-            } else if (data.type === "sentence_card_started") {
-              handlers.onSentenceCardStarted?.({
+            } else if (data.type === "reply_card_started") {
+              handlers.onReplyCardStarted?.({
                 assistant_candidate_id: data.assistant_candidate_id,
               });
-            } else if (data.type === "sentence_card") {
-              handlers.onSentenceCard?.({
+            } else if (data.type === "reply_card") {
+              handlers.onReplyCard?.({
                 assistant_candidate_id: data.assistant_candidate_id,
-                sentence_card: data.sentence_card,
+                reply_card: data.reply_card,
               });
-            } else if (data.type === "sentence_card_error") {
-              handlers.onSentenceCardError?.({
+            } else if (data.type === "reply_card_error") {
+              handlers.onReplyCardError?.({
                 assistant_candidate_id: data.assistant_candidate_id,
                 code: data.code,
                 message: data.message,
@@ -1508,11 +1615,11 @@ export class ApiService {
     return httpClient.post<{ word_card: WordCard }>("/v1/learning/word-card", request);
   }
 
-  async createSentenceCard(
+  async createReplyCard(
     candidateId: string,
-  ): Promise<{ sentence_card: SentenceCard }> {
-    return httpClient.post<{ sentence_card: SentenceCard }>(
-      `/v1/learning/sentence-card/candidates/${candidateId}`,
+  ): Promise<{ reply_card: ReplyCard }> {
+    return httpClient.post<{ reply_card: ReplyCard }>(
+      `/v1/learning/reply-card/candidates/${candidateId}`,
       {},
     );
   }

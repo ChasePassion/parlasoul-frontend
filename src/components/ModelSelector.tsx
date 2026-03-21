@@ -21,6 +21,7 @@ function getProviderLabel(provider: LLMProvider): string {
   const labels: Record<LLMProvider, string> = {
     deepseek: "DeepSeek",
     openrouter: "OpenRouter",
+    xiaomi: "Xiaomi MiMo",
   };
   return labels[provider] || provider;
 }

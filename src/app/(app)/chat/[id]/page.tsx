@@ -52,7 +52,7 @@ export default function ChatPage() {
         handleSelectCandidate,
         handleRegenAssistant,
         handleEditUser,
-        handleRetrySentenceCard,
+        handleRetryReplyCard,
         handleSendMessage,
         interruptStream,
     } = useChatSession({
@@ -142,7 +142,7 @@ export default function ChatPage() {
             onSelectCandidate={handleSelectCandidate}
             onRegenAssistant={handleRegenAssistant}
             onEditUser={handleEditUser}
-            onRetrySentenceCard={handleRetrySentenceCard}
+            onRetryReplyCard={handleRetryReplyCard}
             playingCandidateId={playingCandidateId}
             ttsLoadingCandidateId={ttsLoadingCandidateId}
             isRecording={isRecording}

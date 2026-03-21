@@ -66,7 +66,7 @@ export const searchLLMModels = apiService.searchLLMModels.bind(apiService);
 
 // Phase 3: Learning相关
 export const createWordCard = apiService.createWordCard.bind(apiService);
-export const createSentenceCard = apiService.createSentenceCard.bind(apiService);
+export const createReplyCard = apiService.createReplyCard.bind(apiService);
 export const createFeedbackCard = apiService.createFeedbackCard.bind(apiService);
 export const createSavedItemPhase3 = apiService.createSavedItemPhase3.bind(apiService);
 export const listSavedItemsPhase3 = apiService.listSavedItemsPhase3.bind(apiService);
@@ -99,9 +99,9 @@ export type {
   CharacterVisibility,
   // Phase 1 types
   DisplayMode,
-  SentenceCard,
-  SentenceCardPhrase,
-  SentenceCardFavoriteState,
+  ReplyCard,
+  ReplyCardPhrase,
+  ReplyCardFavoriteState,
   ReplySuggestion,
   InputTransform,
   CandidateExtra,

@@ -515,11 +515,11 @@ export default function ChatInput({
                             >
                                 {/* ── Primary area: text input OR waveform OR transcribing ── */}
                                 <div
-                                    className="-my-2.5 flex min-h-14 items-center overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5 cursor-text"
+                                    className="-my-2.5 flex min-h-14 items-end overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5 cursor-text"
                                     style={{ transform: "none", transformOrigin: "50% 50% 0px" }}
                                 >
                                     {inputAreaState === "default" && (
-                                        <div className="wcDTda_prosemirror-parent text-token-text-primary max-h-[max(30svh,5rem)] max-h-52 min-h-[var(--deep-research-composer-extra-height,unset)] flex-1 overflow-auto [scrollbar-width:thin] default-browser vertical-scroll-fade-mask">
+                                        <div className="wcDTda_prosemirror-parent text-token-text-primary max-h-[max(30svh,5rem)] max-h-52 min-h-[var(--deep-research-composer-extra-height,unset)] flex-1 overflow-y-auto default-browser vertical-scroll-fade-mask w-full flex flex-col-reverse">
                                             <textarea
                                                 className="wcDTda_fallbackTextarea"
                                                 name="prompt-textarea"
@@ -531,7 +531,7 @@ export default function ChatInput({
                                             <div
                                                 contentEditable={!disabled}
                                                 translate="no"
-                                                className="ProseMirror"
+                                                className="ProseMirror w-full"
                                                 id="prompt-textarea"
                                                 data-virtualkeyboard="true"
                                                 ref={editorRef}
@@ -570,7 +570,7 @@ export default function ChatInput({
 
                                 {/* ── Leading area: plus button (hidden during recording) ── */}
                                 <div
-                                    className="[grid-area:leading]"
+                                    className="[grid-area:leading] self-end"
                                     style={{ transform: "none", transformOrigin: "50% 50% 0px" }}
                                 >
                                     {inputAreaState === "default" && (
@@ -601,7 +601,7 @@ export default function ChatInput({
 
                                 {/* ── Trailing area: mic/send OR cancel/confirm ── */}
                                 <div
-                                    className="flex items-center gap-2 [grid-area:trailing]"
+                                    className="flex items-end gap-2 [grid-area:trailing]"
                                     style={{ transform: "none", transformOrigin: "50% 50% 0px" }}
                                 >
                                     <div className="ms-auto flex items-center gap-1.5">

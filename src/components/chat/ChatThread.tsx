@@ -8,7 +8,7 @@ import ChatMessage, {
     type Message,
     type MessageActionStatus,
 } from "@/components/ChatMessage";
-import SentenceCardPopover from "@/components/SentenceCardPopover";
+import ReplyCardPopover from "@/components/ReplyCardPopover";
 import WordCardPopover from "@/components/WordCardPopover";
 import FeedbackCardPopover from "@/components/FeedbackCardPopover";
 import type { Character } from "@/components/Sidebar";
@@ -64,7 +64,7 @@ interface ChatThreadProps {
     onSelectCandidate: (turnId: string, candidateNo: number) => void;
     onRegenAssistant: (turnId: string) => void;
     onEditUser: (turnId: string, newContent: string) => void;
-    onRetrySentenceCard: (message: Message) => Promise<void>;
+    onRetryReplyCard: (message: Message) => Promise<void>;
     // Phase 2: TTS
     playingCandidateId?: string | null;
     ttsLoadingCandidateId?: string | null;
@@ -85,7 +85,7 @@ export default function ChatThread({
     onSelectCandidate,
     onRegenAssistant,
     onEditUser,
-    onRetrySentenceCard,
+    onRetryReplyCard,
     playingCandidateId,
     ttsLoadingCandidateId,
     isRecording,
@@ -96,14 +96,14 @@ export default function ChatThread({
     const VIEWPORT_PADDING = 12;
 
     const router = useRouter();
-    const { messageFontSize, displayMode, knowledgeCardEnabled } = useUserSettings();
+    const { messageFontSize, displayMode, replyCardEnabled } = useUserSettings();
 
-    // Knowledge card popover state
-    const [openKnowledgeCardKey, setOpenKnowledgeCardKey] = useState<string | null>(null);
-    const [pendingKnowledgeCardKey, setPendingKnowledgeCardKey] = useState<string | null>(null);
+    // Reply card popover state
+    const [openReplyCardKey, setOpenReplyCardKey] = useState<string | null>(null);
+    const [pendingReplyCardKey, setPendingReplyCardKey] = useState<string | null>(null);
     const [isFavoriteSaving, setIsFavoriteSaving] = useState(false);
     const cardAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-    const knowledgeCardWrapperRef = useRef<HTMLDivElement | null>(null);
+    const replyCardWrapperRef = useRef<HTMLDivElement | null>(null);
     const [favoriteOverrides, setFavoriteOverrides] = useState<
         Record<string, { isFavorited: boolean; savedItemId: string | null }>
     >({});
@@ -150,8 +150,8 @@ export default function ChatThread({
     }, [feedbackCardStates]);
 
     useEffect(() => {
-        setOpenKnowledgeCardKey(null);
-        setPendingKnowledgeCardKey(null);
+        setOpenReplyCardKey(null);
+        setPendingReplyCardKey(null);
         setFavoriteOverrides({});
         setFeedbackCard(null);
         setFeedbackCardKey(null);
@@ -165,7 +165,7 @@ export default function ChatThread({
         setFavoriteOverrides((prev) => {
             const validKeys = new Set(
                 messages
-                    .filter((message) => message.role === "assistant" && message.sentenceCard)
+                    .filter((message) => message.role === "assistant" && message.replyCard)
                     .map(getMessageVersionKey)
             );
             const next: Record<string, { isFavorited: boolean; savedItemId: string | null }> = {};
@@ -183,36 +183,36 @@ export default function ChatThread({
         });
     }, [messages]);
 
-    const handleOpenKnowledgeCard = useCallback((message: Message) => {
+    const handleOpenReplyCard = useCallback((message: Message) => {
         const messageKey = getMessageVersionKey(message);
-        const sentenceCardStatus =
-            message.sentenceCardStatus ?? (message.sentenceCard ? "ready" : "idle");
+        const replyCardStatus =
+            message.replyCardStatus ?? (message.replyCard ? "ready" : "idle");
 
-        if (message.sentenceCard) {
-            setPendingKnowledgeCardKey(null);
-            setOpenKnowledgeCardKey((prev) => (prev === messageKey ? null : messageKey));
+        if (message.replyCard) {
+            setPendingReplyCardKey(null);
+            setOpenReplyCardKey((prev) => (prev === messageKey ? null : messageKey));
             return;
         }
 
-        if (sentenceCardStatus === "loading") {
-            setPendingKnowledgeCardKey(messageKey);
+        if (replyCardStatus === "loading") {
+            setPendingReplyCardKey(messageKey);
             return;
         }
 
         if (
-            (sentenceCardStatus === "idle" || sentenceCardStatus === "error") &&
+            (replyCardStatus === "idle" || replyCardStatus === "error") &&
             message.assistantCandidateId
         ) {
-            setPendingKnowledgeCardKey(messageKey);
-            void onRetrySentenceCard(message).catch((err) => {
-                console.error("Failed to retry sentence card:", err);
+            setPendingReplyCardKey(messageKey);
+            void onRetryReplyCard(message).catch((err) => {
+                console.error("Failed to retry reply card:", err);
             });
         }
-    }, [onRetrySentenceCard]);
+    }, [onRetryReplyCard]);
 
-    const handleCloseKnowledgeCard = useCallback(() => {
-        setOpenKnowledgeCardKey(null);
-        setPendingKnowledgeCardKey(null);
+    const handleCloseReplyCard = useCallback(() => {
+        setOpenReplyCardKey(null);
+        setPendingReplyCardKey(null);
     }, []);
 
     const handleToggleFavorite = useCallback(
@@ -221,11 +221,11 @@ export default function ChatThread({
             savedItemId: string | null | undefined,
             message: Message
         ): Promise<string | null> => {
-            if (!character || !message.sentenceCard) return null;
+            if (!character || !message.replyCard) return null;
             const messageKey = getMessageVersionKey(message);
             const previous = favoriteOverrides[messageKey] ?? {
-                isFavorited: message.sentenceCard.favorite.is_favorited,
-                savedItemId: message.sentenceCard.favorite.saved_item_id ?? null,
+                isFavorited: message.replyCard.favorite.is_favorited,
+                savedItemId: message.replyCard.favorite.saved_item_id ?? null,
             };
 
             // optimistic state
@@ -244,12 +244,12 @@ export default function ChatThread({
                 if (isFavorited) {
                     // Create saved item
                     const payload: SavedItemPayload = {
-                        kind: "sentence_card",
+                        kind: "reply_card",
                         display: {
-                            surface: message.sentenceCard.surface,
-                            zh: message.sentenceCard.zh,
+                            surface: message.replyCard.surface,
+                            zh: message.replyCard.zh,
                         },
-                        card: message.sentenceCard,
+                        card: message.replyCard,
                         source: {
                             role_id: character.id,
                             chat_id: chatId,
@@ -642,29 +642,29 @@ export default function ChatThread({
     }, [feedbackCardStates, messages]);
 
     useEffect(() => {
-        if (!pendingKnowledgeCardKey) return;
+        if (!pendingReplyCardKey) return;
 
         const targetMessage = messages.find(
-            (message) => getMessageVersionKey(message) === pendingKnowledgeCardKey
+            (message) => getMessageVersionKey(message) === pendingReplyCardKey
         );
         if (!targetMessage) {
-            setPendingKnowledgeCardKey(null);
+            setPendingReplyCardKey(null);
             return;
         }
 
-        if (targetMessage.sentenceCard) {
-            setOpenKnowledgeCardKey(pendingKnowledgeCardKey);
-            setPendingKnowledgeCardKey(null);
+        if (targetMessage.replyCard) {
+            setOpenReplyCardKey(pendingReplyCardKey);
+            setPendingReplyCardKey(null);
             return;
         }
 
         if (
-            targetMessage.sentenceCardStatus === "error" ||
-            targetMessage.sentenceCardStatus === "idle"
+            targetMessage.replyCardStatus === "error" ||
+            targetMessage.replyCardStatus === "idle"
         ) {
-            setPendingKnowledgeCardKey(null);
+            setPendingReplyCardKey(null);
         }
-    }, [messages, pendingKnowledgeCardKey]);
+    }, [messages, pendingReplyCardKey]);
 
     useEffect(() => {
         if (!feedbackCardKey) return;
@@ -789,16 +789,16 @@ export default function ChatThread({
 
     const applyFavoriteOverride = useCallback(
         (message: Message): Message => {
-            if (!message.sentenceCard) return message;
+            if (!message.replyCard) return message;
             const override = favoriteOverrides[getMessageVersionKey(message)];
             if (!override) return message;
 
             return {
                 ...message,
-                sentenceCard: {
-                    ...message.sentenceCard,
+                replyCard: {
+                    ...message.replyCard,
                     favorite: {
-                        ...message.sentenceCard.favorite,
+                        ...message.replyCard.favorite,
                         is_favorited: override.isFavorited,
                         saved_item_id: override.savedItemId,
                     },
@@ -808,12 +808,12 @@ export default function ChatThread({
         [favoriteOverrides]
     );
 
-    const openCardMessage = openKnowledgeCardKey
+    const openCardMessage = openReplyCardKey
         ? messages
             .map(applyFavoriteOverride)
-            .find((message) => getMessageVersionKey(message) === openKnowledgeCardKey)
+            .find((message) => getMessageVersionKey(message) === openReplyCardKey)
         : null;
-    const knowledgeCardMessage = openCardMessage?.sentenceCard ? openCardMessage : null;
+    const replyCardMessage = openCardMessage?.replyCard ? openCardMessage : null;
     const visibleMessages = messages.filter(
         (message) =>
             !(
@@ -822,9 +822,9 @@ export default function ChatThread({
                 message.content.trim().length === 0
             )
     );
-    const knowledgeCardPosition = useFloatingPosition({
-        isOpen: Boolean(openKnowledgeCardKey && openCardMessage?.sentenceCard),
-        overlayRef: knowledgeCardWrapperRef,
+    const replyCardPosition = useFloatingPosition({
+        isOpen: Boolean(openReplyCardKey && openCardMessage?.replyCard),
+        overlayRef: replyCardWrapperRef,
         getAnchorRect: () => {
             if (!openCardMessage?.id) return null;
             const anchor = cardAnchorRefs.current.get(openCardMessage.id);
@@ -857,8 +857,8 @@ export default function ChatThread({
         padding: VIEWPORT_PADDING,
     });
 
-    const shouldRenderKnowledgeCard =
-        Boolean(openKnowledgeCardKey && knowledgeCardMessage) &&
+    const shouldRenderReplyCard =
+        Boolean(openReplyCardKey && replyCardMessage) &&
         typeof document !== "undefined";
 
     if (isLoading) {
@@ -891,9 +891,9 @@ export default function ChatThread({
                 const renderedMessage = applyFavoriteOverride(message);
                 const messageKey = getMessageVersionKey(renderedMessage);
                 const feedbackStatus = feedbackCardStates[messageKey]?.status ?? "idle";
-                const sentenceCardStatus =
-                    renderedMessage.sentenceCardStatus ??
-                    (renderedMessage.sentenceCard ? "ready" : "idle");
+                const replyCardStatus =
+                    renderedMessage.replyCardStatus ??
+                    (renderedMessage.replyCard ? "ready" : "idle");
                 const isUserTurn = message.role === "user";
                 const isLastTurn = index === visibleMessages.length - 1;
                 const topPaddingClass = message.isGreeting
@@ -958,11 +958,11 @@ export default function ChatThread({
                                             assistantAvatar={character.avatar}
                                             messageFontSize={messageFontSize}
                                             actionsDisabled={false}
-                                            knowledgeCardDisabled={isFavoriteSaving}
-                                            sentenceCardStatus={sentenceCardStatus}
+                                            replyCardDisabled={isFavoriteSaving}
+                                            replyCardStatus={replyCardStatus}
                                             feedbackStatus={feedbackStatus}
                                             displayMode={displayMode}
-                                            knowledgeCardEnabled={knowledgeCardEnabled}
+                                            replyCardEnabled={replyCardEnabled}
                                             playingCandidateId={playingCandidateId}
                                             ttsLoadingCandidateId={ttsLoadingCandidateId}
                                             isRecording={isRecording}
@@ -972,7 +972,7 @@ export default function ChatThread({
                                             onSelectCandidate={onSelectCandidate}
                                             onRegenAssistant={onRegenAssistant}
                                             onEditUser={onEditUser}
-                                            onOpenKnowledgeCard={handleOpenKnowledgeCard}
+                                            onOpenReplyCard={handleOpenReplyCard}
                                             onRequestFeedback={handleRequestFeedback}
                                         />
                                     </div>
@@ -985,30 +985,30 @@ export default function ChatThread({
                     </article>
                 );
             })}
-            {shouldRenderKnowledgeCard &&
+            {shouldRenderReplyCard &&
                 createPortal(
                     <div
-                        ref={knowledgeCardWrapperRef}
+                        ref={replyCardWrapperRef}
                         style={{
                             position: "fixed",
-                            top: knowledgeCardPosition ? `${knowledgeCardPosition.top}px` : "0px",
-                            left: knowledgeCardPosition ? `${knowledgeCardPosition.left}px` : "0px",
+                            top: replyCardPosition ? `${replyCardPosition.top}px` : "0px",
+                            left: replyCardPosition ? `${replyCardPosition.left}px` : "0px",
                             zIndex: 60,
-                            visibility: knowledgeCardPosition ? "visible" : "hidden",
-                            pointerEvents: knowledgeCardPosition ? "auto" : "none",
+                            visibility: replyCardPosition ? "visible" : "hidden",
+                            pointerEvents: replyCardPosition ? "auto" : "none",
                         }}
                     >
-                        <SentenceCardPopover
-                            sentenceCard={knowledgeCardMessage!.sentenceCard!}
+                        <ReplyCardPopover
+                            replyCard={replyCardMessage!.replyCard!}
                             onToggleFavorite={(isFavorited, savedItemId) =>
                                 handleToggleFavorite(
                                     isFavorited,
                                     savedItemId,
-                                    knowledgeCardMessage!
+                                    replyCardMessage!
                                 )
                             }
                             isSaving={isFavoriteSaving}
-                            onClose={handleCloseKnowledgeCard}
+                            onClose={handleCloseReplyCard}
                         />
                     </div>,
                     document.body

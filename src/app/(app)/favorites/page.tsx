@@ -62,7 +62,7 @@ export default function FavoritesPage() {
     }, [savedItems]);
 
     const kindLabel: Record<SavedItemKind, string> = {
-        sentence_card: "句子卡",
+        reply_card: "回复卡",
         word_card: "单词卡",
         feedback_card: "更好表达",
     };

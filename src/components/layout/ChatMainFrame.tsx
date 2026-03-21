@@ -26,7 +26,7 @@ export default function ChatMainFrame({
             <div
                 ref={scrollRootRef}
                 data-scroll-root
-                className="@w-sm/main:[scrollbar-gutter:stable_both-edges] touch:[scrollbar-width:none] custom-scrollbar relative flex min-h-0 min-w-0 flex-1 flex-col [scrollbar-gutter:stable] not-print:overflow-x-clip not-print:overflow-y-auto scroll-pt-(--header-height) [--sticky-padding-top:var(--header-height)] has-data-[fixed-header=less-than-xl]:@w-xl/main:scroll-pt-0 has-data-[fixed-header=less-than-xl]:@w-xl/main:[--sticky-padding-top:0px] has-data-[fixed-header=less-than-xxl]:@w-2xl/main:scroll-pt-0 has-data-[fixed-header=less-than-xxl]:@w-2xl/main:[--sticky-padding-top:0px]"
+                className="@w-sm/main:[scrollbar-gutter:stable_both-edges] touch:[scrollbar-width:none] custom-scrollbar relative flex min-h-0 min-w-0 flex-1 flex-col [scrollbar-gutter:stable] not-print:overflow-x-clip not-print:overflow-y-auto scroll-pt-(--header-height) [--sticky-padding-top:var(--header-height)] has-data-[fixed-header=less-than-xl]:@w-xl/main:scroll-pt-0 has-data-[fixed-header=less-than-xl]:@w-xl/main:[--sticky-padding-top:0px] has-data-[fixed-header=less-than-xxl]:@w-2xl/main:scroll-pt-0 has-data-[fixed-header=less-than-xxl]:@w-2xl/main:[--sticky-padding-top:0px] pb-[35vh]"
                 style={{
                     ["--sticky-padding-bottom" as string]: "0px",
                     backgroundColor: "var(--workspace-bg)",
@@ -71,7 +71,7 @@ export default function ChatMainFrame({
             </div>
             <div
                 id="thread-bottom-container"
-                className="sticky bottom-0 group/thread-bottom-container relative isolate z-10 w-full shrink-0 basis-auto has-data-has-thread-error:pt-2 has-data-has-thread-error:[box-shadow:var(--sharp-edge-bottom-shadow)] md:border-transparent md:pt-0 dark:border-white/20 md:dark:border-transparent print:hidden content-fade single-line flex flex-col bg-workspace-bg [--content-fade-bg:var(--workspace-bg)]"
+                className="absolute bottom-0 left-0 right-0 group/thread-bottom-container isolate z-10 w-full has-data-has-thread-error:pt-2 has-data-has-thread-error:[box-shadow:var(--sharp-edge-bottom-shadow)] md:border-transparent md:pt-0 dark:border-white/20 md:dark:border-transparent print:hidden content-fade single-line flex flex-col bg-workspace-bg [--content-fade-bg:var(--workspace-bg)]"
                 style={{ backgroundColor: "var(--workspace-bg)", ["--content-fade-bg" as string]: "var(--workspace-bg)" }}
             >
                 <div className="relative h-0" />

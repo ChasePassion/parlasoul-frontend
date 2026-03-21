@@ -18,8 +18,8 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
         maxMessageFontSize,
         displayMode,
         setDisplayMode,
-        knowledgeCardEnabled,
-        setKnowledgeCardEnabled,
+        replyCardEnabled,
+        setReplyCardEnabled,
         mixedInputAutoTranslateEnabled,
         setMixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
@@ -162,12 +162,12 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
 
                                 <div className="flex items-center justify-between py-5">
                                     <div className="space-y-0.5 pr-6">
-                                        <h4 className="font-medium text-gray-900 text-[15px]">知识卡</h4>
-                                        <p className="text-[13px] text-gray-500 leading-relaxed">开启后，可在每条助手消息旁查看词组解析与收藏</p>
+                                        <h4 className="font-medium text-gray-900 text-[15px]">回复卡</h4>
+                                        <p className="text-[13px] text-gray-500 leading-relaxed">开启后，可在每条助手消息旁查看整条回复的翻译与词组解析</p>
                                     </div>
                                     <Switch
-                                        checked={knowledgeCardEnabled}
-                                        onCheckedChange={setKnowledgeCardEnabled}
+                                        checked={replyCardEnabled}
+                                        onCheckedChange={setReplyCardEnabled}
                                     />
                                 </div>
                                 <Separator className="opacity-60" />

@@ -526,6 +526,41 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.35);
 }
 
+/* ── Vertical scroll fade mask (for input textarea) ── */
+.vertical-scroll-fade-mask {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+.vertical-scroll-fade-mask::-webkit-scrollbar {
+  width: 6px;
+}
+
+.vertical-scroll-fade-mask::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.vertical-scroll-fade-mask::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.vertical-scroll-fade-mask::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.35);
+}
+
+.dark .vertical-scroll-fade-mask {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.dark .vertical-scroll-fade-mask::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.dark .vertical-scroll-fade-mask::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.35);
+}
+
 /* Modal animation */
 @keyframes modal-in {
   from {

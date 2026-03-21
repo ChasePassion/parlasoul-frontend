@@ -34,6 +34,7 @@ export function getProviderLabel(provider: LLMProvider): string {
   const providerLabels: Record<LLMProvider, string> = {
     deepseek: "DeepSeek",
     openrouter: "OpenRouter",
+    xiaomi: "Xiaomi MiMo",
   };
   return providerLabels[provider] || provider;
 }
@@ -61,9 +62,7 @@ export function groupModelsByProvider(
   });
 
   groups.sort((a, b) => {
-    if (a.provider === "deepseek") return -1;
-    if (b.provider === "deepseek") return 1;
-    return 0;
+    return a.label.localeCompare(b.label, "en", { sensitivity: "base" });
   });
 
   return groups;

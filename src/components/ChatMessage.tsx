@@ -6,7 +6,7 @@ import MixedInputTransformBox from "./MixedInputTransformBox";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import type { InputTransform, SentenceCard, ReplySuggestion, DisplayMode } from "@/lib/api";
+import type { InputTransform, ReplyCard, ReplySuggestion, DisplayMode } from "@/lib/api";
 
 export type MessageActionStatus = "idle" | "loading" | "ready" | "error";
 export type MessageStreamStatus = "idle" | "streaming" | "done" | "error";
@@ -21,14 +21,14 @@ export interface Message {
     isGreeting?: boolean;
     // Phase 1 learning fields
     inputTransform?: InputTransform | null;
-    sentenceCard?: SentenceCard | null;
+    replyCard?: ReplyCard | null;
     replySuggestions?: ReplySuggestion[] | null;
     transformChunks?: string;
     assistantTurnId?: string;
     assistantCandidateId?: string;
     messageStreamStatus?: MessageStreamStatus;
-    sentenceCardStatus?: MessageActionStatus;
-    sentenceCardErrorCode?: string | null;
+    replyCardStatus?: MessageActionStatus;
+    replyCardErrorCode?: string | null;
 }
 
 interface ChatMessageProps {message: Message;
@@ -36,11 +36,11 @@ interface ChatMessageProps {message: Message;
     assistantAvatar: string;
     messageFontSize: number;
     actionsDisabled?: boolean;
-    knowledgeCardDisabled?: boolean;
-    sentenceCardStatus?: MessageActionStatus;
+    replyCardDisabled?: boolean;
+    replyCardStatus?: MessageActionStatus;
     feedbackStatus?: MessageActionStatus;
     displayMode?: DisplayMode;
-    knowledgeCardEnabled?: boolean;
+    replyCardEnabled?: boolean;
     // Phase 2: TTS
     playingCandidateId?: string | null;
     ttsLoadingCandidateId?: string | null;
@@ -48,10 +48,10 @@ interface ChatMessageProps {message: Message;
     ttsStreamingDisabled?: boolean;
     onPlayTts?: (candidateId: string) => void;
     onStopTts?: (candidateId: string) => void;
-    onSelectCandidate?: (turnId: string, candidateNo: number) => Promise<void>;
-    onRegenAssistant?: (turnId: string) => Promise<void>;
-    onEditUser?: (turnId: string, newContent: string) => Promise<void>;
-    onOpenKnowledgeCard?: (message: Message) => void;
+    onSelectCandidate?: (turnId: string, candidateNo: number) => void | Promise<void>;
+    onRegenAssistant?: (turnId: string) => void | Promise<void>;
+    onEditUser?: (turnId: string, newContent: string) => void | Promise<void>;
+    onOpenReplyCard?: (message: Message) => void;
     onRequestFeedback?: (message: Message) => void;
 }
 
@@ -61,11 +61,11 @@ export default function ChatMessage({
     assistantAvatar,
     messageFontSize,
     actionsDisabled = false,
-    knowledgeCardDisabled = false,
-    sentenceCardStatus = message.sentenceCardStatus ?? (message.sentenceCard ? "ready" : "idle"),
+    replyCardDisabled = false,
+    replyCardStatus = message.replyCardStatus ?? (message.replyCard ? "ready" : "idle"),
     feedbackStatus = "idle",
     displayMode = "concise",
-    knowledgeCardEnabled = false,
+    replyCardEnabled = false,
     playingCandidateId,
     ttsLoadingCandidateId,
     isRecording = false,
@@ -75,7 +75,7 @@ export default function ChatMessage({
     onSelectCandidate,
     onRegenAssistant,
     onEditUser,
-    onOpenKnowledgeCard,
+    onOpenReplyCard,
     onRequestFeedback,
 }: ChatMessageProps) {
     const userActionRowHideDelayMs = 500;
@@ -84,7 +84,7 @@ export default function ChatMessage({
     const checkIcon = "/icons/check-recording-fa1dbd.svg";
     const editIcon = "/icons/edit-6d87e1.svg";
     const ideaIcon = "/icons/os-icon-idea.svg";
-    const knowledgeCardIcon = "/book.svg";
+    const replyCardIcon = "/book.svg";
     
     const branchButtonClass =
         "text-token-text-secondary hover:bg-token-bg-secondary rounded-md disabled:opacity-50";
@@ -322,21 +322,21 @@ export default function ChatMessage({
     const isTransformStreaming = !message.inputTransform?.applied && !!message.transformChunks;
 
     // Phase 1: Whether to show detailed mode extras under assistant message
-    const showDetailedExtras = !isUser && displayMode === "detailed" && message.sentenceCard;
+    const showDetailedExtras = !isUser && displayMode === "detailed" && message.replyCard;
 
-    // Phase 1: Whether to show knowledge card (lightbulb) button
-    const showKnowledgeCardBtn =
+    // Phase 1: Whether to show reply card (lightbulb) button
+    const showReplyCardBtn =
         !isUser &&
-        knowledgeCardEnabled &&
+        replyCardEnabled &&
         !message.isTemp &&
-        (!!message.sentenceCard || !!message.assistantCandidateId);
+        (!!message.replyCard || !!message.assistantCandidateId);
     // Phase 2: Whether to show speaker button
     const showSpeakerBtn = !isUser && !message.isTemp && !!message.assistantCandidateId;
     const isSpeakerPlaying = showSpeakerBtn && playingCandidateId === message.assistantCandidateId;
     const isSpeakerLoading = showSpeakerBtn && ttsLoadingCandidateId === message.assistantCandidateId;
     // Phase 3: Whether to show feedback button (for user messages)
     const showFeedbackBtn = isUser && !message.isTemp && !isEditing && !!onRequestFeedback;
-    const showActionRow = showNav || showKnowledgeCardBtn || showSpeakerBtn || showFeedbackBtn;
+    const showActionRow = showNav || showReplyCardBtn || showSpeakerBtn || showFeedbackBtn;
 
     return (
         <div className="relative flex w-full min-w-0 flex-col">
@@ -425,10 +425,10 @@ export default function ChatMessage({
                     </div>
 
                     {/* Phase 1: Detailed mode extras (zh + ipa) under assistant bubble */}
-                    {showDetailedExtras && message.sentenceCard && (
+                    {showDetailedExtras && message.replyCard && (
                         <div className="mt-1 px-1 max-w-full">
                             <p className="text-sm text-gray-500 leading-relaxed">
-                                {message.sentenceCard.zh}
+                                {message.replyCard.zh}
                             </p>
                         </div>
                     )}
@@ -516,24 +516,24 @@ export default function ChatMessage({
                                 </button>
                             )}
 
-                            {/* Phase 1: Knowledge card lightbulb button */}
-                            {showKnowledgeCardBtn && (
+                            {/* Phase 1: Reply card button */}
+                            {showReplyCardBtn && (
                                 <button
                                     type="button"
                                     className={actionButtonClass}
-                                    onClick={() => onOpenKnowledgeCard?.(message)}
-                                    disabled={knowledgeCardDisabled}
+                                    onClick={() => onOpenReplyCard?.(message)}
+                                    disabled={replyCardDisabled}
                                     aria-label={
-                                        sentenceCardStatus === "loading"
-                                            ? "知识卡加载中"
-                                            : sentenceCardStatus === "error"
-                                                ? "知识卡加载失败，点击重试"
-                                                : "知识卡"
+                                        replyCardStatus === "loading"
+                                            ? "回复卡加载中"
+                                            : replyCardStatus === "error"
+                                                ? "回复卡加载失败，点击重试"
+                                                : "回复卡"
                                     }
                                 >
-                                    {sentenceCardStatus === "loading"
+                                    {replyCardStatus === "loading"
                                         ? renderLoadingSpinner()
-                                        : renderActionIcon(knowledgeCardIcon)}
+                                        : renderActionIcon(replyCardIcon)}
                                 </button>
                             )}
 
