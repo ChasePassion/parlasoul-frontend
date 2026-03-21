@@ -151,7 +151,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
                                 <div className="flex items-center justify-between pb-5 pt-0">
                                     <div className="space-y-0.5 pr-6">
                                         <h4 className="font-medium text-gray-900 text-[15px]">详细模式</h4>
-                                        <p className="text-[13px] text-gray-500 leading-relaxed">开启后，助手消息下方显示中文翻译和美式音标</p>
+                                        <p className="text-[13px] text-gray-500 leading-relaxed">开启后，助手消息下方显示中文翻译</p>
                                     </div>
                                     <Switch
                                         checked={displayMode === "detailed"}

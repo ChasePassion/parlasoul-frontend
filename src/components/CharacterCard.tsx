@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { Character } from "./Sidebar";
 import { MoreHorizontal } from "lucide-react";
+import {
+    CHARACTER_CARD_VISIBLE_TAGS,
+    normalizeCharacterTag,
+} from "@/lib/character-tags";
 import "./CharacterCard.css";
 
 interface CharacterCardProps {
@@ -22,21 +26,31 @@ export default function CharacterCard({
     onDelete
 }: CharacterCardProps) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isTagOverflowOpen, setIsTagOverflowOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const tagOverflowRef = useRef<HTMLDivElement>(null);
+    const tags = (character.tags ?? [])
+        .map((tag) => normalizeCharacterTag(tag))
+        .filter((tag) => tag.length > 0);
+    const visibleTags = tags.slice(0, CHARACTER_CARD_VISIBLE_TAGS);
+    const hiddenTags = tags.slice(CHARACTER_CARD_VISIBLE_TAGS);
 
     useEffect(() => {
-        if (!showMenu || !isMenuOpen) return;
+        if (!isMenuOpen && !isTagOverflowOpen) return;
 
         const handleClickOutside = (event: MouseEvent) => {
             const target = event.target as Node;
             if (menuRef.current && !menuRef.current.contains(target)) {
                 setIsMenuOpen(false);
             }
+            if (tagOverflowRef.current && !tagOverflowRef.current.contains(target)) {
+                setIsTagOverflowOpen(false);
+            }
         };
 
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [showMenu, isMenuOpen]);
+    }, [isMenuOpen, isTagOverflowOpen]);
 
     return (
         <div
@@ -70,11 +84,46 @@ export default function CharacterCard({
                         </span>
                     </div>
                     <p className="card-desc">{character.description}</p>
-                    {character.tags && character.tags.length > 0 && (
-                        <div className="card-tags">
-                            {character.tags.map((tag, i) => (
-                                <span key={i} className="tag">{tag}</span>
+                    {tags.length > 0 && (
+                        <div className={`card-tags ${showMenu ? "card-tags-with-menu" : ""}`}>
+                            {visibleTags.map((tag) => (
+                                <span key={tag} className="tag" title={tag}>
+                                    <span className="tag-text">{tag}</span>
+                                </span>
                             ))}
+                            {hiddenTags.length > 0 && (
+                                <div
+                                    ref={tagOverflowRef}
+                                    className="tag-overflow-anchor"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <button
+                                        type="button"
+                                        className="tag tag-overflow-trigger"
+                                        aria-expanded={isTagOverflowOpen}
+                                        aria-label={`查看全部标签，共 ${tags.length} 个`}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setIsTagOverflowOpen((prev) => !prev);
+                                        }}
+                                    >
+                                        +{hiddenTags.length}
+                                    </button>
+                                    {isTagOverflowOpen && (
+                                        <div className="tag-overflow-panel" role="dialog" aria-label="全部标签">
+                                            <p className="tag-overflow-title">全部标签</p>
+                                            <div className="tag-overflow-list">
+                                                {tags.map((tag) => (
+                                                    <span key={`overflow-${tag}`} className="tag" title={tag}>
+                                                        <span className="tag-text">{tag}</span>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
