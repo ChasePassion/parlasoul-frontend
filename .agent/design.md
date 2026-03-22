@@ -695,6 +695,78 @@ The `!` is Tailwind's important flag to ensure the style has highest priority.
 
 ---
 
+### Search Input Container: Border Ownership and Focus Synchronization
+
+When a search box uses a **custom outer container** to draw the border, background tint, and focus halo, that outer container must own the focus UI in **every state**.
+
+**Two mistakes caused the Discover search box bug:**
+
+1. Focus state only used `border-blue-500` without also keeping `border`
+2. Blue focus state was controlled by React state, but the state did not fully track real blur / outside-click behavior
+
+**Why the first bug happens:**
+- `border-blue-500` only changes border color
+- It does **not** create border width by itself
+- If the default state has `border` but the focus state does not, the border disappears on focus
+- When blur adds `border` back, the border can briefly flash in the previous focus color before transitioning out
+
+**Correct pattern:**
+```tsx
+<div
+  className={cn(
+    "rounded-xl border transition-[border-color,background-color,box-shadow] duration-200",
+    isFocused
+      ? "border-blue-500 bg-blue-50 shadow-[0_0_0_3px_rgba(59,130,246,0.12)]"
+      : "border-black/10 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+  )}
+>
+```
+
+**Rule:** the container should always keep the same border width; focus / blur should only switch:
+- border color
+- background tint
+- focus halo / shadow
+
+**Inner input rule:**
+- If the outer container owns the visual focus treatment, the inner shadcn `Input` should be visually neutral:
+  - `border-0`
+  - `shadow-none`
+  - `focus-visible:ring-0`
+
+This prevents the inner input and outer container from fighting over focus styling.
+
+**Focus synchronization rule:**
+- If focus UI is driven by React state, that state must follow the **real active element**, not only `onFocus`
+- Outside-click detection should be attached to the **whole search container**, not just the dropdown panel
+- Also add a blur-time sync check against `document.activeElement` so the blue border is removed when the caret is already gone
+
+**Recommended pattern:**
+```tsx
+const searchContainerRef = useRef<HTMLDivElement>(null);
+
+const syncFocusState = () => {
+  requestAnimationFrame(() => {
+    if (
+      searchContainerRef.current &&
+      !searchContainerRef.current.contains(document.activeElement)
+    ) {
+      setIsFocused(false);
+    }
+  });
+};
+```
+
+**Design takeaway:**
+- Focus UI should feel stable, not event-driven or glitchy
+- The user should never see:
+  - border disappear on focus
+  - blue border remain after the caret is gone
+  - blur causing a flash of the previous focus color
+
+For search inputs specifically, **stable border ownership + real focus synchronization** is the required baseline.
+
+---
+
 ### Input Component: `::selection` with `bg-transparent`
 
 When Input component has `bg-transparent` + Tailwind `selection:` utility, selection color may not show properly in Chrome 131+.
