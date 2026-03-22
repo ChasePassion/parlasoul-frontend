@@ -71,6 +71,7 @@ interface SidebarProps {
     selectedCharacterId: string | null;
     onSelectCharacter: (character: Character) => void;
     onToggle: () => void;
+    isCollapsed?: boolean;
 }
 
 export default function Sidebar({
@@ -78,132 +79,144 @@ export default function Sidebar({
     selectedCharacterId,
     onSelectCharacter,
     onToggle,
+    isCollapsed = false,
 }: SidebarProps) {
     const { user, logout } = useAuth();
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+    // ── 共用的用户菜单项，避免重复 ──
+    const userMenuItems = (
+        <>
+            <DropdownMenuItem
+                onClick={() => { window.location.href = "/profile"; }}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
+            >
+                <Image src="/me.svg" alt="Profile" width={20} height={20} />
+                <span className="text-sm font-medium text-gray-700">个人资料</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+                onClick={() => setIsSettingsOpen(true)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
+            >
+                <Image src="/setting.svg" alt="Settings" width={20} height={20} />
+                <span className="text-sm font-medium text-gray-700">设置</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+                onClick={() => { window.location.href = "/favorites"; }}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
+            >
+                <Image src="/mark.svg" alt="Favorites" width={20} height={20} />
+                <span className="text-sm font-medium text-gray-700">收藏夹</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator className="bg-gray-100 h-px mx-2 my-1" />
+
+            <DropdownMenuItem
+                onClick={() => { logout(); window.location.href = "/login"; }}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
+            >
+                <Image src="/out.svg" alt="Logout" width={20} height={20} />
+                <span className="text-sm font-medium text-gray-700">退出登录</span>
+            </DropdownMenuItem>
+        </>
+    );
+
     return (
-        <aside className="w-64 h-full bg-sidebar-bg flex flex-col border-r border-divider relative">
-            <section className="flex-none p-2" aria-label="Sidebar actions">
-                <div className="flex justify-between items-center mb-6">
+        <div className="relative h-full w-full bg-sidebar-bg flex flex-col border-r border-divider overflow-x-hidden whitespace-nowrap">
+            {/* 顶栏 操作区 */}
+            <section className="flex-none pt-3 pb-2 flex flex-col gap-2" aria-label="Sidebar actions">
+                <div className="px-2">
                     <button
                         onClick={onToggle}
-                        className="p-1 rounded-md hover:bg-sidebar-hover text-gray-500"
-                        aria-label="Close Sidebar"
+                        className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-sidebar-hover text-gray-500 shrink-0 outline-none"
+                        aria-label="Toggle Sidebar"
                     >
-                        <Menu className="w-5 h-5" />
+                        <Image src="/sidebar.svg" alt="Toggle Sidebar" width={16} height={16} />
                     </button>
                 </div>
 
-                <Link
-                    href="/"
-                    className="flex items-center gap-3 py-3 px-2 rounded-xl hover:bg-sidebar-hover text-text-primary transition-colors"
-                >
-                    <div className="w-5 h-5 flex items-center justify-center">
-                        <Image src="/find.svg" alt="Discover" width={20} height={20} />
-                    </div>
-                    <span className="font-medium">发现</span>
-                </Link>
+                <div className="px-2">
+                    <Link
+                        href="/"
+                        className="flex items-center w-full px-1 rounded-lg hover:bg-sidebar-hover text-text-primary transition-all duration-300 ease-in-out overflow-hidden outline-none h-10"
+                    >
+                        <div className="flex items-center justify-center shrink-0 w-8 h-10">
+                            <Image src="/find.svg" alt="Discover" width={20} height={20} />
+                        </div>
+                        <span 
+                            className={`font-medium block min-w-[150px] transition-all duration-300 ease-in-out ${isCollapsed ? "opacity-0 ml-2" : "opacity-100 ml-3"}`}
+                        >
+                            发现
+                        </span>
+                    </Link>
+                </div>
             </section>
 
-            <nav className="flex-1 overflow-y-auto custom-scrollbar px-2" aria-label="角色列表">
-                <div className="space-y-1">
-                    {characters.map((character) => {
-                        const isSelected = character.id === selectedCharacterId;
-                        return (
-                            <div
-                                key={character.id}
-                                onClick={() => onSelectCharacter(character)}
-                                className={`
-                                    flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-colors duration-150
-                                    ${isSelected ? "bg-sidebar-selected" : "hover:bg-sidebar-hover"}
-                                `}
-                            >
-                                <Avatar className="h-10 w-10 rounded-lg overflow-hidden shrink-0">
+            {/* 角色列表区 */}
+            <nav className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col gap-1 w-full px-2" aria-label="角色列表">
+                {characters.map((character) => {
+                    const isSelected = character.id === selectedCharacterId;
+                    return (
+                        <button
+                            key={character.id}
+                            onClick={() => onSelectCharacter(character)}
+                            className={`
+                                flex items-center px-1 rounded-lg transition-all duration-300 ease-in-out overflow-hidden outline-none shrink-0 w-full
+                                ${isSelected ? "bg-sidebar-selected" : "hover:bg-sidebar-hover"}
+                                ${isCollapsed ? "h-10" : "h-[52px]"}
+                            `}
+                            title={isCollapsed ? character.name : undefined}
+                        >
+                            <div className={`flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-8' : 'w-10'}`}>
+                                <Avatar className={`rounded-lg overflow-hidden shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'h-8 w-8' : 'h-10 w-10'}`}>
                                     <AvatarImage src={character.avatar} alt={character.name} />
-                                    <AvatarFallback className="bg-gray-100 text-gray-600 text-xs">
+                                    <AvatarFallback className="bg-gray-100 text-gray-600 text-[10px]">
                                         {character.name.slice(0, 2)}
                                     </AvatarFallback>
                                 </Avatar>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-text-primary truncate">
-                                        {character.name}
-                                    </p>
-                                    <p className="text-xs text-gray-400 truncate">
-                                        {character.description}
-                                    </p>
-                                </div>
                             </div>
-                        );
-                    })}
-                </div>
+                            <div className={`flex flex-col items-start justify-center min-w-[150px] transition-all duration-300 ease-in-out ${isCollapsed ? "opacity-0 ml-2" : "opacity-100 ml-3"}`}>
+                                <span className={`font-medium text-text-primary truncate w-full text-left transition-all duration-300 ease-in-out ${isCollapsed ? 'text-[13.5px]' : 'text-sm'}`}>
+                                    {character.name}
+                                </span>
+                                <span className={`text-gray-400 truncate w-full text-left transition-all duration-300 ease-in-out ${isCollapsed ? 'text-[11.5px] mt-0.5' : 'text-xs mt-1'}`}>
+                                    {character.description}
+                                </span>
+                            </div>
+                        </button>
+                    );
+                })}
             </nav>
 
-            <section className="flex-none p-1 mt-auto border-t border-divider relative" aria-label="账户菜单">
+            {/* 用户菜单区 */}
+            <section className="flex-none py-1.5 px-2 mt-auto border-t border-divider relative" aria-label="账户菜单">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <div
-                            className="flex items-center gap-3 p-1 rounded-xl hover:bg-sidebar-hover cursor-pointer transition-colors"
-                        >
-                            <Avatar className="h-10 w-10 rounded-lg overflow-hidden shrink-0">
-                                <AvatarImage src={user?.avatar_url || "/default-avatar.svg"} alt={user?.username || "User"} />
-                                <AvatarFallback className="bg-gray-100 text-gray-600 text-xs">
-                                    {user?.username?.slice(0, 2) || "GU"}
-                                </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-text-primary truncate">
-                                    {user?.username || "Guest"}
-                                </p>
+                        <button className={`flex items-center w-full px-1 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-all duration-300 ease-in-out overflow-hidden outline-none relative ${isCollapsed ? 'h-10' : 'h-[52px]'}`}>
+                            <div className={`flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-8' : 'w-10'}`}>
+                                <Avatar className={`rounded-lg overflow-hidden shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'h-8 w-8' : 'h-10 w-10'}`}>
+                                    <AvatarImage src={user?.avatar_url || "/default-avatar.svg"} alt={user?.username || "User"} />
+                                    <AvatarFallback className="bg-gray-100 text-gray-600 text-[10px]">
+                                        {user?.username?.slice(0, 2) || "GU"}
+                                    </AvatarFallback>
+                                </Avatar>
                             </div>
-                        </div>
+                            <div className={`flex flex-col items-start min-w-[150px] justify-center transition-all duration-300 ease-in-out ${isCollapsed ? "opacity-0 ml-2" : "opacity-100 ml-3"}`}>
+                                <span className={`font-medium text-text-primary truncate w-full text-left transition-all duration-300 ease-in-out ${isCollapsed ? 'text-[13.5px]' : 'text-sm'}`}>
+                                    {user?.username || "Guest"}
+                                </span>
+                            </div>
+                        </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
-                        side="top"
-                        align="center"
+                        side={isCollapsed ? "right" : "top"}
+                        align={isCollapsed ? "end" : "center"}
                         className="w-[244px] p-1.5 rounded-xl shadow-xl"
                         sideOffset={10}
                     >
-                        <DropdownMenuItem
-                            onClick={() => {
-                                window.location.href = "/profile";
-                            }}
-                            className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
-                        >
-                            <Image src="/me.svg" alt="Profile" width={20} height={20} />
-                            <span className="text-sm font-medium text-gray-700">个人资料</span>
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem
-                            onClick={() => setIsSettingsOpen(true)}
-                            className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
-                        >
-                            <Image src="/setting.svg" alt="Settings" width={20} height={20} />
-                            <span className="text-sm font-medium text-gray-700">设置</span>
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem
-                            onClick={() => {
-                                window.location.href = "/favorites";
-                            }}
-                            className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
-                        >
-                            <Image src="/mark.svg" alt="Favorites" width={20} height={20} />
-                            <span className="text-sm font-medium text-gray-700">收藏夹</span>
-                        </DropdownMenuItem>
-
-                        <DropdownMenuSeparator className="bg-gray-100 h-px mx-2 my-1" />
-
-                        <DropdownMenuItem
-                            onClick={() => {
-                                logout();
-                                window.location.href = "/login";
-                            }}
-                            className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
-                        >
-                            <Image src="/out.svg" alt="Logout" width={20} height={20} />
-                            <span className="text-sm font-medium text-gray-700">退出登录</span>
-                        </DropdownMenuItem>
+                        {userMenuItems}
                     </DropdownMenuContent>
                 </DropdownMenu>
 
@@ -212,6 +225,6 @@ export default function Sidebar({
                     onOpenChange={setIsSettingsOpen}
                 />
             </section>
-        </aside>
+        </div>
     );
 }
