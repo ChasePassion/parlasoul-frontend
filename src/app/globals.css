@@ -24,7 +24,7 @@
   --sidebar-selected: #d0d0d0;
 
   /* Workspace colors */
-  --workspace-bg: #fafafa;
+  --workspace-bg: #ffffff;
 
   /* Chat colors */
   --divider: #d5d5d5;
@@ -452,7 +452,7 @@ strong,
 
 .bubble-assistant {
   position: relative;
-  background-color: #eeeeee;
+  background-color: #f8f8f8;
   color: var(--text-primary);
   border-radius: 10px;
   filter: var(--chat-bubble-shadow);
@@ -467,7 +467,7 @@ strong,
   height: 0;
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
-  border-right: 6px solid #eeeeee;
+  border-right: 6px solid #f8f8f8;
 }
 
 /* Translation bubble under user message */
