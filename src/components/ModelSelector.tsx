@@ -1,29 +1,21 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useDeferredValue, useRef } from "react";
 import Image from "next/image";
 import { Check, Loader2, AlertCircle, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { getLLMModelCatalog, searchLLMModels } from "@/lib/api";
+import { getLLMModelCatalog } from "@/lib/api";
 import { getErrorMessage } from "@/lib/error-map";
 import {
   groupModelsByProvider,
+  getProviderLabel,
+  searchModelsByQuery,
   type ModelGroup,
-  type ModelDisplayInfo,
 } from "@/lib/llm-adapter";
 import type { LLMProvider, CharacterLLMRoute } from "@/lib/api-service";
 
 function getProviderIconPath(provider: LLMProvider): string {
   return `/llm-provider/${provider}-favicon.ico`;
-}
-
-function getProviderLabel(provider: LLMProvider): string {
-  const labels: Record<LLMProvider, string> = {
-    deepseek: "DeepSeek",
-    openrouter: "OpenRouter",
-    xiaomi: "Xiaomi MiMo",
-  };
-  return labels[provider] || provider;
 }
 
 interface ModelSelectorProps {
@@ -49,14 +41,12 @@ export default function ModelSelector({
   const [defaultRoute, setDefaultRoute] = useState<CharacterLLMRoute | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<ModelDisplayInfo[] | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
   const [collapsedProviders, setCollapsedProviders] = useState<Set<LLMProvider>>(new Set());
-  const searchRequestIdRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
-  const loadModels = useCallback(async () => {
+  const loadModels = async () => {
     setFetchState("loading");
     setError(null);
 
@@ -65,19 +55,19 @@ export default function ModelSelector({
       const groups = groupModelsByProvider(response.items);
       setModelGroups(groups);
       setDefaultRoute(response.default_route);
-      setCollapsedProviders(new Set(groups.map((g) => g.provider)));
+      setCollapsedProviders(new Set(groups.map((group) => group.provider)));
       setFetchState("success");
     } catch (err) {
       setError(getErrorMessage(err));
       setFetchState("error");
     }
-  }, []);
+  };
 
   useEffect(() => {
     if (!disabled) {
-      loadModels();
+      void loadModels();
     }
-  }, [loadModels, disabled]);
+  }, [disabled]);
 
   useEffect(() => {
     if (isOpen && searchInputRef.current) {
@@ -89,10 +79,7 @@ export default function ModelSelector({
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
-        searchRequestIdRef.current += 1;
         setSearchQuery("");
-        setSearchResults(null);
-        setIsSearching(false);
       }
     };
 
@@ -117,56 +104,24 @@ export default function ModelSelector({
     });
   };
 
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-    const normalizedQuery = query.trim();
-    const requestId = ++searchRequestIdRef.current;
-
-    if (!normalizedQuery) {
-      setSearchResults(null);
-      setIsSearching(false);
-      return;
-    }
-
-    setIsSearching(true);
-    try {
-      const response = await searchLLMModels(normalizedQuery);
-      if (requestId !== searchRequestIdRef.current) {
-        return;
-      }
-      setSearchResults(response.items.map((item) => ({
-        id: `${item.provider}:${item.model}`,
-        provider: item.provider,
-        model: item.model,
-        label: item.label,
-        description: item.description || "",
-        isDefault: item.is_default,
-      })));
-    } catch {
-      if (requestId === searchRequestIdRef.current) {
-        setSearchResults([]);
-      }
-    } finally {
-      if (requestId === searchRequestIdRef.current) {
-        setIsSearching(false);
-      }
-    }
-  };
+  const hasSearchQuery = searchQuery.trim().length > 0;
+  const activeSearchQuery = deferredSearchQuery.trim();
+  const searchResults =
+    hasSearchQuery && activeSearchQuery
+      ? searchModelsByQuery(modelGroups, activeSearchQuery)
+      : null;
+  const isSearching = hasSearchQuery && searchQuery !== deferredSearchQuery;
 
   const handleSelectModel = (provider: LLMProvider, model: string) => {
-    searchRequestIdRef.current += 1;
     onSelectModel(provider, model);
     setIsOpen(false);
     setSearchQuery("");
-    setSearchResults(null);
   };
 
   const handleSelectSystemDefault = () => {
-    searchRequestIdRef.current += 1;
     onSelectSystemDefault();
     setIsOpen(false);
     setSearchQuery("");
-    setSearchResults(null);
   };
 
   const getCurrentSelection = (): { label: string } | null => {
@@ -273,19 +228,16 @@ export default function ModelSelector({
               <Input
                 ref={searchInputRef}
                 type="text"
-                placeholder="搜索模型..."
+                placeholder="搜索模型名、展示名、供应商..."
                 value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                className="pl-9 pr-9 h-10 bg-gray-50 border-gray-200 focus-visible:ring-0 focus-visible:!border-gray-200"
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-9 h-10 bg-gray-50 border-gray-200 focus-visible:ring-0 focus-visible:!border-gray-200 [&::selection]:bg-blue-500 [&::selection]:text-white"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => {
-                    searchRequestIdRef.current += 1;
                     setSearchQuery("");
-                    setSearchResults(null);
-                    setIsSearching(false);
                   }}
                   className="absolute right-3 top-1/2 -translate-y-1/2"
                 >
@@ -299,10 +251,12 @@ export default function ModelSelector({
           </div>
 
           <div className="max-h-64 overflow-y-auto">
-            {searchQuery && searchResults !== null ? (
+            {hasSearchQuery && searchResults !== null ? (
               searchResults.length > 0 ? (
                 <div className="p-2">
-                  <p className="px-2 py-1 text-xs font-medium text-gray-500">搜索结果</p>
+                  <p className="px-2 py-1 text-xs font-medium text-gray-500">
+                    搜索结果
+                  </p>
                   {searchResults.map((model) => {
                     const isSelected = selectedProvider === model.provider && selectedModel === model.model;
                     return (
@@ -321,8 +275,13 @@ export default function ModelSelector({
                             className="object-contain"
                           />
                         </div>
-                        <div className="flex-1 text-left">
-                          <p className="text-sm font-medium text-gray-900">{model.label}</p>
+                        <div className="flex-1 min-w-0 text-left">
+                          <p className="truncate text-sm font-medium text-gray-900">
+                            {model.label}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-gray-500">
+                            {getProviderLabel(model.provider)} · {model.model}
+                          </p>
                         </div>
                         {isSelected && <Check className="h-4 w-4 text-blue-600" />}
                       </button>
@@ -330,7 +289,9 @@ export default function ModelSelector({
                   })}
                 </div>
               ) : (
-                <div className="p-4 text-center text-sm text-gray-500">未找到匹配的模型</div>
+                <div className="p-4 text-center text-sm text-gray-500">
+                  未找到匹配的模型
+                </div>
               )
             ) : (
               <div className="p-2">
@@ -411,8 +372,13 @@ export default function ModelSelector({
                                   isSelected ? "bg-blue-50" : "hover:bg-gray-50"
                                 }`}
                               >
-                                <div className="flex-1 text-left">
-                                  <p className="text-sm font-medium text-gray-900">{model.label}</p>
+                                <div className="flex-1 min-w-0 text-left">
+                                  <p className="truncate text-sm font-medium text-gray-900">
+                                    {model.label}
+                                  </p>
+                                  <p className="mt-0.5 truncate text-xs text-gray-500">
+                                    {model.model}
+                                  </p>
                                 </div>
                                 {isSelected && <Check className="h-4 w-4 text-blue-600" />}
                               </button>
