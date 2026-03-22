@@ -476,7 +476,7 @@ export default function ChatMessage({
                                 </div>
                             )}
 
-                            {showNav && (
+                            {(!isUser && (message.isGreeting || showNav)) && (
                                 <button
                                     type="button"
                                     className={actionButtonClass}

@@ -111,6 +111,7 @@ export default function AppLayout({
                             selectedCharacterId={selectedCharacterId}
                             onSelectCharacter={handleSelectCharacter}
                             onToggle={toggleSidebar}
+                            isCollapsed={!isSidebarOpen}
                         />
                     }
                     isSidebarOpen={isSidebarOpen}

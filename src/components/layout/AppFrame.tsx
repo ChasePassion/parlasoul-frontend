@@ -34,7 +34,7 @@ export default function AppFrame({
                         className={`
                             shrink-0 h-full overflow-hidden transition-all duration-300 ease-in-out
                             ${isOverlay ? "fixed left-0 top-0 z-50" : "relative"}
-                            ${isSidebarOpen ? "w-64" : "w-0"}
+                            ${isSidebarOpen ? "w-64" : "w-0 min-[800px]:w-14"}
                         `}
                     >
                         {sidebar}
@@ -47,7 +47,7 @@ export default function AppFrame({
                         {!isSidebarOpen && (
                             <button
                                 onClick={onToggleSidebar}
-                                className="absolute left-4 top-4 z-30 rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                                className="absolute left-4 top-4 z-30 rounded-lg p-2 text-gray-500 hover:bg-gray-100 min-[800px]:hidden"
                                 aria-label="Open Sidebar"
                             >
                                 <SidebarToggleIcon className="h-5 w-5" />
