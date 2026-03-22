@@ -36,7 +36,7 @@ export default function CharacterCard({
     <Card
       onClick={() => onClick(character)}
       className={cn(
-        "group p-0 bg-transparent flex-row gap-0 relative block h-[130px] rounded-[20px] overflow-hidden no-underline shadow-(--cc-card-shadow) border border-white/10 transition-all duration-500 cursor-pointer hover:shadow-(--cc-card-shadow-hover)"
+        "group p-0 bg-transparent flex-row gap-0 relative block h-[130px] rounded-[20px] overflow-hidden no-underline shadow-none border border-white/10 transition-all duration-500 cursor-pointer hover:shadow-none"
       )}
     >
       <div

@@ -4,6 +4,7 @@ import type {
     LLMProvider,
     VoiceSelectableItem,
 } from "./api-service";
+import { resolveCharacterAvatarSrc } from "./character-avatar";
 
 interface CharacterLike {
     id: string;
@@ -39,7 +40,7 @@ export function mapCharacterToSidebar(
         id: source.id,
         name: source.name,
         description: source.description,
-        avatar: source.avatar_file_name || "/default-avatar.svg",
+        avatar: resolveCharacterAvatarSrc(source.avatar_file_name),
         system_prompt: source.system_prompt,
         greeting_message: source.greeting_message,
         tags: source.tags,

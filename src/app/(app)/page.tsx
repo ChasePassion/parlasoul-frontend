@@ -1,68 +1,174 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import CharacterCard from "@/components/CharacterCard";
 import { useAuth } from "@/lib/auth-context";
 import WorkspaceFrame from "@/components/layout/WorkspaceFrame";
 import { useSidebar } from "./layout";
-import { Character } from "@/components/Sidebar";
 import { getOrCreateChatId } from "@/lib/chat-helpers";
+import TopConsole, { ViewMode } from "@/components/TopConsole";
+import HeroCarousel from "@/components/HeroCarousel";
+import HorizontalSection from "@/components/HorizontalSection";
+import ComingSoonPage from "@/components/ComingSoonPage";
+import {
+  fetchAllMarketCharacters,
+  getDiscoverConfig,
+  selectHeroCharacters,
+  filterCharactersByName,
+} from "@/lib/discover-data";
+import type { CharacterResponse } from "@/lib/api-service";
+import type { Character } from "@/components/Sidebar";
+import { resolveCharacterAvatarSrc } from "@/lib/character-avatar";
 
 export default function DiscoverPage() {
-    const { user } = useAuth();
-    const router = useRouter();
-    const {
-        setSelectedCharacterId,
-        refreshSidebarCharacters,
-        sidebarCharacters,
-    } = useSidebar();
+  const { user } = useAuth();
+  const router = useRouter();
+  const { setSelectedCharacterId, refreshSidebarCharacters, sidebarCharacters } =
+    useSidebar();
 
-    // Clear selected character when on discover page
-    useEffect(() => {
-        setSelectedCharacterId(null);
-    }, [setSelectedCharacterId]);
+  const [mode, setMode] = useState<ViewMode>("character");
+  const [discoverCharacters, setDiscoverCharacters] = useState<CharacterResponse[]>([]);
+  const [heroCharacterIds, setHeroCharacterIds] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
-    const characters = useMemo(
-        () =>
-            sidebarCharacters.map((character) => ({
-                ...character,
-                creator_username:
-                    character.creator_id === user?.id ? user?.username : "Creator",
-            })),
-        [sidebarCharacters, user?.id, user?.username]
-    );
+  // 初始化获取全量角色和 Discover 配置
+  useEffect(() => {
+    async function initData() {
+      try {
+        setIsLoading(true);
+        const [config, characters] = await Promise.all([
+          getDiscoverConfig().catch(() => ({ hero_character_ids: [] })),
+          fetchAllMarketCharacters().catch(() => []),
+        ]);
 
-    useEffect(() => {
-        if (user && sidebarCharacters.length === 0) {
-            refreshSidebarCharacters();
-        }
-    }, [user, sidebarCharacters.length, refreshSidebarCharacters]);
+        setHeroCharacterIds(config.hero_character_ids || []);
+        setDiscoverCharacters(characters);
+      } catch (err) {
+        console.error("Failed to load discover data:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
 
-    const handleSelectCharacter = async (character: Character) => {
-        try {
-            const chatId = await getOrCreateChatId(character.id);
-            router.push(`/chat/${chatId}`);
-        } catch (err) {
-            console.error("Failed to open chat:", err);
-        }
-    };
+    if (user) {
+      initData();
+    }
+  }, [user]);
 
+  // 同步侧边栏的字符
+  useEffect(() => {
+    if (user && sidebarCharacters.length === 0) {
+      refreshSidebarCharacters();
+    }
+  }, [user, sidebarCharacters.length, refreshSidebarCharacters]);
+
+  // 当处于 Discover 页时清除选中的角色
+  useEffect(() => {
+    setSelectedCharacterId(null);
+  }, [setSelectedCharacterId]);
+
+  // 计算 Search Results (最多取8个)
+  const searchResults = useMemo(() => {
+    return filterCharactersByName(discoverCharacters, searchQuery).slice(0, 8);
+  }, [discoverCharacters, searchQuery]);
+
+  // 计算 Hero 角色
+  const heroCharacters = useMemo(() => {
+    return selectHeroCharacters(discoverCharacters, heroCharacterIds);
+  }, [discoverCharacters, heroCharacterIds]);
+
+  // 处理角色选择
+  const handleSelectCharacter = async (character: CharacterResponse | Character) => {
+    try {
+      const chatId = await getOrCreateChatId(character.id);
+      router.push(`/chat/${chatId}`);
+    } catch (err) {
+      console.error("Failed to open chat:", err);
+    }
+  };
+
+  // 转换全量数据以匹配 Character 接口 (用于 HorizontalSection 的 cards)
+  const mappedCharacters = useMemo<Character[]>(() => {
+    return discoverCharacters.map((character) => ({
+      id: character.id,
+      name: character.name,
+      description: character.description,
+      avatar: resolveCharacterAvatarSrc(character.avatar_file_name),
+      system_prompt: character.system_prompt,
+      greeting_message: character.greeting_message,
+      tags: character.tags,
+      visibility: character.visibility,
+      creator_id: character.creator_id,
+      creator_username: character.creator_id === user?.id ? user?.username : "Creator",
+      voice_provider: character.voice_provider,
+      voice_model: character.voice_model,
+      voice_provider_voice_id: character.voice_provider_voice_id,
+      voice_source_type: character.voice_source_type,
+      voice: character.voice ?? undefined,
+      llm_provider: character.llm_provider,
+      llm_model: character.llm_model,
+      uses_system_default_llm: character.uses_system_default_llm,
+      effective_llm_provider: character.effective_llm_provider,
+      effective_llm_model: character.effective_llm_model,
+    }));
+  }, [discoverCharacters, user?.id, user?.username]);
+
+  // 加载状态
+  if (isLoading) {
     return (
-        <WorkspaceFrame>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
-                <div className="max-w-7xl mx-auto pl-8">
-                    <div className="card-grid mt-8">
-                        {characters.map((character) => (
-                            <CharacterCard
-                                key={character.id}
-                                character={character}
-                                onClick={handleSelectCharacter}
-                            />
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </WorkspaceFrame>
+      <WorkspaceFrame>
+        <div className="flex h-full items-center justify-center bg-white">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </WorkspaceFrame>
     );
+  }
+
+  return (
+    <WorkspaceFrame>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar bg-white">
+        <div className="max-w-[1400px] mx-auto px-10 py-6 min-h-full flex flex-col">
+          {/* 顶部控制台 */}
+          <TopConsole
+            mode={mode}
+            onModeChange={(newMode) => {
+              setMode(newMode);
+              if (newMode === "story") {
+                setSearchQuery("");
+              }
+            }}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            searchResults={searchResults}
+            onSelectSearchResult={handleSelectCharacter}
+          />
+
+          {/* 主内容区 */}
+          <div className="flex-1 pb-10">
+            {mode === "story" ? (
+              <ComingSoonPage />
+            ) : (
+              <div className="flex flex-col animate-in fade-in duration-500">
+                {/* 巨幕轮播 */}
+                <HeroCarousel
+                  characters={heroCharacters}
+                  onSelectCharacter={handleSelectCharacter}
+                />
+
+                {/* 全部角色横滑区 */}
+                {mappedCharacters.length > 0 && (
+                  <HorizontalSection
+                    title="全部角色"
+                    characters={mappedCharacters}
+                    onSelectCharacter={handleSelectCharacter}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </WorkspaceFrame>
+  );
 }
