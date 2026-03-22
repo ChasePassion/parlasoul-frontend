@@ -19,12 +19,12 @@
   --shadow-color-2: #0000009e;
 
   /* Sidebar colors */
-  --sidebar-bg: #fafafa;
-  --sidebar-hover: #eaeaea;
-  --sidebar-selected: #dddddd;
+  --sidebar-bg: #f2f2f2;
+  --sidebar-hover: #e0e0e0;
+  --sidebar-selected: #d0d0d0;
 
   /* Workspace colors */
-  --workspace-bg: #f2f2f2;
+  --workspace-bg: #fafafa;
 
   /* Chat colors */
   --divider: #d5d5d5;
@@ -452,7 +452,7 @@ strong,
 
 .bubble-assistant {
   position: relative;
-  background-color: #ffffff;
+  background-color: #eeeeee;
   color: var(--text-primary);
   border-radius: 10px;
   filter: var(--chat-bubble-shadow);
@@ -467,7 +467,7 @@ strong,
   height: 0;
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
-  border-right: 6px solid #ffffff;
+  border-right: 6px solid #eeeeee;
 }
 
 /* Translation bubble under user message */
@@ -732,7 +732,7 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 /* Character Card Grid */
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 340px);
+  grid-template-columns: repeat(auto-fill, 300px);
   gap: 24px;
   width: 100%;
   max-width: 1200px;
