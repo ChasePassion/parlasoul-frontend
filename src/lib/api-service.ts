@@ -420,6 +420,7 @@ interface TurnStreamMetaEvent {
 
 interface TurnStreamReplySuggestionsEvent {
   type: "reply_suggestions";
+  assistant_candidate_id: string;
   suggestions: ReplySuggestion[];
 }
 
@@ -511,6 +512,7 @@ interface ChatStreamDoneEvent {
 
 interface ChatStreamReplySuggestionsEvent {
   type: "reply_suggestions";
+  assistant_candidate_id: string;
   suggestions: ReplySuggestion[];
 }
 
@@ -823,7 +825,10 @@ export class ApiService {
         assistantTurnId?: string,
         assistantCandidateId?: string,
       ) => void;
-      onReplySuggestions?: (suggestions: ReplySuggestion[]) => void;
+      onReplySuggestions?: (data: {
+        assistant_candidate_id: string;
+        suggestions: ReplySuggestion[];
+      }) => void;
       onReplyCardStarted?: (data: { assistant_candidate_id: string }) => void;
       onReplyCard?: (data: {
         assistant_candidate_id: string;
@@ -915,7 +920,10 @@ export class ApiService {
                 data.assistant_candidate_id,
               );
             } else if (data.type === "reply_suggestions") {
-              handlers.onReplySuggestions?.(data.suggestions);
+              handlers.onReplySuggestions?.({
+                assistant_candidate_id: data.assistant_candidate_id,
+                suggestions: data.suggestions,
+              });
             } else if (data.type === "reply_card_started") {
               handlers.onReplyCardStarted?.({
                 assistant_candidate_id: data.assistant_candidate_id,
@@ -1000,7 +1008,10 @@ export class ApiService {
         assistantTurnId?: string,
         assistantCandidateId?: string,
       ) => void;
-      onReplySuggestions?: (suggestions: ReplySuggestion[]) => void;
+      onReplySuggestions?: (data: {
+        assistant_candidate_id: string;
+        suggestions: ReplySuggestion[];
+      }) => void;
       onReplyCardStarted?: (data: { assistant_candidate_id: string }) => void;
       onReplyCard?: (data: {
         assistant_candidate_id: string;
@@ -1098,7 +1109,10 @@ export class ApiService {
                 data.assistant_candidate_id,
               );
             } else if (data.type === "reply_suggestions") {
-              handlers.onReplySuggestions?.(data.suggestions);
+              handlers.onReplySuggestions?.({
+                assistant_candidate_id: data.assistant_candidate_id,
+                suggestions: data.suggestions,
+              });
             } else if (data.type === "reply_card_started") {
               handlers.onReplyCardStarted?.({
                 assistant_candidate_id: data.assistant_candidate_id,
@@ -1184,7 +1198,10 @@ export class ApiService {
         assistantTurnId?: string,
         assistantCandidateId?: string,
       ) => void;
-      onReplySuggestions?: (suggestions: ReplySuggestion[]) => void;
+      onReplySuggestions?: (data: {
+        assistant_candidate_id: string;
+        suggestions: ReplySuggestion[];
+      }) => void;
       onReplyCardStarted?: (data: {
         assistant_candidate_id: string;
       }) => void;
@@ -1287,7 +1304,10 @@ export class ApiService {
                 data.assistant_candidate_id,
               );
             } else if (data.type === "reply_suggestions") {
-              handlers.onReplySuggestions?.(data.suggestions);
+              handlers.onReplySuggestions?.({
+                assistant_candidate_id: data.assistant_candidate_id,
+                suggestions: data.suggestions,
+              });
             } else if (data.type === "reply_card_started") {
               handlers.onReplyCardStarted?.({
                 assistant_candidate_id: data.assistant_candidate_id,

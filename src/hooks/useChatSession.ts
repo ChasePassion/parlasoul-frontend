@@ -52,6 +52,8 @@ interface UseChatSessionResult {
   isLoadingOlder: boolean;
 }
 
+type ReplySuggestionsByCandidateId = Record<string, ReplySuggestion[]>;
+
 const deriveReplyCardStatus = (message: {
   replyCard?: Message["replyCard"];
   replyCardStatus?: MessageActionStatus;
@@ -66,6 +68,19 @@ const deriveReplyCardErrorCode = (error: unknown): string => {
     return "unauthorized";
   }
   return "reply_card_request_failed";
+};
+
+const deriveCurrentReplySuggestions = (
+  messages: Message[],
+): ReplySuggestion[] | null => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "assistant") {
+      continue;
+    }
+    return message.replySuggestions?.length ? message.replySuggestions : null;
+  }
+  return null;
 };
 
 const mapTurnsPageMessage = (turn: TurnsPageResponse["turns"][number]): Message => {
@@ -105,9 +120,8 @@ export function useChatSession({
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentReplySuggestions, setCurrentReplySuggestions] = useState<
-    ReplySuggestion[] | null
-  >(null);
+  const [replySuggestionsByCandidateId, setReplySuggestionsByCandidateId] =
+    useState<ReplySuggestionsByCandidateId>({});
 
   // Pagination state for loading older messages
   const [hasOlderMessages, setHasOlderMessages] = useState(true);
@@ -115,29 +129,100 @@ export function useChatSession({
   const beforeTurnIdRef = useRef<string | null>(null);
 
   const streamAbortRef = useRef<AbortController | null>(null);
+  const tailAbortControllersRef = useRef<Set<AbortController>>(new Set());
+  const requestRunIdRef = useRef(0);
   const selectCandidateInFlightRef = useRef(false);
   const replyCardRetryInFlightRef = useRef<Set<string>>(new Set());
   const characterIdRef = useRef<string | null>(null);
+  const replySuggestionsByCandidateIdRef = useRef<ReplySuggestionsByCandidateId>({});
   const autoReadAloudRef = useRef(autoReadAloudEnabled);
   useEffect(() => {
     autoReadAloudRef.current = autoReadAloudEnabled;
   }, [autoReadAloudEnabled]);
 
-  const clearActiveStream = useCallback((controller?: AbortController) => {
-    if (!controller || streamAbortRef.current === controller) {
+  useEffect(() => {
+    replySuggestionsByCandidateIdRef.current = replySuggestionsByCandidateId;
+  }, [replySuggestionsByCandidateId]);
+
+  const clearTrackedController = useCallback((controller?: AbortController) => {
+    if (!controller) {
+      tailAbortControllersRef.current.clear();
+      streamAbortRef.current = null;
+      return;
+    }
+    if (streamAbortRef.current === controller) {
       streamAbortRef.current = null;
     }
+    tailAbortControllersRef.current.delete(controller);
   }, []);
 
   const beginStream = useCallback(() => {
     streamAbortRef.current?.abort();
     const controller = new AbortController();
     streamAbortRef.current = controller;
-    return controller;
+    requestRunIdRef.current += 1;
+    return { controller, requestRunId: requestRunIdRef.current };
+  }, []);
+
+  const detachControllerToTail = useCallback((controller: AbortController) => {
+    if (streamAbortRef.current === controller) {
+      streamAbortRef.current = null;
+    }
+    tailAbortControllersRef.current.add(controller);
+  }, []);
+
+  const abortAllTrackedControllers = useCallback(() => {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    tailAbortControllersRef.current.forEach((controller) => controller.abort());
+    tailAbortControllersRef.current.clear();
   }, []);
 
   const clearReplySuggestions = useCallback(() => {
-    setCurrentReplySuggestions(null);
+    replySuggestionsByCandidateIdRef.current = {};
+    setReplySuggestionsByCandidateId({});
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.replySuggestions
+          ? {
+              ...message,
+              replySuggestions: null,
+            }
+          : message,
+      ),
+    );
+  }, []);
+
+  const applyReplySuggestions = useCallback(
+    (assistantCandidateId: string, suggestions: ReplySuggestion[]) => {
+      setReplySuggestionsByCandidateId((prev) => ({
+        ...prev,
+        [assistantCandidateId]: suggestions,
+      }));
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.assistantCandidateId === assistantCandidateId
+            ? {
+                ...message,
+                replySuggestions: suggestions,
+              }
+            : message,
+        ),
+      );
+    },
+    [],
+  );
+
+  const currentReplySuggestions = deriveCurrentReplySuggestions(messages);
+
+  const shouldReloadForRequest = useCallback(
+    (requestRunId: number) => requestRunId === requestRunIdRef.current,
+    [],
+  );
+
+  const abortActiveTextStream = useCallback(() => {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
   }, []);
 
   const applyTurnsPage = useCallback(
@@ -161,6 +246,7 @@ export function useChatSession({
 
       setMessages((prev) => {
         const previousReplyCardErrors = new Map<string, string | null>();
+        const suggestionsByCandidateId = replySuggestionsByCandidateIdRef.current;
         prev.forEach((message) => {
           if (
             message.assistantCandidateId &&
@@ -175,23 +261,35 @@ export function useChatSession({
         });
 
         return mappedMessages.map((message) => {
+          const candidateSuggestions =
+            message.assistantCandidateId &&
+            suggestionsByCandidateId[message.assistantCandidateId]
+              ? suggestionsByCandidateId[message.assistantCandidateId]
+              : null;
+          const withSuggestions = candidateSuggestions
+            ? {
+                ...message,
+                replySuggestions: candidateSuggestions,
+              }
+            : message;
+
           if (
-            message.role !== "assistant" ||
-            message.replyCard ||
-            !message.assistantCandidateId
+            withSuggestions.role !== "assistant" ||
+            withSuggestions.replyCard ||
+            !withSuggestions.assistantCandidateId
           ) {
-            return message;
+            return withSuggestions;
           }
 
-          if (!previousReplyCardErrors.has(message.assistantCandidateId)) {
-            return message;
+          if (!previousReplyCardErrors.has(withSuggestions.assistantCandidateId)) {
+            return withSuggestions;
           }
 
           return {
-            ...message,
+            ...withSuggestions,
             replyCardStatus: "error",
             replyCardErrorCode:
-              previousReplyCardErrors.get(message.assistantCandidateId) ?? null,
+              previousReplyCardErrors.get(withSuggestions.assistantCandidateId) ?? null,
           };
         });
       });
@@ -254,14 +352,13 @@ export function useChatSession({
     async function loadChat() {
       if (!chatId || !isAuthed) return;
 
-      streamAbortRef.current?.abort();
-      streamAbortRef.current = null;
+      abortAllTrackedControllers();
       setIsLoading(true);
       setIsStreaming(false);
       setError(null);
       setCharacter(null);
       setMessages([]);
-      setCurrentReplySuggestions(null);
+      clearReplySuggestions();
 
       try {
         beforeTurnIdRef.current = null;
@@ -278,20 +375,27 @@ export function useChatSession({
 
     loadChat();
 
-    return () => {
-      streamAbortRef.current?.abort();
-      streamAbortRef.current = null;
-      setSelectedCharacterId(null);
-    };
-  }, [chatId, isAuthed, reloadChatTurns, setSelectedCharacterId]);
+      return () => {
+      abortAllTrackedControllers();
+        setSelectedCharacterId(null);
+      };
+  }, [
+    abortAllTrackedControllers,
+    chatId,
+    clearReplySuggestions,
+    isAuthed,
+    reloadChatTurns,
+    setSelectedCharacterId,
+  ]);
 
   const handleSelectCandidate = useCallback(
     async (turnId: string, candidateNo: number) => {
       if (isStreaming || selectCandidateInFlightRef.current) return;
       selectCandidateInFlightRef.current = true;
       try {
+        abortAllTrackedControllers();
         setError(null);
-        setCurrentReplySuggestions(null);
+        clearReplySuggestions();
         const result = await selectTurnCandidateWithSnapshot(
           turnId,
           { candidate_no: candidateNo },
@@ -305,7 +409,7 @@ export function useChatSession({
         selectCandidateInFlightRef.current = false;
       }
     },
-    [applyTurnsPage, isStreaming],
+    [abortAllTrackedControllers, applyTurnsPage, clearReplySuggestions, isStreaming],
   );
 
   const handleRetryReplyCard = useCallback(
@@ -389,9 +493,9 @@ export function useChatSession({
           };
         }),
       );
-      setCurrentReplySuggestions(null);
+      clearReplySuggestions();
 
-      const controller = beginStream();
+      const { controller, requestRunId } = beginStream();
       setIsStreaming(true);
 
       try {
@@ -444,15 +548,18 @@ export function useChatSession({
                       messageStreamStatus: "done",
                     }
                   : message,
-              ),
-            );
+                ),
+              );
             setIsStreaming(false);
-            clearActiveStream(controller);
+            detachControllerToTail(controller);
           },
-          onReplySuggestions: (suggestions) => {
+          onReplySuggestions: (data) => {
             if (controller.signal.aborted) return;
-            if (suggestions && suggestions.length > 0) {
-              setCurrentReplySuggestions(suggestions);
+            if (data.suggestions && data.suggestions.length > 0) {
+              applyReplySuggestions(
+                data.assistant_candidate_id,
+                data.suggestions,
+              );
             }
           },
           onReplyCardStarted: (data) => {
@@ -544,26 +651,31 @@ export function useChatSession({
                     }
                   : message,
               ),
-            );
+              );
             setIsStreaming(false);
-            clearActiveStream(controller);
+            clearTrackedController(controller);
           },
         });
         if (
           !controller.signal.aborted &&
-          (shouldReloadAfterStream || hasStreamError)
+          (shouldReloadAfterStream || hasStreamError) &&
+          shouldReloadForRequest(requestRunId)
         ) {
           await reloadChatTurns();
         }
       } finally {
-        clearActiveStream(controller);
+        clearTrackedController(controller);
       }
     },
     [
+      applyReplySuggestions,
       beginStream,
-      clearActiveStream,
+      clearReplySuggestions,
+      clearTrackedController,
+      detachControllerToTail,
       isStreaming,
       reloadChatTurns,
+      shouldReloadForRequest,
       ttsPlaybackManager,
     ],
   );
@@ -612,9 +724,9 @@ export function useChatSession({
         });
         return next;
       });
-      setCurrentReplySuggestions(null);
+      clearReplySuggestions();
 
-      const controller = beginStream();
+      const { controller, requestRunId } = beginStream();
       setIsStreaming(true);
 
       try {
@@ -704,12 +816,15 @@ export function useChatSession({
                 ),
               );
               setIsStreaming(false);
-              clearActiveStream(controller);
+              detachControllerToTail(controller);
             },
-            onReplySuggestions: (suggestions) => {
+            onReplySuggestions: (data) => {
               if (controller.signal.aborted) return;
-              if (suggestions && suggestions.length > 0) {
-                setCurrentReplySuggestions(suggestions);
+              if (data.suggestions && data.suggestions.length > 0) {
+                applyReplySuggestions(
+                  data.assistant_candidate_id,
+                  data.suggestions,
+                );
               }
             },
             onReplyCardStarted: (data) => {
@@ -808,26 +923,31 @@ export function useChatSession({
                 ),
               );
               setIsStreaming(false);
-              clearActiveStream(controller);
+              clearTrackedController(controller);
             },
           },
         );
         if (
           !controller.signal.aborted &&
-          (shouldReloadAfterStream || hasStreamError)
+          (shouldReloadAfterStream || hasStreamError) &&
+          shouldReloadForRequest(requestRunId)
         ) {
           await reloadChatTurns();
         }
       } finally {
-        clearActiveStream(controller);
+        clearTrackedController(controller);
       }
     },
     [
+      applyReplySuggestions,
       beginStream,
-      clearActiveStream,
+      clearReplySuggestions,
+      clearTrackedController,
+      detachControllerToTail,
       isStreaming,
       messages,
       reloadChatTurns,
+      shouldReloadForRequest,
       ttsPlaybackManager,
     ],
   );
@@ -855,7 +975,7 @@ export function useChatSession({
       };
       setMessages((prev) => [...prev, userMessage]);
 
-      setCurrentReplySuggestions(null);
+      clearReplySuggestions();
 
       setMessages((prev) => [
         ...prev,
@@ -870,7 +990,7 @@ export function useChatSession({
         },
       ]);
 
-      const controller = beginStream();
+      const { controller, requestRunId } = beginStream();
       setIsStreaming(true);
 
       try {
@@ -1021,15 +1141,15 @@ export function useChatSession({
                 ),
               );
               setIsStreaming(false);
-              clearActiveStream(controller);
+              detachControllerToTail(controller);
             },
-            onReplySuggestions: (suggestions) => {
+            onReplySuggestions: (data) => {
               if (controller.signal.aborted) return;
-              if (suggestions && suggestions.length > 0) {
-                setCurrentReplySuggestions((prev) => {
-                  const existing = prev ?? [];
-                  return [...existing, ...suggestions];
-                });
+              if (data.suggestions && data.suggestions.length > 0) {
+                applyReplySuggestions(
+                  data.assistant_candidate_id,
+                  data.suggestions,
+                );
               }
             },
             onReplyCardStarted: (data) => {
@@ -1129,8 +1249,10 @@ export function useChatSession({
                 ),
               );
               setIsStreaming(false);
-              clearActiveStream(controller);
-              await reloadChatTurns();
+              clearTrackedController(controller);
+              if (shouldReloadForRequest(requestRunId)) {
+                await reloadChatTurns();
+              }
             },
           },
         );
@@ -1138,22 +1260,27 @@ export function useChatSession({
         if (
           !controller.signal.aborted &&
           shouldReloadAfterStream &&
-          !hasStreamError
+          !hasStreamError &&
+          shouldReloadForRequest(requestRunId)
         ) {
           await reloadChatTurns();
         }
       } finally {
-        clearActiveStream(controller);
+        clearTrackedController(controller);
       }
     },
     [
+      applyReplySuggestions,
       beginStream,
       canSend,
       character,
       chatId,
-      clearActiveStream,
+      clearReplySuggestions,
+      clearTrackedController,
+      detachControllerToTail,
       isStreaming,
       reloadChatTurns,
+      shouldReloadForRequest,
       ttsPlaybackManager,
     ],
   );
@@ -1163,11 +1290,10 @@ export function useChatSession({
   }, [ttsPlaybackManager]);
 
   const interruptStream = useCallback(() => {
-    streamAbortRef.current?.abort();
-    streamAbortRef.current = null;
+    abortActiveTextStream();
     setIsStreaming(false);
     setMessages((prev) => prev.filter((msg) => msg.role === "user" || !msg.isTemp));
-  }, []);
+  }, [abortActiveTextStream]);
 
   return {
     character,
