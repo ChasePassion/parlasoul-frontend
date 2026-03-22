@@ -253,7 +253,7 @@ export default function ProfilePage() {
                                 onClick={() => setIsCreateModalOpen(true)}
                                 title="创建新角色"
                                 description="创造属于你的 AI 伙伴"
-                                className="h-[150px] w-full"
+                                className="h-[130px] w-full"
                             />
                             {characters.map((character) => (
                                 <CharacterCard

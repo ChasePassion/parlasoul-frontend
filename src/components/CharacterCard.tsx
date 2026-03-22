@@ -7,6 +7,7 @@ import { CHARACTER_CARD_VISIBLE_TAGS, normalizeCharacterTag } from "@/lib/charac
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface CharacterCardProps {
   character: Character;
@@ -32,10 +33,10 @@ export default function CharacterCard({
   const hiddenTags = tags.slice(CHARACTER_CARD_VISIBLE_TAGS);
 
   return (
-    <div
+    <Card
       onClick={() => onClick(character)}
       className={cn(
-        "relative block h-[150px] rounded-[20px] overflow-hidden no-underline shadow-(--cc-card-shadow) border border-white/10 transition-all duration-300 cursor-pointer hover:shadow-(--cc-card-shadow-hover)",
+        "p-0 bg-transparent flex-row gap-0 relative block h-[130px] rounded-[20px] overflow-hidden no-underline shadow-(--cc-card-shadow) border border-white/10 transition-all duration-300 cursor-pointer hover:shadow-(--cc-card-shadow-hover)",
         !disableHoverFloat && "hover:-translate-y-1.5"
       )}
     >
@@ -53,14 +54,14 @@ export default function CharacterCard({
         }}
       />
 
-      <div className="relative z-30 flex h-full p-4 gap-[18px] box-border">
-        <div className="w-[88px] h-[118px] rounded-[14px] overflow-hidden shadow-(--cc-avatar-shadow) border border-white/10 relative shrink-0">
+      <CardContent className="px-0 relative z-30 flex h-full p-3 gap-3 box-border">
+        <div className="w-[84px] h-[106px] rounded-[14px] overflow-hidden shadow-(--cc-avatar-shadow) border border-white/10 relative shrink-0">
           <Image src={character.avatar} alt={character.name} fill className="object-cover" />
         </div>
 
         <div className="flex-1 flex flex-col justify-center min-w-0">
-          <div className="flex justify-between items-center mb-1.5 gap-3">
-            <h3 className="text-[18px] font-bold text-white m-0 whitespace-nowrap overflow-hidden text-ellipsis drop-shadow-(--cc-text-shadow) tracking-wide">
+          <div className="flex justify-between items-center mb-1.5 gap-2">
+            <h3 className="text-base font-bold text-white m-0 whitespace-nowrap overflow-hidden text-ellipsis drop-shadow-(--cc-text-shadow) tracking-wide">
               {character.name}
             </h3>
             <span className="text-[13px] font-medium shrink-0 inline-flex items-center gap-1 leading-none text-(--cc-text-secondary)">
@@ -69,12 +70,12 @@ export default function CharacterCard({
             </span>
           </div>
 
-          <p className="text-[13px] text-(--cc-text-muted) leading-6 m-0 mb-3 line-clamp-2 drop-shadow-(--cc-text-shadow-light)">
+          <p className="text-xs text-(--cc-text-muted) leading-5 m-0 mb-1.5 line-clamp-2 drop-shadow-(--cc-text-shadow-light)">
             {character.description}
           </p>
 
           {tags.length > 0 && (
-            <div className={cn("flex gap-2 mt-auto min-w-0 items-center flex-nowrap", showMenu && "pr-[44px]")}>
+            <div className={cn("flex gap-2 mt-auto min-w-0 items-center flex-nowrap", showMenu && "pr-10")}>
               {visibleTags.map((tag) => (
                 <span
                   key={tag}
@@ -125,10 +126,10 @@ export default function CharacterCard({
             </div>
           )}
         </div>
-      </div>
+      </CardContent>
 
       {showMenu && (
-        <div className="absolute bottom-4 right-4 z-40" onClick={(e) => e.stopPropagation()}>
+        <div className="absolute bottom-3 right-3 z-40" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="h-[24px] w-[32px] flex items-center justify-center rounded-md bg-(--cc-tag-bg) text-(--cc-tag-text) border border-(--cc-tag-overflow-border) cursor-pointer transition-colors hover:bg-(--cc-tag-overflow-hover)">
@@ -167,6 +168,6 @@ export default function CharacterCard({
           </DropdownMenu>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
