@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import CharacterCard from "@/components/CharacterCard";
-import CreateCharacterModal from "@/components/CreateCharacterModal";
 import { useAuth } from "@/lib/auth-context";
 import WorkspaceFrame from "@/components/layout/WorkspaceFrame";
 import { useSidebar } from "./layout";
@@ -18,7 +17,6 @@ export default function DiscoverPage() {
         refreshSidebarCharacters,
         sidebarCharacters,
     } = useSidebar();
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
     // Clear selected character when on discover page
     useEffect(() => {
@@ -65,25 +63,6 @@ export default function DiscoverPage() {
                     </div>
                 </div>
             </div>
-
-            <button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#3964FE] text-white shadow-lg transition-all duration-200 hover:scale-105 hover:bg-[#2a4fd6] hover:shadow-xl"
-                aria-label="创建角色"
-            >
-                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                </svg>
-            </button>
-
-            <CreateCharacterModal
-                isOpen={isCreateModalOpen}
-                onClose={() => setIsCreateModalOpen(false)}
-                onSuccess={() => {
-                    refreshSidebarCharacters();
-                    setIsCreateModalOpen(false);
-                }}
-            />
         </WorkspaceFrame>
     );
 }

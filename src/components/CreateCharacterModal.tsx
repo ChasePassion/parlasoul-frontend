@@ -399,7 +399,7 @@ export default function CreateCharacterModal({
                             onChange={(e) => setName(e.target.value)}
                             placeholder="给角色起个名字"
                             maxLength={100}
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200 [&::selection]:bg-blue-500 [&::selection]:text-white"
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:border-gray-200! [&::selection]:bg-blue-500 [&::selection]:text-white"
                         />
                     </div>
 
@@ -414,7 +414,7 @@ export default function CreateCharacterModal({
                             onChange={(e) => setDescription(e.target.value)}
                             placeholder="简短描述角色特点（最多35个字符）"
                             maxLength={35}
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200 [&::selection]:bg-blue-500 [&::selection]:text-white"
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:border-gray-200! [&::selection]:bg-blue-500 [&::selection]:text-white"
                         />
                         <p className="text-xs text-gray-500 mt-1">
                             {description.length}/35 字符，将显示在角色卡片上
@@ -432,7 +432,7 @@ export default function CreateCharacterModal({
                             onChange={(e) => setGreetingMessage(e.target.value)}
                             placeholder="角色的第一句话（选填）"
                             maxLength={200}
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200 [&::selection]:bg-blue-500 [&::selection]:text-white"
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:border-gray-200! [&::selection]:bg-blue-500 [&::selection]:text-white"
                         />
                         <p className="text-xs text-gray-500 mt-1">
                             聊天时角色主动发送的第一条消息
@@ -449,7 +449,7 @@ export default function CreateCharacterModal({
                             onChange={(e) => setSystemPrompt(e.target.value)}
                             placeholder="定义角色的性格、背景和行为方式..."
                             rows={4}
-                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200 transition-all resize-none [&::selection]:bg-blue-500 [&::selection]:text-white"
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:border-gray-200! transition-all resize-none [&::selection]:bg-blue-500 [&::selection]:text-white"
                         />
                     </div>
 
@@ -468,7 +468,7 @@ export default function CreateCharacterModal({
                                     placeholder="输入标签名称..."
                                     maxLength={CHARACTER_TAG_MAX_LENGTH}
                                     disabled={selectedTags.length >= CHARACTER_TAG_LIMIT}
-                                    className="w-full px-4 py-2.5 pr-12 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200 transition-all disabled:bg-gray-100 disabled:cursor-not-allowed [&::selection]:bg-blue-500 [&::selection]:text-white"
+                                    className="w-full px-4 py-2.5 pr-12 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:border-gray-200! transition-all disabled:bg-gray-100 disabled:cursor-not-allowed [&::selection]:bg-blue-500 [&::selection]:text-white"
                                 />
                                 <button
                                     type="button"

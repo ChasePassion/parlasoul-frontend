@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
-import { Plus, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import CharacterCard from "@/components/CharacterCard";
 import CreateCharacterModal from "@/components/CreateCharacterModal";
 import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
@@ -10,6 +10,7 @@ import VoiceCard from "@/components/voice/VoiceCard";
 import CreateVoiceCloneModal from "@/components/voice/CreateVoiceCloneModal";
 import EditVoiceModal from "@/components/voice/EditVoiceModal";
 import { Button } from "@/components/ui/button";
+import CreateItemCard from "@/components/CreateItemCard";
 import {
     getMyCharacters,
     deleteCharacter,
@@ -248,6 +249,12 @@ export default function ProfilePage() {
 
                     {activeTab === 'works' && (
                         <div className="card-grid mb-10">
+                            <CreateItemCard 
+                                onClick={() => setIsCreateModalOpen(true)}
+                                title="创建新角色"
+                                description="创造属于你的 AI 伙伴"
+                                className="h-[150px] w-full"
+                            />
                             {characters.map((character) => (
                                 <CharacterCard
                                     key={character.id}
@@ -256,6 +263,7 @@ export default function ProfilePage() {
                                     showMenu={true}
                                     onEdit={handleEdit}
                                     onDelete={handleDeleteClick}
+                                    disableHoverFloat={true}
                                 />
                             ))}
                         </div>
@@ -269,28 +277,19 @@ export default function ProfilePage() {
 
                     {activeTab === 'voices' && (
                         <div className="space-y-6">
-                            <div className="flex justify-end">
-                                <Button
-                                    onClick={() => setIsCreateVoiceModalOpen(true)}
-                                    className="bg-[#3964FE] text-white hover:bg-[#2a4fd6]"
-                                >
-                                    <Plus className="w-4 h-4 mr-2" />
-                                    创建音色
-                                </Button>
-                            </div>
-
                             {voicesLoading ? (
                                 <div className="flex items-center justify-center py-20">
                                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                                 </div>
-                            ) : voices.length === 0 ? (
-                                <div className="py-20 text-center text-gray-400">
-                                    <p>暂无音色</p>
-                                    <p className="text-sm mt-2">点击上方按钮克隆你的第一个音色</p>
-                                </div>
                             ) : (
                                 <>
-                                    <div className="flex flex-wrap gap-6">
+                                    <div className="flex flex-wrap gap-6 mt-4">
+                                        <CreateItemCard 
+                                            onClick={() => setIsCreateVoiceModalOpen(true)}
+                                            title="创建新音色"
+                                            description="一键克隆你的专属声音"
+                                            className="w-[280px] min-h-[148px]"
+                                        />
                                         {voices.map((voice) => (
                                             <VoiceCard
                                                 key={voice.id}
