@@ -24,8 +24,11 @@ export const updateCharacter = apiService.updateCharacter.bind(apiService);
 export const deleteCharacter = apiService.deleteCharacter.bind(apiService);
 
 // 聊天相关
+export const listChats = apiService.listChats.bind(apiService);
 export const getRecentChat = apiService.getRecentChat.bind(apiService);
 export const createChatInstance = apiService.createChat.bind(apiService);
+export const updateChat = apiService.updateChat.bind(apiService);
+export const deleteChat = apiService.deleteChat.bind(apiService);
 export const getChatTurns = apiService.getChatTurns.bind(apiService);
 export const streamChatMessage = apiService.streamChatMessage.bind(apiService);
 export const selectTurnCandidate =
@@ -51,6 +54,7 @@ export const sttTranscribe = apiService.sttTranscribe.bind(apiService);
 export const getTtsAudioStream = apiService.getTtsAudioStream.bind(apiService);
 
 // Phase 2.1: 音色相关
+export const getSidebarCharacters = apiService.getSidebarCharacters.bind(apiService);
 export const listMyVoices = apiService.listMyVoices.bind(apiService);
 export const listSelectableVoices = apiService.listSelectableVoices.bind(apiService);
 export const createVoiceClone = apiService.createVoiceClone.bind(apiService);
@@ -83,6 +87,9 @@ export type {
   TurnsPageResponse,
   ChatStreamRequest,
   ChatResponse,
+  ChatHistoryItem,
+  ChatsPageResponse,
+  ChatUpdateRequest,
   TurnResponse,
   TurnSelectRequest,
   TurnSelectResponse,

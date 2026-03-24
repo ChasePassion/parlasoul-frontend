@@ -319,7 +319,7 @@ export default function ProfilePage() {
 
             <DeleteConfirmDialog
                 isOpen={isDeleteDialogOpen}
-                characterName={characterToDelete?.name || ""}
+                entityName={characterToDelete?.name || ""}
                 onConfirm={handleConfirmDelete}
                 onCancel={() => {
                     setIsDeleteDialogOpen(false);
@@ -346,7 +346,8 @@ export default function ProfilePage() {
 
             <DeleteConfirmDialog
                 isOpen={!!voiceToDelete}
-                characterName="确定要删除这个音色吗？"
+                entityName="这个音色"
+                entityLabel="音色"
                 onConfirm={handleConfirmDeleteVoice}
                 onCancel={() => setVoiceToDelete(null)}
                 isDeleting={isDeletingVoice}

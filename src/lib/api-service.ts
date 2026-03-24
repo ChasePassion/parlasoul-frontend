@@ -218,6 +218,7 @@ export interface ChatResponse {
   id: string;
   user_id: string;
   character_id: string;
+  title: string;
   type: ChatType;
   state: ChatState;
   visibility: ChatVisibility;
@@ -338,6 +339,21 @@ export interface ChatCreateResponse {
   chat: ChatResponse;
   character: CharacterBrief;
   initial_turns: TurnResponse[];
+}
+
+export interface ChatHistoryItem {
+  chat: ChatResponse;
+  character: CharacterBrief;
+}
+
+export interface ChatsPageResponse {
+  items: ChatHistoryItem[];
+  next_cursor?: string | null;
+  has_more: boolean;
+}
+
+export interface ChatUpdateRequest {
+  title: string;
 }
 
 export interface TurnsPageResponse {
@@ -572,6 +588,12 @@ interface ChatStreamTtsErrorEvent {
   message: string;
 }
 
+interface ChatStreamTitleUpdatedEvent {
+  type: "chat_title_updated";
+  chat_id: string;
+  title: string;
+}
+
 // Phase 2: STT transcription result
 export interface STTTranscriptionResult {
   text: string;
@@ -665,6 +687,7 @@ export interface SavedItemsPagePhase3 {
 
 type ChatStreamEvent =
   | ChatStreamMetaEvent
+  | ChatStreamTitleUpdatedEvent
   | ChatStreamTransformChunkEvent
   | ChatStreamTransformDoneEvent
   | ChatStreamChunkEvent
@@ -770,6 +793,40 @@ export class ApiService {
       `/v1/chats`,
       request,
     );
+  }
+
+  async listChats(params: {
+    character_id: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<ChatsPageResponse> {
+    const searchParams = new URLSearchParams();
+    searchParams.set("character_id", params.character_id);
+    if (params.cursor) {
+      searchParams.set("cursor", params.cursor);
+    }
+    if (params.limit !== undefined) {
+      searchParams.set("limit", String(params.limit));
+    }
+
+    const query = searchParams.toString();
+    const suffix = query ? `?${query}` : "";
+
+    return httpClient.get<ChatsPageResponse>(`/v1/chats${suffix}`);
+  }
+
+  async updateChat(
+    chatId: string,
+    request: ChatUpdateRequest,
+  ): Promise<ChatResponse> {
+    return httpClient.patch<ChatResponse, ChatUpdateRequest>(
+      `/v1/chats/${chatId}`,
+      request,
+    );
+  }
+
+  async deleteChat(chatId: string): Promise<void> {
+    await httpClient.delete(`/v1/chats/${chatId}`);
   }
 
   async getChatTurns(
@@ -1193,6 +1250,7 @@ export class ApiService {
     handlers: {
       signal?: AbortSignal;
       onMeta?: (meta: ChatStreamMetaEvent) => void;
+      onChatTitleUpdated?: (data: { chat_id: string; title: string }) => void;
       onTransformChunk?: (content: string) => void;
       onTransformDone?: (data: {
         original_content: string;
@@ -1294,6 +1352,11 @@ export class ApiService {
             const data = JSON.parse(payload) as ChatStreamEvent;
             if (data.type === "meta") {
               handlers.onMeta?.(data);
+            } else if (data.type === "chat_title_updated") {
+              handlers.onChatTitleUpdated?.({
+                chat_id: data.chat_id,
+                title: data.title,
+              });
             } else if (data.type === "transform_chunk") {
               handlers.onTransformChunk?.(data.content);
             } else if (data.type === "transform_done") {
@@ -1516,6 +1579,10 @@ export class ApiService {
 
   // Phase 2.1: Voice APIs
   async getMyCharacters(): Promise<CharacterResponse[]> {
+    return httpClient.get<CharacterResponse[]>("/v1/characters");
+  }
+
+  async getSidebarCharacters(): Promise<CharacterResponse[]> {
     return httpClient.get<CharacterResponse[]>("/v1/characters");
   }
 

@@ -6,7 +6,7 @@ import type {
   MessageActionStatus,
 } from "@/components/ChatMessage";
 import type { Character } from "@/components/Sidebar";
-import type { ReplySuggestion } from "@/lib/api";
+import type { ChatResponse, ReplySuggestion } from "@/lib/api";
 import {
   ApiError,
   UnauthorizedError,
@@ -19,6 +19,7 @@ import {
   type TurnsPageResponse,
 } from "@/lib/api";
 import { mapCharacterToSidebar } from "@/lib/character-adapter";
+import { snapshotContainsTurnIds } from "@/lib/chat-turn-snapshot";
 import { getErrorMessage } from "@/lib/error-map";
 import type { TtsPlaybackManager } from "@/lib/voice/tts-playback-manager";
 
@@ -32,6 +33,7 @@ interface UseChatSessionArgs {
 }
 
 interface UseChatSessionResult {
+  chat: ChatResponse | null;
   character: Character | null;
   messages: Message[];
   isStreaming: boolean;
@@ -40,6 +42,7 @@ interface UseChatSessionResult {
   currentReplySuggestions: ReplySuggestion[] | null;
   clearReplySuggestions: () => void;
   characterId: string | null;
+  setCurrentChatTitle: (title: string) => void;
   handleSelectCandidate: (turnId: string, candidateNo: number) => Promise<void>;
   handleRegenAssistant: (turnId: string) => Promise<void>;
   handleEditUser: (turnId: string, newContent: string) => Promise<void>;
@@ -115,6 +118,7 @@ export function useChatSession({
   ttsPlaybackManager,
   autoReadAloudEnabled = true,
 }: UseChatSessionArgs): UseChatSessionResult {
+  const [chat, setChat] = useState<ChatResponse | null>(null);
   const [character, setCharacter] = useState<Character | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -215,6 +219,10 @@ export function useChatSession({
 
   const currentReplySuggestions = deriveCurrentReplySuggestions(messages);
 
+  const setCurrentChatTitle = useCallback((title: string) => {
+    setChat((prev) => (prev ? { ...prev, title } : prev));
+  }, []);
+
   const shouldReloadForRequest = useCallback(
     (requestRunId: number) => requestRunId === requestRunIdRef.current,
     [],
@@ -229,6 +237,7 @@ export function useChatSession({
     (data: TurnsPageResponse) => {
       const mappedCharacter: Character = mapCharacterToSidebar(data.character);
 
+      setChat(data.chat);
       setCharacter(mappedCharacter);
       characterIdRef.current = data.character.id;
       setSelectedCharacterId(data.character.id);
@@ -297,16 +306,25 @@ export function useChatSession({
     [setSelectedCharacterId],
   );
 
-  const reloadChatTurns = useCallback(async () => {
+  const reloadChatTurns = useCallback(async (options?: {
+    requiredTurnIds?: Array<string | null | undefined>;
+  }) => {
     if (!chatId || !isAuthed) return;
 
     setError(null);
 
     const data: TurnsPageResponse = await getChatTurns(chatId, { limit: 50 });
-    
+
+    if (
+      options?.requiredTurnIds &&
+      !snapshotContainsTurnIds(data.turns, options.requiredTurnIds)
+    ) {
+      return;
+    }
+
     beforeTurnIdRef.current = data.next_before_turn_id ?? null;
     setHasOlderMessages(data.has_more);
-    
+
     applyTurnsPage(data);
   }, [applyTurnsPage, chatId, isAuthed]);
 
@@ -356,6 +374,7 @@ export function useChatSession({
       setIsLoading(true);
       setIsStreaming(false);
       setError(null);
+      setChat(null);
       setCharacter(null);
       setMessages([]);
       clearReplySuggestions();
@@ -661,7 +680,9 @@ export function useChatSession({
           (shouldReloadAfterStream || hasStreamError) &&
           shouldReloadForRequest(requestRunId)
         ) {
-          await reloadChatTurns();
+          await reloadChatTurns({
+            requiredTurnIds: [turnId],
+          });
         }
       } finally {
         clearTrackedController(controller);
@@ -932,7 +953,9 @@ export function useChatSession({
           (shouldReloadAfterStream || hasStreamError) &&
           shouldReloadForRequest(requestRunId)
         ) {
-          await reloadChatTurns();
+          await reloadChatTurns({
+            requiredTurnIds: [turnId, resolvedAssistantMessageId],
+          });
         }
       } finally {
         clearTrackedController(controller);
@@ -1037,6 +1060,11 @@ export function useChatSession({
                   return message;
                 }),
               );
+            },
+            onChatTitleUpdated: (data) => {
+              if (controller.signal.aborted) return;
+              if (data.chat_id !== chatId) return;
+              setCurrentChatTitle(data.title);
             },
             onTransformChunk: (chunk) => {
               if (controller.signal.aborted) return;
@@ -1251,7 +1279,12 @@ export function useChatSession({
               setIsStreaming(false);
               clearTrackedController(controller);
               if (shouldReloadForRequest(requestRunId)) {
-                await reloadChatTurns();
+                await reloadChatTurns({
+                  requiredTurnIds: [
+                    resolvedUserMessageId,
+                    resolvedAssistantMessageId,
+                  ],
+                });
               }
             },
           },
@@ -1263,7 +1296,12 @@ export function useChatSession({
           !hasStreamError &&
           shouldReloadForRequest(requestRunId)
         ) {
-          await reloadChatTurns();
+          await reloadChatTurns({
+            requiredTurnIds: [
+              resolvedUserMessageId,
+              resolvedAssistantMessageId,
+            ],
+          });
         }
       } finally {
         clearTrackedController(controller);
@@ -1280,6 +1318,7 @@ export function useChatSession({
       detachControllerToTail,
       isStreaming,
       reloadChatTurns,
+      setCurrentChatTitle,
       shouldReloadForRequest,
       ttsPlaybackManager,
     ],
@@ -1296,6 +1335,7 @@ export function useChatSession({
   }, [abortActiveTextStream]);
 
   return {
+    chat,
     character,
     messages,
     isStreaming,
@@ -1304,6 +1344,7 @@ export function useChatSession({
     currentReplySuggestions,
     clearReplySuggestions,
     characterId: characterIdRef.current,
+    setCurrentChatTitle,
     handleSelectCandidate,
     handleRegenAssistant,
     handleEditUser,
