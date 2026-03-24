@@ -111,6 +111,7 @@ export interface VoiceSelectableItem {
   provider: string;
   provider_model: string | null;
   provider_voice_id: string;
+  avatar_file_name?: string | null;
   preview_text?: string | null;
   preview_audio_url: string | null;
   usage_hint: string | null;
@@ -125,12 +126,15 @@ export interface VoiceProfile {
   source_type: VoiceSourceType;
   display_name: string;
   description: string | null;
+  avatar_file_name?: string | null;
   status: VoiceStatus;
   provider_status: string | null;
   preview_text?: string | null;
   preview_audio_url: string | null;
   language_tags: string[] | null;
   metadata: Record<string, unknown> | null;
+  bound_character_count?: number;
+  bound_character_ids?: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -149,6 +153,8 @@ export interface VoiceProfileUpdate {
   display_name?: string;
   description?: string | null;
   preview_text?: string | null;
+  avatar_file_name?: string | null;
+  character_ids?: string[];
 }
 
 export interface CreateCharacterRequest {

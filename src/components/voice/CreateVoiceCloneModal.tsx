@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createVoiceClone } from "@/lib/api";
 import { getErrorMessage } from "@/lib/error-map";
+import VoiceAvatarField from "./VoiceAvatarField";
 
 interface CreateVoiceCloneModalProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ export default function CreateVoiceCloneModal({
 }: CreateVoiceCloneModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [avatarFileName, setAvatarFileName] = useState<string | null>(null);
   const [previewText, setPreviewText] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioPreview, setAudioPreview] = useState<string | null>(null);
@@ -117,6 +119,9 @@ export default function CreateVoiceCloneModal({
       if (description.trim()) {
         formData.append("description", description.trim());
       }
+      if (avatarFileName) {
+        formData.append("avatar_file_name", avatarFileName);
+      }
 
       await createVoiceClone(formData);
       setFetchState("success");
@@ -136,6 +141,7 @@ export default function CreateVoiceCloneModal({
       }
       setName("");
       setDescription("");
+      setAvatarFileName(null);
       setPreviewText("");
       setAudioFile(null);
       setAudioPreview(null);
@@ -159,7 +165,7 @@ export default function CreateVoiceCloneModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md rounded-2xl p-0 overflow-hidden bg-white border-none shadow-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-lg rounded-2xl p-0 overflow-hidden bg-white border-none shadow-2xl max-h-[90vh] flex flex-col">
         <DialogHeader className="flex-none flex items-center justify-between p-5 border-b border-gray-100 bg-white z-10">
           <DialogTitle className="text-xl font-bold text-gray-900">
             克隆音色
@@ -173,6 +179,12 @@ export default function CreateVoiceCloneModal({
               <span>{error}</span>
             </div>
           )}
+
+          <VoiceAvatarField
+            value={avatarFileName}
+            onChange={setAvatarFileName}
+            disabled={fetchState === "loading"}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="voiceName" className="text-sm font-medium text-gray-700">

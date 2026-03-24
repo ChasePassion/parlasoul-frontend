@@ -9,11 +9,9 @@ function isAbsoluteAvatarUrl(value: string): boolean {
   );
 }
 
-export function resolveCharacterAvatarSrc(
-  avatarFileName?: string | null
-): string {
+export function resolveStoredAvatarSrc(avatarFileName?: string | null): string | undefined {
   if (!avatarFileName) {
-    return DEFAULT_CHARACTER_AVATAR;
+    return undefined;
   }
 
   if (isAbsoluteAvatarUrl(avatarFileName)) {
@@ -21,4 +19,12 @@ export function resolveCharacterAvatarSrc(
   }
 
   return `/uploads/${avatarFileName}`;
+}
+
+export function resolveCharacterAvatarSrc(avatarFileName?: string | null): string {
+  return resolveStoredAvatarSrc(avatarFileName) ?? DEFAULT_CHARACTER_AVATAR;
+}
+
+export function resolveVoiceAvatarSrc(avatarFileName?: string | null): string | undefined {
+  return resolveStoredAvatarSrc(avatarFileName);
 }

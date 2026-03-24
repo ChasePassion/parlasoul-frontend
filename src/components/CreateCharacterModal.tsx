@@ -4,9 +4,12 @@ import { useState, useRef, ChangeEvent, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import {
     createCharacter,
+    getMyCharacters,
     getVoiceById,
+    patchVoiceById,
     updateCharacter,
     uploadFile,
+    CharacterResponse,
     CreateCharacterRequest,
     UpdateCharacterRequest,
     CharacterVisibility,
@@ -15,6 +18,7 @@ import {
 } from "@/lib/api";
 import AvatarCropper from "./AvatarCropper";
 import VoiceSelector from "./voice/VoiceSelector";
+import VoiceUsageManagerDialog from "./voice/VoiceUsageManagerDialog";
 import ModelSelector from "./ModelSelector";
 import { getErrorMessage } from "@/lib/error-map";
 import type { Character } from "./Sidebar";
@@ -30,7 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { X, Plus, Loader2 } from "lucide-react";
+import { X, Plus, Loader2, Users } from "lucide-react";
 
 interface CreateCharacterModalProps {
     isOpen: boolean;
@@ -67,6 +71,14 @@ function resolveVoiceModel(voice: VoiceSelectableItem): string | null {
     return null;
 }
 
+function isManageableLocalVoice(voice: VoiceSelectableItem | null): voice is VoiceSelectableItem {
+    if (!voice || voice.source_type !== "clone") {
+        return false;
+    }
+
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(voice.id);
+}
+
 export default function CreateCharacterModal({
     isOpen,
     onClose,
@@ -91,8 +103,14 @@ export default function CreateCharacterModal({
     const [selectedVoice, setSelectedVoice] = useState<VoiceSelectableItem | null>(null);
     const [selectedLLMProvider, setSelectedLLMProvider] = useState<LLMProvider | null | undefined>(undefined);
     const [selectedLLMModel, setSelectedLLMModel] = useState<string | null | undefined>(undefined);
+    const [isVoiceUsageDialogOpen, setIsVoiceUsageDialogOpen] = useState(false);
+    const [voiceUsageCharacters, setVoiceUsageCharacters] = useState<CharacterResponse[]>([]);
+    const [voiceUsageCharacterIds, setVoiceUsageCharacterIds] = useState<string[]>([]);
+    const [voiceUsageVoiceId, setVoiceUsageVoiceId] = useState<string | null>(null);
+    const [isVoiceUsageLoading, setIsVoiceUsageLoading] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const manageableVoiceId = isManageableLocalVoice(selectedVoice) ? selectedVoice.id : null;
 
     useEffect(() => {
         if (isOpen && mode === 'edit' && character) {
@@ -111,6 +129,7 @@ export default function CreateCharacterModal({
                     provider: character.voice_provider,
                     provider_model: character.voice_model,
                     provider_voice_id: character.voice_provider_voice_id,
+                    avatar_file_name: null,
                     preview_audio_url: null,
                     usage_hint: null,
                 };
@@ -130,6 +149,10 @@ export default function CreateCharacterModal({
             setSelectedVoice(fallbackVoice);
             setSelectedLLMProvider(character.llm_provider ?? null);
             setSelectedLLMModel(character.llm_model ?? null);
+            setIsVoiceUsageDialogOpen(false);
+            setVoiceUsageCharacters([]);
+            setVoiceUsageCharacterIds([]);
+            setVoiceUsageVoiceId(null);
             setTagInput("");
             setError(null);
 
@@ -155,9 +178,27 @@ export default function CreateCharacterModal({
             setSelectedVoice(null);
             setSelectedLLMProvider(undefined);
             setSelectedLLMModel(undefined);
+            setIsVoiceUsageDialogOpen(false);
+            setVoiceUsageCharacters([]);
+            setVoiceUsageCharacterIds([]);
+            setVoiceUsageVoiceId(null);
             setError(null);
         }
     }, [isOpen, mode, character]);
+
+    useEffect(() => {
+        if (!manageableVoiceId) {
+            setIsVoiceUsageDialogOpen(false);
+            setVoiceUsageCharacterIds([]);
+            setVoiceUsageVoiceId(null);
+            return;
+        }
+
+        if (voiceUsageVoiceId && voiceUsageVoiceId !== manageableVoiceId) {
+            setVoiceUsageCharacterIds([]);
+            setVoiceUsageVoiceId(null);
+        }
+    }, [manageableVoiceId, voiceUsageVoiceId]);
 
     const handleAvatarClick = () => {
         fileInputRef.current?.click();
@@ -198,6 +239,33 @@ export default function CreateCharacterModal({
 
     const handleCropCancel = () => {
         setSelectedFile(null);
+    };
+
+    const handleOpenVoiceUsageDialog = async () => {
+        if (!manageableVoiceId) {
+            return;
+        }
+
+        setIsVoiceUsageLoading(true);
+        setError(null);
+
+        try {
+            const [voiceDetail, characters] = await Promise.all([
+                getVoiceById(manageableVoiceId),
+                getMyCharacters(),
+            ]);
+            const nextCharacterIds = (voiceDetail.bound_character_ids ?? []).filter(
+                (characterId) => characterId !== character?.id,
+            );
+            setVoiceUsageCharacters(characters);
+            setVoiceUsageCharacterIds(nextCharacterIds);
+            setVoiceUsageVoiceId(manageableVoiceId);
+            setIsVoiceUsageDialogOpen(true);
+        } catch (err) {
+            setError(getErrorMessage(err));
+        } finally {
+            setIsVoiceUsageLoading(false);
+        }
     };
 
     const handleAddTag = () => {
@@ -271,6 +339,7 @@ export default function CreateCharacterModal({
             let voiceModel = resolveVoiceModel(selectedVoice);
             let voiceProviderVoiceId = selectedVoice.provider_voice_id;
             let voiceSourceType = selectedVoice.source_type;
+            let manageableSelectedVoiceId: string | null = manageableVoiceId;
 
             if (selectedVoice.source_type === "clone") {
                 const voiceProfile = await getVoiceById(selectedVoice.id);
@@ -278,6 +347,7 @@ export default function CreateCharacterModal({
                 voiceModel = voiceProfile.provider_model;
                 voiceProviderVoiceId = voiceProfile.provider_voice_id;
                 voiceSourceType = voiceProfile.source_type;
+                manageableSelectedVoiceId = voiceProfile.id;
             }
 
             if (!voiceModel) {
@@ -300,12 +370,25 @@ export default function CreateCharacterModal({
                 llm_model: selectedLLMModel,
             };
 
+            let savedCharacter: CharacterResponse;
             if (mode === 'edit' && character) {
                 const updateData: UpdateCharacterRequest = baseData;
-                await updateCharacter(character.id, updateData);
+                savedCharacter = await updateCharacter(character.id, updateData);
             } else {
                 const createData: CreateCharacterRequest = baseData;
-                await createCharacter(createData);
+                savedCharacter = await createCharacter(createData);
+            }
+
+            if (
+                manageableSelectedVoiceId &&
+                voiceUsageVoiceId === manageableSelectedVoiceId
+            ) {
+                const mergedCharacterIds = Array.from(
+                    new Set([...voiceUsageCharacterIds, savedCharacter.id]),
+                );
+                await patchVoiceById(manageableSelectedVoiceId, {
+                    character_ids: mergedCharacterIds,
+                });
             }
 
             if (mode === 'create') {
@@ -320,6 +403,9 @@ export default function CreateCharacterModal({
                 setSelectedVoice(null);
                 setSelectedLLMProvider(undefined);
                 setSelectedLLMModel(undefined);
+                setVoiceUsageCharacters([]);
+                setVoiceUsageCharacterIds([]);
+                setVoiceUsageVoiceId(null);
             }
 
             onSuccess();
@@ -582,6 +668,39 @@ export default function CreateCharacterModal({
                             onSelectVoice={setSelectedVoice}
                             disabled={isSubmitting}
                         />
+                        {manageableVoiceId && (
+                            <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-medium text-gray-700">
+                                            管理使用该音色的角色
+                                        </p>
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            在角色保存时同步更新其他使用该音色的角色。
+                                        </p>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleOpenVoiceUsageDialog}
+                                        disabled={isSubmitting || isVoiceUsageLoading}
+                                        className="rounded-lg border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                    >
+                                        {isVoiceUsageLoading ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Users data-icon="inline-start" />
+                                        )}
+                                        管理角色
+                                    </Button>
+                                </div>
+                                <p className="mt-3 text-xs text-gray-500">
+                                    {mode === 'edit'
+                                        ? `当前角色 ${character?.name ?? ""} 会在保存后自动使用这个音色，勾选列表只管理其他角色。`
+                                        : "新角色会在创建后自动使用这个音色，勾选列表只管理其他已存在角色。"}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -618,6 +737,25 @@ export default function CreateCharacterModal({
                     onCancel={handleCropCancel}
                 />
             )}
+
+            <VoiceUsageManagerDialog
+                isOpen={isVoiceUsageDialogOpen}
+                onClose={() => setIsVoiceUsageDialogOpen(false)}
+                onSave={(characterIds) => {
+                    setVoiceUsageCharacterIds(characterIds);
+                    setIsVoiceUsageDialogOpen(false);
+                }}
+                characters={voiceUsageCharacters}
+                selectedCharacterIds={voiceUsageCharacterIds}
+                voiceName={selectedVoice?.display_name || "当前音色"}
+                excludeCharacterId={mode === 'edit' && character ? character.id : undefined}
+                isLoading={isVoiceUsageLoading}
+                helperText={
+                    mode === 'edit'
+                        ? `当前角色 ${character?.name ?? ""} 会在保存后自动使用该音色。`
+                        : "当前新角色会在创建后自动使用该音色。"
+                }
+            />
         </Dialog>
     );
 }

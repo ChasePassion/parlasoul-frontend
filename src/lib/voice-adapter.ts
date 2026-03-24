@@ -13,10 +13,12 @@ export interface VoiceDisplayInfo {
   providerModel: string | null;
   providerVoiceId: string;
   sourceType: VoiceSourceType;
+  avatarFileName: string | null;
   previewText: string | null;
   previewAudioUrl: string | null;
   isSystem: boolean;
   status: VoiceStatus | null;
+  boundCharacterCount: number;
 }
 
 export function getVoiceDescription(item: VoiceSelectableItem | VoiceProfile): string {
@@ -62,11 +64,13 @@ export function mapVoiceSelectableToDisplay(
     provider: item.provider,
     providerModel: item.provider_model,
     providerVoiceId: item.provider_voice_id,
+    avatarFileName: item.avatar_file_name ?? null,
     previewText: item.preview_text ?? null,
     sourceType: item.source_type,
     previewAudioUrl: item.preview_audio_url,
     isSystem: item.source_type === "system",
     status: null,
+    boundCharacterCount: 0,
   };
 }
 
@@ -80,11 +84,13 @@ export function mapVoiceProfileToDisplay(
     provider: profile.provider,
     providerModel: profile.provider_model,
     providerVoiceId: profile.provider_voice_id,
+    avatarFileName: profile.avatar_file_name ?? null,
     previewText: profile.preview_text ?? null,
     sourceType: profile.source_type,
     previewAudioUrl: profile.preview_audio_url,
     isSystem: profile.source_type === "system",
     status: profile.status,
+    boundCharacterCount: profile.bound_character_count ?? 0,
   };
 }
 
@@ -121,6 +127,7 @@ export interface VoiceCardDisplay {
   id: string;
   displayName: string;
   description: string;
+  avatarFileName: string | null;
   status: VoiceStatus;
   statusText: string;
   previewText: string | null;
@@ -128,6 +135,7 @@ export interface VoiceCardDisplay {
   previewAudioUrl: string | null;
   canPreview: boolean;
   canDelete: boolean;
+  boundCharacterCount: number;
 }
 
 export function mapVoiceProfileToCardDisplay(
@@ -137,6 +145,7 @@ export function mapVoiceProfileToCardDisplay(
     id: profile.id,
     displayName: profile.display_name,
     description: profile.description || "",
+    avatarFileName: profile.avatar_file_name ?? null,
     status: profile.status,
     statusText: getStatusText(profile.status),
     previewText: profile.preview_text ?? null,
@@ -146,5 +155,6 @@ export function mapVoiceProfileToCardDisplay(
       canUseVoice(profile.status) &&
       Boolean(profile.preview_audio_url || profile.preview_text),
     canDelete: canDeleteVoice(profile.status),
+    boundCharacterCount: profile.bound_character_count ?? 0,
   };
 }

@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { Mic, Trash2, MoreVertical, Pencil } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import AudioPreviewButton from "./AudioPreviewButton";
+import { resolveVoiceAvatarSrc } from "@/lib/character-avatar";
 import type { VoiceCardDisplay } from "@/lib/voice-adapter";
 
 interface VoiceCardProps {
@@ -29,9 +31,16 @@ export default function VoiceCard({ voice, onDelete, onEdit }: VoiceCardProps) {
   return (
     <div className="relative flex w-[280px] flex-col rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-all hover:shadow-md">
       <div className="flex items-start justify-between">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-50 to-purple-50">
-          <Mic className="h-6 w-6 text-blue-600" />
-        </div>
+        <Avatar className="h-12 w-12 rounded-xl border border-gray-200">
+          <AvatarImage
+            src={resolveVoiceAvatarSrc(voice.avatarFileName)}
+            alt={voice.displayName}
+            className="object-cover"
+          />
+          <AvatarFallback className="rounded-xl bg-gradient-to-br from-blue-50 to-purple-50 text-blue-600">
+            <Mic className="h-6 w-6" />
+          </AvatarFallback>
+        </Avatar>
 
         {(onDelete || onEdit) && (voice.canDelete || canEdit) && (
           <div className="relative">
@@ -87,6 +96,9 @@ export default function VoiceCard({ voice, onDelete, onEdit }: VoiceCardProps) {
         {voice.description && (
           <p className="mt-1 text-sm text-gray-500 line-clamp-2">{voice.description}</p>
         )}
+        <p className="mt-2 text-xs text-gray-400">
+          已用于 {voice.boundCharacterCount} 个角色
+        </p>
       </div>
 
       <div className="mt-4 flex items-center justify-between">

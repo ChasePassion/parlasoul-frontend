@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Check, Loader2, AlertCircle } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import AudioPreviewButton from "./AudioPreviewButton";
 import { listSelectableVoices } from "@/lib/api";
+import { resolveVoiceAvatarSrc } from "@/lib/character-avatar";
 import { getErrorMessage } from "@/lib/error-map";
 import {
   groupVoicesBySource,
@@ -108,6 +110,7 @@ export default function VoiceSelector({
                       provider: voice.provider,
                       provider_model: voice.providerModel,
                       provider_voice_id: voice.providerVoiceId,
+                      avatar_file_name: voice.avatarFileName,
                       preview_text: voice.previewText,
                       preview_audio_url: voice.previewAudioUrl,
                       usage_hint: voice.description || null,
@@ -123,6 +126,7 @@ export default function VoiceSelector({
                         provider: voice.provider,
                         provider_model: voice.providerModel,
                         provider_voice_id: voice.providerVoiceId,
+                        avatar_file_name: voice.avatarFileName,
                         preview_text: voice.previewText,
                         preview_audio_url: voice.previewAudioUrl,
                         usage_hint: voice.description || null,
@@ -135,15 +139,23 @@ export default function VoiceSelector({
                       : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                   } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
                 >
-                  <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                      isSelected ? "bg-blue-100" : "bg-gray-100"
-                    }`}
-                  >
-                    {isSelected ? (
-                      <Check className="h-5 w-5 text-blue-600" />
-                    ) : (
-                      <span className="text-lg">🎙️</span>
+                  <div className="relative shrink-0">
+                    <Avatar className="h-10 w-10 rounded-lg border border-gray-200">
+                      <AvatarImage
+                        src={resolveVoiceAvatarSrc(voice.avatarFileName)}
+                        alt={voice.displayName}
+                        className="object-cover"
+                      />
+                      <AvatarFallback
+                        className={isSelected ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-500"}
+                      >
+                        {voice.displayName.slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    {isSelected && (
+                      <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#3964FE] text-white">
+                        <Check className="h-3 w-3" />
+                      </div>
                     )}
                   </div>
 
