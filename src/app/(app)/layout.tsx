@@ -3,7 +3,7 @@
 import { useState, useEffect, createContext, useContext, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, isProfileComplete } from "@/lib/auth-context";
-import { getRecentChat, getSidebarCharacters } from "@/lib/api";
+import { getSidebarCharacters } from "@/lib/api";
 import Sidebar, { Character } from "@/components/Sidebar";
 import AppFrame from "@/components/layout/AppFrame";
 import { useSidebarShell } from "@/hooks/useSidebarShell";
@@ -23,12 +23,6 @@ interface SidebarContextType {
 }
 
 const SidebarContext = createContext<SidebarContextType | null>(null);
-
-const getSortTimestamp = (value?: string | null): number => {
-    if (!value) return 0;
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-};
 
 export function useSidebar() {
     const context = useContext(SidebarContext);
@@ -66,36 +60,9 @@ export default function AppLayout({
         if (!user) return;
         try {
             const apiCharacters = await getSidebarCharacters();
-            const interactedCharacters = apiCharacters.filter(
-                (character) => character.interaction_count > 0,
+            const mapped: Character[] = apiCharacters.map((character) =>
+                mapCharacterToSidebar(character),
             );
-
-            const sidebarEntries = await Promise.all(
-                interactedCharacters.map(async (character) => {
-                    const recent = await getRecentChat(character.id).catch(() => null);
-                    if (!recent?.chat?.id) {
-                        return null;
-                    }
-
-                    return {
-                        character: mapCharacterToSidebar(character),
-                        lastTurnAt:
-                            recent.chat.last_turn_at ??
-                            recent.chat.updated_at ??
-                            recent.chat.created_at,
-                    };
-                }),
-            );
-
-            const mapped = sidebarEntries
-                .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-                .sort(
-                    (left, right) =>
-                        getSortTimestamp(right.lastTurnAt) -
-                        getSortTimestamp(left.lastTurnAt),
-                )
-                .map((entry) => entry.character);
-
             setSidebarCharacters(mapped);
         } catch (err) {
             console.error("Failed to load sidebar characters:", err);

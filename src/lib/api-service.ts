@@ -1583,7 +1583,7 @@ export class ApiService {
   }
 
   async getSidebarCharacters(): Promise<CharacterResponse[]> {
-    return httpClient.get<CharacterResponse[]>("/v1/characters");
+    return httpClient.get<CharacterResponse[]>("/v1/chats/characters");
   }
 
   async listMyVoices(params?: {
