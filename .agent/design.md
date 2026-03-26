@@ -1311,3 +1311,72 @@ Inline SVG exists directly in the page's DOM, so `currentColor` traverses up the
 1. **SVGR webpack plugin** — Configure Next.js to import SVG as React components via `@svgr/webpack`
 2. **CSS mask** — Use `background-color: currentColor` + `mask-image: url(*.svg)` to achieve color inheritance
 3. **Filter hack** — `filter: invert() sepia() saturate() hue-rotate()` — but this is a workaround, not a real solution
+
+---
+
+### History Sidebar Active Highlight: Guard Against Stale Chat Responses
+
+#### Problem
+
+聊天历史侧栏的选中态有时看起来像是“浅蓝背景直接没了”，但真正的问题并不一定在颜色样式本身。
+
+典型现场是：
+
+- 预期：当前聊天项应该拿到浅蓝背景，例如 `bg-[#E5F3FF]`
+- 实际：用户正在看的那一行只有 hover 态 class，计算后的背景色也是透明
+- 表象：像是选中态背景失效
+- 本质：页面正文和侧栏认为的“当前聊天”不是同一条记录
+
+#### Root Cause
+
+当路由已经切到新的 `chatId` 时，旧聊天的 `getChatTurns` 响应如果晚到，仍然可能覆盖当前页面的 `chat/messages` 状态。
+
+这样会形成一个非常迷惑的错位：
+
+1. 历史侧栏用当前 route 的 `chatId` 判断 active
+2. 页面正文却被旧 chat 的响应覆盖
+3. 用户看到的内容属于 A，但侧栏高亮的是 B
+4. 于是“我正在看的这一项”没有浅蓝背景，看起来像背景丢失
+
+这类问题不是颜色 token 错了，也不是 Tailwind 类名没生效，而是 **stale response 覆盖 current route state**。
+
+#### Diagnostic Signal
+
+如果一个“选中态背景丢失”的问题同时满足下面的现象，应优先怀疑请求竞态，而不是先改 CSS：
+
+- 某一行没有 active class，只剩 hover class
+- 同一个列表里另有一条记录拿到了 active 结构
+- 当前 URL、当前页面内容、当前高亮项三者对不上
+- 问题更容易发生在切换聊天、首次加载或旧请求较慢时
+
+#### Correct Pattern
+
+凡是“页面内容”和“侧栏 active 高亮”都依赖当前 route `chatId` 的场景，所有异步聊天响应在落地前都必须确认自己仍然属于当前 route。
+
+```tsx
+const activeChatIdRef = useRef(chatId);
+
+useEffect(() => {
+  activeChatIdRef.current = chatId;
+}, [chatId]);
+
+const data = await getChatTurns(chatId, { limit: 50 });
+
+if (data.chat.id !== activeChatIdRef.current) {
+  return;
+}
+
+applyTurnsPage(data);
+```
+
+同样的保护也要覆盖：
+
+- 首次加载 `loadChat`
+- 翻页加载 `loadOlderMessages`
+- `catch/finally` 里的 `error` / `loading` 状态收尾
+
+#### Rule of Thumb
+
+- 如果选中态依赖 `item.id === activeId`，就不能让旧请求覆盖 `activeId` 对应页面的内容状态
+- 视觉选中态 bug，先验证“当前项判定链路”是否正确，再去改颜色和样式
+- 对于聊天、详情页、master-detail 结构，**route 是 source of truth，异步响应必须向当前 route 对齐**

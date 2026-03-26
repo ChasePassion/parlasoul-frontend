@@ -21,6 +21,9 @@ import {
     type ChatResponse,
 } from "@/lib/api";
 
+const AUTO_SCROLL_THRESHOLD_PX = 160;
+const AUTO_SCROLL_SETTLED_FRAME_TARGET = 2;
+
 export default function ChatPage() {
     const params = useParams();
     const router = useRouter();
@@ -160,12 +163,16 @@ export default function ChatPage() {
     const shouldAutoScrollRef = useRef(true);
 
     useEffect(() => {
+        shouldAutoScrollRef.current = true;
+    }, [chatId]);
+
+    useEffect(() => {
         const root = scrollRootRef.current;
         if (!root) return;
 
         const updateShouldAutoScroll = () => {
             const distanceToBottom = root.scrollHeight - root.scrollTop - root.clientHeight;
-            shouldAutoScrollRef.current = distanceToBottom <= 160;
+            shouldAutoScrollRef.current = distanceToBottom <= AUTO_SCROLL_THRESHOLD_PX;
         };
 
         updateShouldAutoScroll();
@@ -207,14 +214,42 @@ export default function ChatPage() {
 
     useEffect(() => {
         if (!shouldAutoScrollRef.current) return;
-        const raf = requestAnimationFrame(() => {
-            messagesEndRef.current?.scrollIntoView({
-                behavior: isStreaming ? "auto" : "smooth",
-                block: "end",
-            });
-        });
-        return () => cancelAnimationFrame(raf);
-    }, [messages, isStreaming]);
+        let frameId = 0;
+        let settledFrames = 0;
+        let lastScrollHeight = -1;
+
+        const pinToBottomUntilSettled = () => {
+            const root = scrollRootRef.current;
+            if (!root || !shouldAutoScrollRef.current) {
+                frameId = 0;
+                return;
+            }
+
+            root.scrollTop = root.scrollHeight;
+
+            const distanceToBottom = root.scrollHeight - root.scrollTop - root.clientHeight;
+            const isSettled =
+                distanceToBottom <= 1 && root.scrollHeight === lastScrollHeight;
+
+            settledFrames = isSettled ? settledFrames + 1 : 0;
+            lastScrollHeight = root.scrollHeight;
+
+            if (settledFrames >= AUTO_SCROLL_SETTLED_FRAME_TARGET) {
+                frameId = 0;
+                return;
+            }
+
+            frameId = requestAnimationFrame(pinToBottomUntilSettled);
+        };
+
+        frameId = requestAnimationFrame(pinToBottomUntilSettled);
+
+        return () => {
+            if (frameId !== 0) {
+                cancelAnimationFrame(frameId);
+            }
+        };
+    }, [chatId, messages, isStreaming]);
 
     // Phase 2: Mic start → interrupt TTS + track recording state
     const handleMicStart = useCallback(() => {
