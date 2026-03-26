@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { X } from "lucide-react";
 import type { Character } from "@/components/Sidebar";
 import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { getErrorMessage } from "@/lib/error-map";
 import { listChats, type ChatHistoryItem, type ChatResponse } from "@/lib/api";
 
@@ -46,6 +62,21 @@ function formatTimestamp(value?: string | null): string {
 function getChatTitle(title?: string | null): string {
   const trimmedTitle = title?.trim();
   return trimmedTitle?.length ? trimmedTitle : "新聊天";
+}
+
+function ChatHistorySkeleton() {
+  return (
+    <div className="flex flex-col gap-3 px-2 py-4">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="flex items-start gap-3 rounded-2xl border border-transparent bg-gray-50 px-3 py-3">
+          <div className="min-w-0 flex-1">
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="mt-2 h-3 w-1/3" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function ChatHistorySidebar({
@@ -203,181 +234,196 @@ export default function ChatHistorySidebar({
 
   return (
     <>
-      <div
-        className={`absolute inset-0 z-30 transition ${
-          isOpen ? "pointer-events-auto bg-black/20" : "pointer-events-none bg-transparent"
-        }`}
-        onClick={onClose}
-      />
-
-      <aside
-        className={`absolute inset-y-0 right-0 z-40 flex w-full max-w-[360px] flex-col border-l border-divider bg-white shadow-[-12px_0_40px_rgba(15,23,42,0.12)] transition-transform duration-200 ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-        <div className="flex items-center justify-between border-b border-divider px-5 py-4">
-          <div className="min-w-0">
-            <h3 className="text-base font-semibold text-text-primary">历史记录</h3>
-            <p className="truncate text-sm text-gray-500">
-              {character ? character.name : "当前角色"}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
-          >
-            关闭
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-3 py-3">
-          {isLoading ? (
-            <div className="px-2 py-8 text-center text-sm text-gray-500">加载中...</div>
-          ) : null}
-
-          {!isLoading && error ? (
-            <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-sm text-red-600">
-              {error}
+      <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <SheetContent
+          side="right"
+          className="w-full max-w-[360px] p-0 flex flex-col border-l border-divider bg-white"
+          showCloseButton={false}
+        >
+          <SheetHeader className="flex flex-row items-center justify-between border-b border-divider px-5 py-4 space-y-0">
+            <div className="min-w-0">
+              <SheetTitle className="text-base font-semibold text-text-primary">历史记录</SheetTitle>
+              <SheetDescription className="truncate text-sm text-gray-500 mt-0">
+                {character ? character.name : "当前角色"}
+              </SheetDescription>
             </div>
-          ) : null}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="h-8 px-2 text-gray-500 hover:text-gray-700"
+            >
+              <X className="h-4 w-4 mr-1" />
+              关闭
+            </Button>
+          </SheetHeader>
 
-          {!isLoading && !error && displayItems.length === 0 ? (
-            <div className="px-2 py-8 text-center text-sm text-gray-500">
-              还没有历史记录
-            </div>
-          ) : null}
+          <ScrollArea className="flex-1 px-3 py-3">
+            {isLoading ? (
+              <ChatHistorySkeleton />
+            ) : null}
 
-          <div className="flex flex-col gap-2">
-            {displayItems.map((item) => {
-              const isActive = item.chat.id === activeChatId;
-              const isRenaming = renamingChatId === item.chat.id;
+            {!isLoading && error ? (
+              <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-sm text-red-600">
+                {error}
+              </div>
+            ) : null}
 
-              return (
-                <div
-                  key={item.chat.id}
-                  className={`group rounded-2xl border px-3 py-3 transition-colors ${
-                    isActive
-                      ? "border-[#3964FE]/20 bg-[#3964FE]/6"
-                      : "border-transparent bg-gray-50 hover:border-gray-200 hover:bg-white"
-                  }`}
-                >
-                  {isRenaming ? (
-                    <div className="flex flex-col gap-2">
-                      <Input
-                        value={renameValue}
-                        onChange={(event) => {
-                          setRenameValue(event.target.value);
-                          if (renameError) setRenameError(null);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void submitRename(item.chat.id);
-                          }
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            cancelRename();
-                          }
-                        }}
-                        autoFocus
-                        maxLength={120}
-                        placeholder="输入聊天标题"
-                      />
-                      {renameError ? (
-                        <p className="text-xs text-red-600">{renameError}</p>
-                      ) : null}
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={cancelRename}
-                          disabled={isSavingRename}
-                        >
-                          取消
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => void submitRename(item.chat.id)}
-                          disabled={isSavingRename}
-                        >
-                          {isSavingRename ? "保存中..." : "保存"}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-start gap-3">
-                      <button
-                        type="button"
-                        onClick={() => onSelectChat(item.chat.id)}
-                        className="min-w-0 flex-1 text-left"
-                      >
-                        <div className="truncate text-sm font-medium text-gray-900">
-                          {getChatTitle(item.chat.title)}
-                        </div>
-                        <div className="mt-1 text-xs text-gray-500">
-                          {formatTimestamp(item.chat.last_turn_at ?? item.chat.created_at)}
-                        </div>
-                      </button>
+            {!isLoading && !error && displayItems.length === 0 ? (
+              <div className="px-2 py-8 text-center text-sm text-gray-500">
+                还没有历史记录
+              </div>
+            ) : null}
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
+            <div className="flex flex-col gap-2">
+              {displayItems.map((item) => {
+                const isActive = item.chat.id === activeChatId;
+                const isRenaming = renamingChatId === item.chat.id;
+
+                return (
+                  <div
+                    key={item.chat.id}
+                    className={`group rounded-2xl border px-3 py-3 transition-colors ${
+                      isActive
+                        ? "border-[#3964FE]/20 bg-[#3964FE]/6"
+                        : "border-transparent bg-gray-50 hover:border-gray-200 hover:bg-white"
+                    }`}
+                  >
+                    {isRenaming ? (
+                      <div className="flex flex-col gap-2">
+                        <Input
+                          value={renameValue}
+                          onChange={(event) => {
+                            setRenameValue(event.target.value);
+                            if (renameError) setRenameError(null);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void submitRename(item.chat.id);
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              cancelRename();
+                            }
+                          }}
+                          autoFocus
+                          maxLength={120}
+                          placeholder="输入聊天标题"
+                        />
+                        {renameError ? (
+                          <p className="text-xs text-red-600">{renameError}</p>
+                        ) : null}
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
                             type="button"
-                            className="opacity-0 transition-opacity group-hover:opacity-100 rounded-lg p-1.5 hover:bg-gray-100 data-[state=open]:opacity-100"
-                            aria-label="更多操作"
+                            variant="ghost"
+                            size="sm"
+                            onClick={cancelRename}
+                            disabled={isSavingRename}
                           >
-                            <Image
-                              src="/vertical dots.svg"
-                              alt=""
-                              width={16}
-                              height={16}
-                            />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" sideOffset={8} className="w-40">
-                          <DropdownMenuItem onClick={() => beginRename(item)}>
-                            <Image
-                              src="/icons/edit-6d87e1.svg"
-                              alt=""
-                              width={16}
-                              height={16}
-                            />
-                            重命名
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => setDeleteTarget(item)}
+                            取消
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => void submitRename(item.chat.id)}
+                            disabled={isSavingRename}
                           >
-                            <Image src="/delete.svg" alt="" width={16} height={16} />
-                            删除
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                            {isSavingRename ? "保存中..." : "保存"}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => onSelectChat(item.chat.id)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <div className="truncate text-sm font-medium text-gray-900">
+                            {getChatTitle(item.chat.title)}
+                          </div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            {formatTimestamp(item.chat.last_turn_at ?? item.chat.created_at)}
+                          </div>
+                        </button>
 
-          {hasMore ? (
-            <div className="pt-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => void loadPage(nextCursor ?? undefined, true)}
-                disabled={isLoadingMore}
-              >
-                {isLoadingMore ? "加载中..." : "加载更多"}
-              </Button>
+                        <DropdownMenu>
+                          <TooltipProvider delayDuration={300}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="opacity-0 transition-opacity group-hover:opacity-100 rounded-lg p-1.5 hover:bg-gray-100 data-[state=open]:opacity-100"
+                                    aria-label="更多操作"
+                                  >
+                                    <Image
+                                      src="/vertical dots.svg"
+                                      alt=""
+                                      width={16}
+                                      height={16}
+                                    />
+                                  </button>
+                                </DropdownMenuTrigger>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>更多操作</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <DropdownMenuContent align="end" sideOffset={8} className="w-40">
+                            <DropdownMenuItem onClick={() => beginRename(item)}>
+                              <Image
+                                src="/icons/edit-6d87e1.svg"
+                                alt=""
+                                width={16}
+                                height={16}
+                              />
+                              重命名
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setDeleteTarget(item)}
+                            >
+                              <Image src="/delete.svg" alt="" width={16} height={16} />
+                              删除
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          ) : null}
-        </div>
-      </aside>
+
+            {hasMore ? (
+              <div className="pt-3">
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => void loadPage(nextCursor ?? undefined, true)}
+                        disabled={isLoadingMore}
+                      >
+                        {isLoadingMore ? "加载中..." : "加载更多"}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{isLoadingMore ? "正在加载更多聊天记录" : "点击加载更多历史记录"}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            ) : null}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
 
       <DeleteConfirmDialog
         isOpen={!!deleteTarget}
