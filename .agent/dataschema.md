@@ -1,297 +1,604 @@
-# NeuraChar Data Schema（当前实现）
+# role-playing 数据契约（当前前端实现）
 
-更新时间：2026-03-20
+更新时间：2026-04-03
 
-## 1. 存储概览
+## 1. 数据来源分层
 
-系统当前使用三类存储：
+当前前端代码里的数据来自 5 个层次：
 
-1. PostgreSQL：业务主数据
-2. Milvus：向量记忆
-3. 本地文件系统：上传图片与静态资源
+1. 服务端 DTO
+   - 定义在 `src/lib/api-service.ts`
+2. 前端投影模型
+   - 例如 `Character`、`Message`、`VoiceCardDisplay`
+3. 本地持久化
+   - `access_token`
+   - `user_settings_v2`
+4. 流式事件
+   - 聊天流
+   - regen 流
+   - edit 流
+5. 二进制 / Web Audio 状态
+   - TTS 手动播放
+   - 实时 TTS
+   - 音色试听
 
-一致性原则：
+## 2. 本地持久化结构
 
-- PostgreSQL 与 Milvus 之间没有分布式事务
-- 记忆写入、语义归并、叙事分组属于异步或最终一致流程
-- 学习卡片不单独建表，而是落在 `candidates.extra` 或 `saved_items.card`
+### 2.1 `access_token`
 
-## 2. PostgreSQL
+- 存储位置：`localStorage`
+- key：`access_token`
+- 类型：`string | null`
+- 维护者：`src/lib/token-store.ts`
 
-模型定义：`src/db/models.py`
+### 2.2 `user_settings_v2`
 
-### 2.1 枚举类型
+- 存储位置：`localStorage`
+- key：`user_settings_v2`
+- 类型：
 
-- `visibility_t`: `PUBLIC | PRIVATE | UNLISTED`
-- `chat_visibility_t`: `PUBLIC | PRIVATE | UNLISTED`
-- `chat_type_t`: `ONE_ON_ONE | ROOM`
-- `chat_state_t`: `ACTIVE | ARCHIVED`
-- `author_type_t`: `USER | CHARACTER | SYSTEM`
-- `turn_state_t`: `OK | FILTERED | DELETED | ERROR`
+```ts
+{
+  messageFontSize: number;
+  displayMode: "concise" | "detailed";
+  replyCardEnabled: boolean;
+  mixedInputAutoTranslateEnabled: boolean;
+  autoReadAloudEnabled: boolean;
+  preferredExpressionBiasEnabled: boolean;
+}
+```
 
-### 2.2 核心表
+- 维护者：`src/lib/user-settings-context.tsx`
 
-#### `users`
+## 3. 服务端核心 DTO
 
-- 主键：`id UUID`
-- 唯一：`email`、`username`
-- 关联：
-  - `characters.creator_id`
-  - `chats.user_id`
-  - `voice_profiles.owner_user_id`
-  - `saved_items.user_id`
+### 3.1 鉴权与用户
 
-#### `user_settings`
+`User`
 
-- 主键：`user_id UUID`
-- 当前字段：
-  - `message_font_size SMALLINT`
-  - `display_mode VARCHAR(20)`
-  - `knowledge_card_enabled BOOLEAN`
-  - `mixed_input_auto_translate_enabled BOOLEAN`
-  - `auto_read_aloud_enabled BOOLEAN`
-  - `preferred_expression_bias_enabled BOOLEAN`
-  - `created_at`
-  - `updated_at`
+- `id`
+- `email`
+- `username?`
+- `avatar_url?`
+- `created_at`
+- `last_login_at?`
 
-当前运行时强依赖：
+`AuthResponse`
 
+- `access_token`
+- `token_type`
+
+`UpdateProfileRequest`
+
+- `username?`
+- `avatar_url?`
+
+### 3.2 用户设置
+
+`DisplayMode`
+
+- `concise`
+- `detailed`
+
+`UserSettingsResponse`
+
+- `display_mode`
+- `reply_card_enabled`
+- `mixed_input_auto_translate_enabled`
 - `auto_read_aloud_enabled`
 - `preferred_expression_bias_enabled`
+- `message_font_size`
+- `updated_at`
 
-#### `email_login_codes`
+`UpdateUserSettingsRequest`
 
-- 主键：`id`
-- 字段：
-  - `email`
-  - `code_hash`
-  - `created_at`
-  - `expires_at`
-  - `used_at`
+- 上述字段全部是可选 patch
 
-#### `voice_profiles`
+### 3.3 角色、音色、模型
 
-- 主键：`id UUID`
-- 唯一：`(provider, provider_voice_id)`
-- 重要字段：
-  - `owner_user_id`
-  - `provider`
-  - `provider_voice_id`
-  - `provider_model`
-  - `source_type`
-  - `status`
-  - `provider_status`
-  - `display_name`
+`CharacterVisibility`
+
+- `PUBLIC`
+- `PRIVATE`
+- `UNLISTED`
+
+`LLMProvider`
+
+- `deepseek`
+- `openrouter`
+- `xiaomi`
+
+`VoiceSourceType`
+
+- `system`
+- `clone`
+- `designed`
+- `imported`
+
+`VoiceStatus`
+
+- `creating`
+- `processing`
+- `ready`
+- `failed`
+- `deleting`
+- `deleted`
+
+`CharacterResponse`
+
+- 基础资料
+  - `id`
+  - `name`
   - `description`
-  - `preview_text`
-  - `preview_audio_url`
-  - `language_tags`
-  - `metadata JSONB`
-  - `created_at`
-  - `updated_at`
-
-当前索引：
-
-- `voice_profiles_owner_user_created_at_idx`
-- `voice_profiles_provider_status_idx`
-
-#### `characters`
-
-- 主键：`id UUID`
-- 关联：`creator_id -> users.id (SET NULL)`
-- 当前语音绑定字段：
+  - `system_prompt`
+  - `greeting_message?`
+  - `avatar_file_name?`
+  - `tags?`
+  - `visibility`
+  - `creator_id`
+  - `identifier?`
+  - `interaction_count`
+- 音色绑定
   - `voice_provider`
   - `voice_model`
   - `voice_provider_voice_id`
   - `voice_source_type`
-- 其他关键字段：
-  - `identifier`
-  - `name`
-  - `description`
-  - `system_prompt`
-  - `greeting_message`
-  - `avatar_file_name`
-  - `tags`
-  - `visibility`
-  - `interaction_count`
+  - `voice?`
+- 模型绑定
+  - `llm_provider?`
+  - `llm_model?`
+  - `uses_system_default_llm?`
+  - `effective_llm_provider?`
+  - `effective_llm_model?`
 
-#### `chats`
+`CharacterBrief`
 
-- 主键：`id UUID`
-- 外键：
-  - `user_id -> users.id`
-  - `character_id -> characters.id`
-- 关键字段：
-  - `type`
-  - `state`
-  - `visibility`
-  - `last_turn_at`
-  - `last_turn_id`
-  - `last_turn_no`
-  - `active_leaf_turn_id`
-  - `last_read_turn_no`
-  - `meta`
+- 聊天详情与聊天历史里用的轻量角色结构
 
-#### `turns`
+`VoiceSelectableItem`
 
-- 主键：`id UUID`
-- 外键：`chat_id -> chats.id`
-- 唯一：`(chat_id, turn_no)`
-- 关键字段：
-  - `parent_turn_id`
-  - `parent_candidate_id`
-  - `author_type`
-  - `author_user_id`
-  - `author_character_id`
-  - `state`
-  - `is_proactive`
-  - `primary_candidate_id`
-  - `meta`
+- `id`
+- `display_name`
+- `source_type`
+- `provider`
+- `provider_model`
+- `provider_voice_id`
+- `avatar_file_name?`
+- `preview_text?`
+- `preview_audio_url`
+- `usage_hint`
 
-#### `candidates`
+`VoiceProfile`
 
-- 主键：`id UUID`
-- 外键：`turn_id -> turns.id`
-- 唯一：`(turn_id, candidate_no)`
-- 关键字段：
-  - `candidate_no`
-  - `content`
-  - `model_type`
-  - `is_final`
-  - `rank`
-  - `extra JSONB`
+- `id`
+- `owner_user_id`
+- `provider`
+- `provider_voice_id`
+- `provider_model`
+- `source_type`
+- `display_name`
+- `description`
+- `avatar_file_name?`
+- `status`
+- `provider_status`
+- `preview_text?`
+- `preview_audio_url`
+- `language_tags`
+- `metadata`
+- `bound_character_count?`
+- `bound_character_ids?`
+- `created_at`
+- `updated_at`
 
-当前 `extra` 已使用的业务字段：
+`LLMModelCatalogResponse`
 
-- `input_transform`
-- `sentence_card`
-- 占位/来源标记（如 stream placeholder、regen placeholder）
+- `default_route`
+- `items[]`
 
-#### `saved_items`
+`LLMModelCatalogItem`
 
-- 主键：`id UUID`
-- 外键：`user_id -> users.id`
-- 当前唯一约束：
+- `provider`
+- `model`
+- `label`
+- `description`
+- `is_default`
 
-```text
-(user_id, kind, display_surface)
-```
+### 3.4 聊天
 
-- 重要字段：
-  - `kind`
-  - `display_surface`
-  - `display_zh`
-  - `card JSONB`
-  - `source_role_id`
-  - `source_chat_id`
-  - `source_message_id`
-  - `source_turn_id`
-  - `source_candidate_id`
-  - `source_meta`
-  - `created_at`
+`ChatType`
 
-当前 `kind`：
+- `ONE_ON_ONE`
+- `ROOM`
 
-- `sentence_card`
+`ChatState`
+
+- `ACTIVE`
+- `ARCHIVED`
+
+`TurnAuthorType`
+
+- `USER`
+- `CHARACTER`
+- `SYSTEM`
+
+`TurnState`
+
+- `OK`
+- `FILTERED`
+- `DELETED`
+- `ERROR`
+
+`ChatResponse`
+
+- `id`
+- `user_id`
+- `character_id`
+- `title`
+- `type`
+- `state`
+- `visibility`
+- `last_turn_at?`
+- `last_turn_id?`
+- `last_turn_no?`
+- `active_leaf_turn_id?`
+- `last_read_turn_no?`
+- `created_at`
+- `updated_at`
+- `archived_at?`
+- `meta?`
+
+`CandidateExtra`
+
+- `input_transform?`
+- `reply_card?`
+
+`CandidateResponse`
+
+- `id`
+- `candidate_no`
+- `content`
+- `model_type?`
+- `is_final`
+- `rank?`
+- `created_at`
+- `extra?`
+
+`TurnResponse`
+
+- `id`
+- `turn_no`
+- `author_type`
+- `state`
+- `is_proactive`
+- `parent_turn_id?`
+- `parent_candidate_id?`
+- `primary_candidate`
+- `candidate_count`
+
+`TurnsPageResponse`
+
+- `chat`
+- `character`
+- `turns[]`
+- `next_before_turn_id?`
+- `has_more`
+
+`ChatHistoryItem`
+
+- `chat`
+- `character`
+
+`ChatsPageResponse`
+
+- `items[]`
+- `next_cursor?`
+- `has_more`
+
+### 3.5 学习辅助与收藏
+
+`ReplySuggestion`
+
+- `type`
+  - `relationship | topic | interaction`
+- `en`
+- `zh`
+
+`ReplyCard`
+
+- `surface`
+- `zh`
+- `key_phrases[]`
+- `favorite`
+
+`WordCard`
+
+- `surface`
+- `ipa_us`
+- `pos_groups[]`
+- `example`
+- `favorite`
+
+`FeedbackCard`
+
+- `surface`
+- `zh`
+- `key_phrases[]`
+- `favorite`
+
+`SavedItemKind`
+
+- `reply_card`
 - `word_card`
 - `feedback_card`
 
-说明：
+`SavedItemPayloadPhase3`
 
-- `word_card` 和 `feedback_card` 没有独立业务表
-- 收藏落库时统一进入 `saved_items.card`
-- 服务端按 `display_surface` 做去重，不再按 `source_message_id` 去重
+- `kind`
+- `display`
+  - `surface`
+  - `zh`
+- `card`
+  - `ReplyCard | WordCard | FeedbackCard`
+- `source`
+  - `role_id`
+  - `chat_id`
+  - `message_id`
+  - `turn_id?`
+  - `candidate_id?`
+  - `meta?`
 
-## 3. Alembic 迁移现状
+`SavedItemResponsePhase3`
 
-当前迁移目录：`alembic/versions/`
+- 上述字段 + `id` + `created_at`
 
-已存在版本：
+### 3.6 Discover 配置
 
-1. `20260216_0001_turn_tree.py`
-2. `20260218_0002_row_level_security.py`
-3. `20260219_0003_user_settings.py`
-4. `20260224_0004_phase1_learning.py`
-5. `20260226_0005_remove_sentence_card_sentence_ipa.py`
-6. `20260226_0006_phase2_voice.py`
-7. `20260227_0007_phase2_1_voice_profiles.py`
-8. `20260227_0008_phase2_2_character_voice_binding_direct.py`
-9. `20260320_0009_voice_profile_preview_text.py`
-10. `20260320_0010_phase3_learning_bias.py`
-11. `20260320_0011_phase3_expression_bias_toggle.py`
+`DiscoverConfig`
 
-当前头版本：`20260320_0011`
+- `hero_character_ids: string[]`
 
-其中最近两次与 Phase 3 直接相关：
+## 4. 流式事件结构
 
-- `20260320_0010_phase3_learning_bias.py`
-  - `saved_items` 唯一约束改为 `(user_id, kind, display_surface)`
-- `20260320_0011_phase3_expression_bias_toggle.py`
-  - `user_settings` 新增 `preferred_expression_bias_enabled`
+### 4.1 主聊天流
 
-## 4. 启动期 Schema Guard
+当前前端解析这些事件：
 
-文件：`src/db/schema_guard.py`
+- `meta`
+  - `user_turn`
+  - `assistant_turn`
+- `chat_title_updated`
+  - `chat_id`
+  - `title`
+- `transform_chunk`
+  - `content`
+- `transform_done`
+  - `original_content`
+  - `transformed_content`
+  - `applied`
+- `chunk`
+  - `content`
+- `done`
+  - `full_content`
+  - `assistant_turn_id?`
+  - `assistant_candidate_id?`
+- `reply_suggestions`
+- `reply_card_started`
+- `reply_card`
+- `reply_card_error`
+- `error`
+- `tts_audio_delta`
+- `tts_audio_done`
+- `tts_error`
 
-启动时会检查以下表/列是否存在：
+### 4.2 regen / edit 流
 
-- `user_settings.auto_read_aloud_enabled`
-- `user_settings.preferred_expression_bias_enabled`
-- `characters.voice_provider`
-- `characters.voice_model`
-- `characters.voice_provider_voice_id`
-- `characters.voice_source_type`
-- `voice_profiles` 的核心字段集合
+共享事件：
 
-如果缺列，会在 API 启动阶段直接失败，并提示执行：
+- `meta`
+- `chunk`
+- `done`
+- `reply_suggestions`
+- `reply_card_started`
+- `reply_card`
+- `reply_card_error`
+- `error`
+- `tts_audio_delta`
+- `tts_audio_done`
+- `tts_error`
 
-```text
-alembic upgrade head
-```
+仅 edit 流额外有：
 
-## 5. Row-Level Security 与会话上下文
+- `transform_done`
 
-项目继续使用 PostgreSQL RLS 做用户隔离，依赖：
+## 5. 前端投影模型
 
-```sql
-set_config('app.current_user_id', '<uuid>', true)
-```
+### 5.1 Sidebar / 角色卡模型
 
-当前关键受保护表包括：
+`Character`
 
-- `characters`
-- `chats`
-- `turns`
-- `candidates`
-- `user_settings`
-- `saved_items`
-- `voice_profiles`
+- 来自 `CharacterResponse`
+- 额外投影：
+  - `avatar`
+    - 通过 `resolveCharacterAvatarSrc` 解析
+  - `creator_username?`
+  - 直接带上 `voice` 和 LLM 显示字段
 
-## 6. Milvus
+### 5.2 聊天消息模型
 
-默认集合：`memories`
+`Message`
 
-当前字段：
+- `id`
+- `role`
+  - `user | assistant`
+- `content`
+- `candidateNo?`
+- `candidateCount?`
+- `isTemp?`
+- `isGreeting?`
+- `inputTransform?`
+- `replyCard?`
+- `replySuggestions?`
+- `transformChunks?`
+- `assistantTurnId?`
+- `assistantCandidateId?`
+- `messageStreamStatus?`
+  - `idle | streaming | done | error`
+- `replyCardStatus?`
+  - `idle | loading | ready | error`
+- `replyCardErrorCode?`
 
-- `id INT64 auto_id`
-- `user_id VARCHAR`
-- `character_id VARCHAR`
-- `memory_type VARCHAR`
-- `ts INT64`
-- `chat_id VARCHAR`
-- `text VARCHAR`
-- `vector FLOAT_VECTOR(2560)`
-- `group_id INT64`
+### 5.3 音色显示模型
 
-当前使用方式：
+`VoiceDisplayInfo`
 
-- episodic / semantic 统一落一个集合
-- embedding 维度由 `MEMORY_EMBEDDING_DIM=2560` 控制
-- 相似度检索与叙事分组由 memory 子系统封装
+- 音色选择器使用
+- 包含：
+  - `displayName`
+  - `description`
+  - `provider`
+  - `providerModel`
+  - `providerVoiceId`
+  - `sourceType`
+  - `previewText`
+  - `previewAudioUrl`
+  - `isSystem`
+  - `status`
+  - `boundCharacterCount`
 
-## 7. 当前数据层边界
+`VoiceCardDisplay`
 
-1. 文本聊天、学习收藏、用户设置、音色资料都落 PostgreSQL
-2. 记忆向量与相似检索落 Milvus
-3. `sentence_card` 在聊天完成后写入 `candidates.extra`
-4. `word_card` / `feedback_card` 只在生成响应和收藏时出现，不做独立持久化表
+- 个人中心音色卡片使用
+- 额外包含：
+  - `statusText`
+  - `canPreview`
+  - `canDelete`
+
+### 5.4 模型显示模型
+
+`ModelDisplayInfo`
+
+- `id`
+- `provider`
+- `model`
+- `label`
+- `description`
+- `isDefault`
+
+`ModelGroup`
+
+- `label`
+- `provider`
+- `models[]`
+
+## 6. 本地 UI 状态模型
+
+### 6.1 收藏与卡片状态
+
+`MessageActionStatus`
+
+- `idle`
+- `loading`
+- `ready`
+- `error`
+
+`FeedbackCardState`
+
+- `status`
+- `feedbackCard`
+- `pendingOpen`
+- `requestId`
+- `errorCode?`
+
+`FavoriteToggleHandler`
+
+- 返回：
+  - `Promise<string | null>`
+  - 或 `string | null | void`
+
+### 6.2 音频状态
+
+`AudioPreviewSnapshot`
+
+- `activeId`
+- `phase`
+  - `idle | loading | playing`
+
+### 6.3 用户设置本地状态
+
+`SettingsState`
+
+- `messageFontSize`
+- `displayMode`
+- `replyCardEnabled`
+- `mixedInputAutoTranslateEnabled`
+- `autoReadAloudEnabled`
+- `preferredExpressionBiasEnabled`
+
+## 7. 前端校验约束
+
+### 7.1 setup 页头像
+
+- 类型：
+  - `image/jpeg`
+  - `image/png`
+  - `image/gif`
+  - `image/webp`
+- 大小上限：`5MB`
+
+### 7.2 角色创建 / 编辑
+
+- `name`
+  - 必填
+  - 输入框 `maxLength=100`
+- `description`
+  - 必填
+  - 前端额外限制 `<= 35` 字
+- `greeting_message`
+  - 可选
+  - `maxLength=200`
+- `system_prompt`
+  - 必填
+- `tags`
+  - 最多 `3` 个
+  - 单个最长 `24` 字符
+- `visibility`
+  - `PUBLIC | UNLISTED | PRIVATE`
+
+### 7.3 音色克隆
+
+- `display_name`
+  - 必填
+  - 最长 `40`
+- `description`
+  - 最长 `160`
+- `preview_text`
+  - 必填
+  - 最长 `120`
+- `source_audio`
+  - 必填
+  - 类型：
+    - `audio/wav`
+    - `audio/mp3`
+    - `audio/mpeg`
+    - `audio/m4a`
+    - `audio/flac`
+    - `audio/opus`
+  - 大小上限：`10MB`
+
+### 7.4 音色编辑
+
+- `display_name <= 40`
+- `description <= 160`
+- `preview_text <= 120`
+
+### 7.5 用户设置
+
+- `messageFontSize`
+  - 会被 clamp 到 `14 ~ 24`
+
+## 8. 当前前端口径
+
+- 回复卡字段当前口径是 `reply_card`，不是旧文档里的 `sentence_card`。
+- 用户设置字段当前口径是 `reply_card_enabled`，不是旧文档里的 `knowledge_card_enabled`。
+- 收藏类型当前口径是 `reply_card | word_card | feedback_card`。
+- 正式页面当前没有调试路由，因此不存在额外页面特定 DTO。
