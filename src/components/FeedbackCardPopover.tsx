@@ -11,14 +11,12 @@ import { useDismissiblePopover } from "@/hooks/useDismissiblePopover";
 interface FeedbackCardPopoverProps {
     feedbackCard: FeedbackCardType;
     onToggleFavorite: FavoriteToggleHandler;
-    isSaving?: boolean;
     onClose: () => void;
 }
 
 export default function FeedbackCardPopover({
     feedbackCard,
     onToggleFavorite,
-    isSaving = false,
     onClose,
 }: FeedbackCardPopoverProps) {
     const popoverRef = useDismissiblePopover<HTMLDivElement>(onClose);
@@ -26,7 +24,6 @@ export default function FeedbackCardPopover({
         useOptimisticFavorite({
             isFavorited: feedbackCard.favorite.is_favorited,
             savedItemId: feedbackCard.favorite.saved_item_id ?? null,
-            isSaving,
             onToggleFavorite,
         });
 
@@ -35,7 +32,6 @@ export default function FeedbackCardPopover({
             ref={popoverRef}
             title="Better Expression"
             isFavorited={localFavorited}
-            isSaving={isSaving}
             onToggleFavorite={handleToggleFavorite}
         >
             <p className="text-sm font-semibold text-gray-900 leading-relaxed">

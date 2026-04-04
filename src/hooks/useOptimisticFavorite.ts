@@ -10,14 +10,12 @@ export type FavoriteToggleHandler = (
 interface UseOptimisticFavoriteOptions {
     isFavorited: boolean;
     savedItemId?: string | null;
-    isSaving?: boolean;
     onToggleFavorite: FavoriteToggleHandler;
 }
 
 export function useOptimisticFavorite({
     isFavorited,
     savedItemId,
-    isSaving = false,
     onToggleFavorite,
 }: UseOptimisticFavoriteOptions) {
     const [localFavorited, setLocalFavorited] = useState(isFavorited);
@@ -31,8 +29,6 @@ export function useOptimisticFavorite({
     }, [isFavorited, savedItemId]);
 
     const handleToggleFavorite = useCallback(async () => {
-        if (isSaving) return;
-
         const previousFavorited = localFavorited;
         const previousSavedItemId = localSavedItemId;
         const next = !localFavorited;
@@ -55,7 +51,7 @@ export function useOptimisticFavorite({
             setLocalFavorited(previousFavorited);
             setLocalSavedItemId(previousSavedItemId);
         }
-    }, [isSaving, localFavorited, localSavedItemId, onToggleFavorite, savedItemId]);
+    }, [localFavorited, localSavedItemId, onToggleFavorite, savedItemId]);
 
     return {
         isFavorited: localFavorited,

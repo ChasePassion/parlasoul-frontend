@@ -104,7 +104,6 @@ export default function ChatThread({
     // Reply card popover state
     const [openReplyCardKey, setOpenReplyCardKey] = useState<string | null>(null);
     const [pendingReplyCardKey, setPendingReplyCardKey] = useState<string | null>(null);
-    const [isFavoriteSaving, setIsFavoriteSaving] = useState(false);
     const cardAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const replyCardWrapperRef = useRef<HTMLDivElement | null>(null);
     const [favoriteOverrides, setFavoriteOverrides] = useState<
@@ -116,7 +115,6 @@ export default function ChatThread({
     const wordCardWrapperRef = useRef<HTMLDivElement | null>(null);
     const [wordCardAnchorRect, setWordCardAnchorRect] = useState<FloatingAnchorRect | null>(null);
     const [isWordCardLoading, setIsWordCardLoading] = useState(false);
-    const [isWordCardFavoriteSaving, setIsWordCardFavoriteSaving] = useState(false);
     const [wordCardFavoriteOverride, setWordCardFavoriteOverride] = useState<{
         isFavorited: boolean;
         savedItemId: string | null;
@@ -242,7 +240,6 @@ export default function ChatThread({
                 },
             }));
 
-            setIsFavoriteSaving(true);
             try {
                 if (isFavorited) {
                     // Create saved item
@@ -293,8 +290,6 @@ export default function ChatThread({
                     [messageKey]: previous,
                 }));
                 throw err;
-            } finally {
-                setIsFavoriteSaving(false);
             }
         },
         [character, chatId, favoriteOverrides]
@@ -445,7 +440,6 @@ export default function ChatThread({
                 savedItemId: isFavorited ? previous.savedItemId : null,
             });
 
-            setIsWordCardFavoriteSaving(true);
             try {
                 if (isFavorited) {
                     const payload: SavedItemPayloadPhase3 = {
@@ -483,8 +477,6 @@ export default function ChatThread({
                 console.error("Failed to toggle word favorite:", err);
                 setWordCardFavoriteOverride(previous);
                 throw err;
-            } finally {
-                setIsWordCardFavoriteSaving(false);
             }
         },
         [character, chatId, wordCardFavoriteOverride]
@@ -971,7 +963,7 @@ export default function ChatThread({
                                             assistantAvatar={character.avatar}
                                             messageFontSize={messageFontSize}
                                             actionsDisabled={false}
-                                            replyCardDisabled={isFavoriteSaving}
+                                            replyCardDisabled={false}
                                             replyCardStatus={replyCardStatus}
                                             feedbackStatus={feedbackStatus}
                                             displayMode={displayMode}
@@ -1020,7 +1012,6 @@ export default function ChatThread({
                                     replyCardMessage!
                                 )
                             }
-                            isSaving={isFavoriteSaving}
                             onClose={handleCloseReplyCard}
                         />
                     </div>,
@@ -1052,7 +1043,6 @@ export default function ChatThread({
                             onToggleFavorite={(isFavorited, savedItemId) =>
                                 handleToggleWordCardFavorite(isFavorited, savedItemId, wordCard)
                             }
-                            isSaving={isWordCardLoading || isWordCardFavoriteSaving}
                             onClose={handleCloseWordCard}
                         />
                     </div>,
@@ -1146,7 +1136,6 @@ export default function ChatThread({
                             onToggleFavorite={(isFavorited, savedItemId) =>
                                 handleToggleFeedbackFavorite(isFavorited, savedItemId, feedbackCard)
                             }
-                            isSaving={false}
                             onClose={handleCloseFeedbackCard}
                         />
                     </div>,

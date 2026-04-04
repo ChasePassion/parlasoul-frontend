@@ -6,7 +6,6 @@ import FavoriteIcon from "@/components/ui/FavoriteIcon";
 interface CardPopoverShellProps {
     title: string;
     isFavorited: boolean;
-    isSaving?: boolean;
     onToggleFavorite: () => void;
     children: ReactNode;
 }
@@ -16,7 +15,6 @@ const CardPopoverShell = forwardRef<HTMLDivElement, CardPopoverShellProps>(
         {
             title,
             isFavorited,
-            isSaving = false,
             onToggleFavorite,
             children,
         },
@@ -34,8 +32,7 @@ const CardPopoverShell = forwardRef<HTMLDivElement, CardPopoverShellProps>(
                     <button
                         type="button"
                         onClick={onToggleFavorite}
-                        disabled={isSaving}
-                        className="rounded-lg p-1 transition-colors hover:bg-gray-100 disabled:opacity-50"
+                        className="rounded-lg p-1 transition-colors hover:bg-gray-100"
                         aria-label={isFavorited ? "取消收藏" : "收藏"}
                     >
                         <FavoriteIcon isFavorited={isFavorited} />

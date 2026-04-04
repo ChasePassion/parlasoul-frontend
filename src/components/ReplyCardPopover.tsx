@@ -11,14 +11,12 @@ import { useDismissiblePopover } from "@/hooks/useDismissiblePopover";
 interface ReplyCardPopoverProps {
     replyCard: ReplyCard;
     onToggleFavorite: FavoriteToggleHandler;
-    isSaving?: boolean;
     onClose: () => void;
 }
 
 export default function ReplyCardPopover({
     replyCard,
     onToggleFavorite,
-    isSaving = false,
     onClose,
 }: ReplyCardPopoverProps) {
     const popoverRef = useDismissiblePopover<HTMLDivElement>(onClose);
@@ -26,7 +24,6 @@ export default function ReplyCardPopover({
         useOptimisticFavorite({
             isFavorited: replyCard.favorite.is_favorited,
             savedItemId: replyCard.favorite.saved_item_id ?? null,
-            isSaving,
             onToggleFavorite,
         });
 
@@ -35,7 +32,6 @@ export default function ReplyCardPopover({
             ref={popoverRef}
             title="Reply Card"
             isFavorited={localFavorited}
-            isSaving={isSaving}
             onToggleFavorite={handleToggleFavorite}
         >
             <p className="text-sm font-semibold text-gray-900 leading-relaxed">

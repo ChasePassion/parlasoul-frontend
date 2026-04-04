@@ -11,14 +11,12 @@ import { useDismissiblePopover } from "@/hooks/useDismissiblePopover";
 interface WordCardPopoverProps {
     wordCard: WordCard;
     onToggleFavorite: FavoriteToggleHandler;
-    isSaving?: boolean;
     onClose: () => void;
 }
 
 export default function WordCardPopover({
     wordCard,
     onToggleFavorite,
-    isSaving = false,
     onClose,
 }: WordCardPopoverProps) {
     const popoverRef = useDismissiblePopover<HTMLDivElement>(onClose);
@@ -26,7 +24,6 @@ export default function WordCardPopover({
         useOptimisticFavorite({
             isFavorited: wordCard.favorite.is_favorited,
             savedItemId: wordCard.favorite.saved_item_id ?? null,
-            isSaving,
             onToggleFavorite,
         });
 
@@ -35,7 +32,6 @@ export default function WordCardPopover({
             ref={popoverRef}
             title="Word Card"
             isFavorited={localFavorited}
-            isSaving={isSaving}
             onToggleFavorite={handleToggleFavorite}
         >
             <p className="text-lg font-bold text-gray-900 leading-relaxed">
