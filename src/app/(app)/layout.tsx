@@ -10,12 +10,15 @@ import { useSidebarShell } from "@/hooks/useSidebarShell";
 import { mapCharacterToSidebar } from "@/lib/character-adapter";
 import { getOrCreateChatId } from "@/lib/chat-helpers";
 import { UserSettingsProvider } from "@/lib/user-settings-context";
+import { GrowthProvider } from "@/lib/growth-context";
+import CheckInCalendarDialog from "@/components/growth/CheckInCalendarDialog";
 
 // Context for sidebar state
 interface SidebarContextType {
     isSidebarOpen: boolean;
     isOverlay: boolean;
     toggleSidebar: () => void;
+    closeSidebar: () => void;
     sidebarCharacters: Character[];
     selectedCharacterId: string | null;
     setSelectedCharacterId: (id: string | null) => void;
@@ -93,35 +96,39 @@ export default function AppLayout({
 
     return (
         <UserSettingsProvider>
-            <SidebarContext.Provider
-                value={{
-                    isSidebarOpen,
-                    isOverlay,
-                    toggleSidebar,
-                    sidebarCharacters,
-                    selectedCharacterId,
-                    setSelectedCharacterId,
-                    refreshSidebarCharacters,
-                }}
-            >
-                <AppFrame
-                    sidebar={
-                        <Sidebar
-                            characters={sidebarCharacters}
-                            selectedCharacterId={selectedCharacterId}
-                            onSelectCharacter={handleSelectCharacter}
-                            onToggle={toggleSidebar}
-                            isCollapsed={!isSidebarOpen}
-                        />
-                    }
-                    isSidebarOpen={isSidebarOpen}
-                    isOverlay={isOverlay}
-                    onCloseSidebar={closeSidebar}
-                    onToggleSidebar={toggleSidebar}
+            <GrowthProvider>
+                <SidebarContext.Provider
+                    value={{
+                        isSidebarOpen,
+                        isOverlay,
+                        toggleSidebar,
+                        closeSidebar,
+                        sidebarCharacters,
+                        selectedCharacterId,
+                        setSelectedCharacterId,
+                        refreshSidebarCharacters,
+                    }}
                 >
-                    {children}
-                </AppFrame>
-            </SidebarContext.Provider>
+                    <AppFrame
+                        sidebar={
+                            <Sidebar
+                                characters={sidebarCharacters}
+                                selectedCharacterId={selectedCharacterId}
+                                onSelectCharacter={handleSelectCharacter}
+                                onToggle={toggleSidebar}
+                                isCollapsed={!isSidebarOpen}
+                            />
+                        }
+                        isSidebarOpen={isSidebarOpen}
+                        isOverlay={isOverlay}
+                        onCloseSidebar={closeSidebar}
+                        onToggleSidebar={toggleSidebar}
+                    >
+                        {children}
+                    </AppFrame>
+                </SidebarContext.Provider>
+                <CheckInCalendarDialog />
+            </GrowthProvider>
         </UserSettingsProvider>
     );
 }

@@ -1,6 +1,7 @@
 import { httpClient } from "./http-client";
 import { ApiError, tokenStore, UnauthorizedError } from "./token-store";
 import { getErrorMessage } from "./error-map";
+import type { GrowthTodaySummary, GrowthShareCard } from "./growth-types";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -562,6 +563,16 @@ interface ChatStreamMemoryQueuedEvent {
   status: string;
 }
 
+interface ChatStreamGrowthDailyUpdatedEvent {
+  type: "growth_daily_updated";
+  today: GrowthTodaySummary;
+}
+
+interface ChatStreamGrowthShareCardReadyEvent {
+  type: "growth_share_card_ready";
+  share_card: GrowthShareCard;
+}
+
 interface ChatStreamErrorEvent {
   type: "error";
   code?: string;
@@ -697,6 +708,8 @@ type ChatStreamEvent =
   | ChatStreamReplyCardEvent
   | ChatStreamReplyCardErrorEvent
   | ChatStreamMemoryQueuedEvent
+  | ChatStreamGrowthDailyUpdatedEvent
+  | ChatStreamGrowthShareCardReadyEvent
   | ChatStreamErrorEvent
   | ChatStreamTtsAudioDeltaEvent
   | ChatStreamTtsAudioDoneEvent
@@ -1288,6 +1301,9 @@ export class ApiService {
       }) => void;
       onTtsAudioDone?: (data: { assistant_candidate_id: string }) => void;
       onTtsError?: (data: { code: string; message: string }) => void;
+      // Phase 5: Growth SSE callbacks
+      onGrowthDailyUpdated?: (data: { today: GrowthTodaySummary }) => void;
+      onGrowthShareCardReady?: (data: { share_card: GrowthShareCard }) => void;
       onError: (error: Error) => void;
     },
   ): Promise<void> {
@@ -1415,6 +1431,10 @@ export class ApiService {
                 code: data.code,
                 message: data.message,
               });
+            } else if (data.type === "growth_daily_updated") {
+              handlers.onGrowthDailyUpdated?.({ today: data.today });
+            } else if (data.type === "growth_share_card_ready") {
+              handlers.onGrowthShareCardReady?.({ share_card: data.share_card });
             }
             // memory_queued is silently ignored (background operation)
           } catch {

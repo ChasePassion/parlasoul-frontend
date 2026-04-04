@@ -113,6 +113,17 @@ export default function Sidebar({
                 <span className="text-sm font-medium text-gray-700">收藏夹</span>
             </DropdownMenuItem>
 
+            <DropdownMenuItem
+                onClick={() => { window.location.href = "/stats"; }}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
+            >
+                <div className="flex h-[20px] w-[20px] items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-700"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
+                </div>
+                <span className="text-sm font-medium text-gray-700">数据总览</span>
+            </DropdownMenuItem>
+
+
             <DropdownMenuSeparator className="bg-gray-100 h-px mx-2 my-1" />
 
             <DropdownMenuItem

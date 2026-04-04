@@ -3,9 +3,11 @@
 import Image from "next/image";
 import type { Character } from "./Sidebar";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import ReadingRing from "@/components/growth/ReadingRing";
 
 interface ChatHeaderProps {
     character?: Character | null;
+    chatId?: string;
     onNewChat?: () => void;
     onToggleHistory?: () => void;
     isHistoryOpen?: boolean;
@@ -14,6 +16,7 @@ interface ChatHeaderProps {
 
 export default function ChatHeader({
     character,
+    chatId,
     onNewChat,
     onToggleHistory,
     isHistoryOpen = false,
@@ -46,6 +49,7 @@ export default function ChatHeader({
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+                {chatId && <ReadingRing chatId={chatId} />}
                 <button
                     type="button"
                     onClick={onNewChat}

@@ -20,6 +20,8 @@ import {
     updateChat,
     type ChatResponse,
 } from "@/lib/api";
+import { useGrowth } from "@/lib/growth-context";
+import ShareCardDialog from "@/components/growth/ShareCardDialog";
 
 const AUTO_SCROLL_THRESHOLD_PX = 160;
 const AUTO_SCROLL_SETTLED_FRAME_TARGET = 2;
@@ -61,6 +63,8 @@ export default function ChatPage() {
         };
     }, []);
 
+    const { updateTodaySummary, enqueueShareCard } = useGrowth();
+
     const {
         chat,
         character,
@@ -87,6 +91,8 @@ export default function ChatPage() {
         setSelectedCharacterId,
         ttsPlaybackManager: ttsManagerRef.current,
         autoReadAloudEnabled,
+        onGrowthDailyUpdated: updateTodaySummary,
+        onGrowthShareCardReady: enqueueShareCard,
     });
 
     const handleCreateNewChat = useCallback(async () => {
@@ -282,6 +288,7 @@ export default function ChatPage() {
         <div className="w-full">
             <ChatHeader
                 character={character}
+                chatId={chatId}
                 onNewChat={() => void handleCreateNewChat()}
                 onToggleHistory={() => setIsHistoryOpen((previous) => !previous)}
                 isHistoryOpen={isHistoryOpen}
@@ -367,6 +374,8 @@ export default function ChatPage() {
                 onRenameChat={handleRenameChat}
                 onDeleteChat={handleDeleteHistoryChat}
             />
+
+            <ShareCardDialog />
         </div>
     );
 }

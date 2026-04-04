@@ -7,6 +7,7 @@ import type {
 } from "@/components/ChatMessage";
 import type { Character } from "@/components/Sidebar";
 import type { ChatResponse, ReplySuggestion } from "@/lib/api";
+import type { GrowthTodaySummary, GrowthShareCard } from "@/lib/growth-types";
 import {
   ApiError,
   UnauthorizedError,
@@ -30,6 +31,8 @@ interface UseChatSessionArgs {
   setSelectedCharacterId: (id: string | null) => void;
   ttsPlaybackManager?: TtsPlaybackManager | null;
   autoReadAloudEnabled?: boolean;
+  onGrowthDailyUpdated?: (today: GrowthTodaySummary) => void;
+  onGrowthShareCardReady?: (card: GrowthShareCard) => void;
 }
 
 interface UseChatSessionResult {
@@ -117,6 +120,8 @@ export function useChatSession({
   setSelectedCharacterId,
   ttsPlaybackManager,
   autoReadAloudEnabled = true,
+  onGrowthDailyUpdated,
+  onGrowthShareCardReady,
 }: UseChatSessionArgs): UseChatSessionResult {
   const [chat, setChat] = useState<ChatResponse | null>(null);
   const [character, setCharacter] = useState<Character | null>(null);
@@ -1255,6 +1260,15 @@ export function useChatSession({
               if (controller.signal.aborted) return;
               ttsPlaybackManager?.handleTtsError(data.code, data.message);
             },
+            onGrowthDailyUpdated: (data) => {
+              if (controller.signal.aborted) return;
+              onGrowthDailyUpdated?.(data.today);
+              window.dispatchEvent(new Event("growth:header:refresh"));
+            },
+            onGrowthShareCardReady: (data) => {
+              if (controller.signal.aborted) return;
+              onGrowthShareCardReady?.(data.share_card);
+            },
             onError: async (err) => {
               if (controller.signal.aborted) return;
               hasStreamError = true;
@@ -1321,6 +1335,8 @@ export function useChatSession({
       setCurrentChatTitle,
       shouldReloadForRequest,
       ttsPlaybackManager,
+      onGrowthDailyUpdated,
+      onGrowthShareCardReady,
     ],
   );
 

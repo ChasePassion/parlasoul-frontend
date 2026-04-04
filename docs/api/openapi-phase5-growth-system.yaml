@@ -1,0 +1,1212 @@
+openapi: 3.1.0
+info:
+  title: NeuraChar Phase 5 Growth System API
+  version: 5.1.0-draft
+  description: |
+    Incremental API contract for Phase 5 "轻量成长系统".
+
+    This document only covers the new growth/statistics domain and the
+    incremental SSE changes required by the product plan.
+
+    Existing auth, chat history, character, learning, voice, and settings APIs
+    are intentionally omitted unless their runtime behavior changes.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+
+x-phase5-growth-change-log:
+  added:
+    - POST /v1/growth/entry
+    - GET /v1/growth/calendar
+    - POST /v1/growth/make-up
+    - GET /v1/growth/chats/{chat_id}/header
+    - GET /v1/growth/overview
+    - GET /v1/growth/characters
+    - GET /v1/growth/share-cards/pending
+    - POST /v1/growth/share-cards/{trigger_id}/consume
+  modified:
+    - POST /v1/chats/{chat_id}/stream
+  removed: []
+
+x-phase5-growth-decision-log:
+  aggregate_storage: realtime_aggregate_tables_with_reward_ledger
+  exchange_definition: one_successful_user_send_plus_its_assistant_reply_equals_one_exchange
+  business_timezone: Asia/Shanghai
+  make_up_semantics: makeup_only_changes_calendar_and_balance_not_any_streak_chain
+  word_count_semantics: english_words_only_for_word_count_and_reading_equivalent
+
+x-phase5-growth-product-rules:
+  - daily sign-in threshold is 15 user-sent messages per Beijing day
+  - greeting messages count toward total message_count and total word_count
+  - greeting messages do not count toward daily sign-in progress
+  - current streak and longest streak are natural-signin streaks only
+  - makeup modifies calendar state only and never changes streak or reward chain
+  - every 3 natural sign-in days grants 1 makeup card, capped at 10
+  - one exchange equals one canonical user send and its successful assistant reply
+  - total message_count shown in history and overview is user plus assistant messages
+  - word_count and reading equivalence count English words only
+  - CET-4 equivalent is word_count / 300
+  - CET-6 equivalent is word_count / 400
+  - chat header ring is based on current chat active-branch English word count
+  - header ring unit is 300 English words
+  - only canonical chat sends update growth aggregates
+  - regen, edit, and candidate switching do not mutate growth aggregates
+  - share cards are triggered only once per rule threshold
+
+x-phase5-growth-excluded-scope:
+  - no server-side image rendering for share cards in this phase
+  - no global social feed
+  - no level, badge, or XP system
+  - no user-configurable timezone
+  - no retroactive recount of historical chats in this contract document
+
+tags:
+  - name: growth
+  - name: chats
+
+paths:
+  /v1/growth/entry:
+    post:
+      tags: [growth]
+      summary: "[NEW] Consume today's first site entry and return popup bootstrap data"
+      operationId: consumeGrowthEntry
+      x-change-type: added
+      description: |
+        This endpoint is called when the authenticated user first enters the app
+        shell on a Beijing-date day.
+
+        Server behavior:
+        - business date is always computed in `Asia/Shanghai`
+        - the endpoint is idempotent within the same Beijing date
+        - on the first successful call of the day, `popup.should_show = true`
+        - the same call also marks the daily popup as consumed server-side
+        - later calls on the same day return `popup.should_show = false`
+
+        The response contains:
+        - today's sign-in progress
+        - makeup card balance
+        - the current month calendar projection
+        - one short English slogan selected from a server-curated phrase set
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrowthEntryRequest"
+      responses:
+        "200":
+          description: Entry state and popup bootstrap data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_GrowthEntryResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/growth/calendar:
+    get:
+      tags: [growth]
+      summary: "[NEW] Get one month of growth calendar data"
+      operationId: getGrowthCalendar
+      x-change-type: added
+      description: |
+        Returns one Beijing-month calendar projection for popup and overview use.
+
+        Visual mapping rules for frontend:
+        - natural_signed => blue circle + light blue background
+        - makeup_signed => blue circle + light blue background + light corner marker
+        - missed => red X
+        - today_pending => blue circle only
+        - future => muted number
+      parameters:
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}$'
+          description: Defaults to current Beijing month.
+      responses:
+        "200":
+          description: Calendar month payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_GrowthCalendarResponse"
+        "400":
+          description: Invalid month parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/growth/make-up:
+    post:
+      tags: [growth]
+      summary: "[NEW] Use one makeup card on a missed past date"
+      operationId: applyGrowthMakeUp
+      x-change-type: added
+      description: |
+        Product rules:
+        - target_date must be before today's Beijing date
+        - target_date must currently be missed
+        - makeup card balance must be >= 1
+        - applying makeup updates calendar state only
+        - current streak and longest streak remain unchanged
+        - reward chain remains unchanged
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrowthMakeUpRequest"
+      responses:
+        "200":
+          description: Makeup applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_GrowthMakeUpResponse"
+        "400":
+          description: Invalid date or invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: No balance, date already signed, or date is not eligible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/growth/chats/{chat_id}/header:
+    get:
+      tags: [growth]
+      summary: "[NEW] Get chat header ring data and current-character summary"
+      operationId: getGrowthChatHeader
+      x-change-type: added
+      description: |
+        Returns the data needed by the chat page header ring and its detail popover.
+
+        Counting rules:
+        - current chat words are computed from the current active branch
+        - visible text sources include greeting, user messages, and assistant messages
+        - English words only count toward ring progress
+        - this endpoint is read-only and does not mutate aggregates
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Chat header growth payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_GrowthChatHeaderResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Chat or character not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/growth/overview:
+    get:
+      tags: [growth]
+      summary: "[NEW] Get overview KPI, trends, rankings, and reading equivalence"
+      operationId: getGrowthOverview
+      x-change-type: added
+      description: |
+        Returns the main data overview page payload.
+
+        The response is split into:
+        - KPI cards
+        - 7-day and 30-day trends
+        - sign-in calendar trend for the latest 30 Beijing dates
+        - rankings
+        - reading equivalence
+
+        `focus_character_id` is optional. When omitted, focus-character blocks are null.
+      parameters:
+        - name: focus_character_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Overview payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_GrowthOverviewResponse"
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/growth/characters:
+    get:
+      tags: [growth]
+      summary: "[NEW] Page the overview character ledger table"
+      operationId: listGrowthCharacters
+      x-change-type: added
+      description: |
+        Returns paged character rows for the overview "战绩台账" table.
+
+        Default sort:
+        - total_message_count DESC
+        - chatted_days_count DESC
+        - total_exchange_count DESC
+        - character_id DESC
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor returned by the previous page.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/GrowthCharacterSortBy"
+      responses:
+        "200":
+          description: Character ledger page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_GrowthCharactersPageResponse"
+        "400":
+          description: Invalid cursor or invalid sort_by
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/growth/share-cards/pending:
+    get:
+      tags: [growth]
+      summary: "[NEW] Get pending share cards not yet acknowledged by the client"
+      operationId: listPendingGrowthShareCards
+      x-change-type: added
+      description: |
+        Returns pending share-card payloads in trigger order.
+
+        Intended use:
+        - recover cards missed due to refresh or reconnect
+        - hydrate the modal queue when entering a chat page
+
+        Server ordering:
+        - triggered_at ASC
+        - id ASC
+      parameters:
+        - name: chat_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional filter for the current chat context.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 10
+      responses:
+        "200":
+          description: Pending share cards
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope_GrowthShareCardsPageResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/growth/share-cards/{trigger_id}/consume:
+    post:
+      tags: [growth]
+      summary: "[NEW] Acknowledge one share card after the client has shown it"
+      operationId: consumeGrowthShareCard
+      x-change-type: added
+      description: |
+        Marks one share-card trigger as consumed by the client.
+
+        This endpoint is idempotent:
+        - first successful call returns 204
+        - repeated calls for an already-consumed trigger also return 204
+      parameters:
+        - name: trigger_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Consumed
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Trigger not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/chats/{chat_id}/stream:
+    post:
+      tags: [chats]
+      summary: "[MODIFIED] Chat stream may emit growth events after successful canonical send"
+      operationId: streamChatPhase5Growth
+      x-change-type: modified
+      description: |
+        Existing chat streaming behavior is preserved.
+
+        Phase 5 growth additions:
+        - after a successful canonical send and assistant reply persistence,
+          backend updates growth aggregates
+        - the stream may emit one `growth_daily_updated` event
+        - the stream may emit zero, one, or multiple `growth_share_card_ready` events
+
+        These new events are only emitted for the canonical chat send path.
+        They are not emitted for regen, edit, or candidate switching.
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Chat or character not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [code, message, status]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        status:
+          type: integer
+
+    SuccessEnvelope_GrowthEntryResponse:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/GrowthEntryResponse"
+
+    SuccessEnvelope_GrowthCalendarResponse:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/GrowthCalendarResponse"
+
+    SuccessEnvelope_GrowthMakeUpResponse:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/GrowthMakeUpResponse"
+
+    SuccessEnvelope_GrowthChatHeaderResponse:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/GrowthChatHeaderResponse"
+
+    SuccessEnvelope_GrowthOverviewResponse:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/GrowthOverviewResponse"
+
+    SuccessEnvelope_GrowthCharactersPageResponse:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/GrowthCharactersPageResponse"
+
+    SuccessEnvelope_GrowthShareCardsPageResponse:
+      type: object
+      required: [code, message, status, data]
+      properties:
+        code:
+          type: string
+          example: ok
+        message:
+          type: string
+          example: ok
+        status:
+          type: integer
+          example: 200
+        data:
+          $ref: "#/components/schemas/GrowthShareCardsPageResponse"
+
+    GrowthCharacterSortBy:
+      type: string
+      enum:
+        - total_message_count
+        - total_word_count
+        - chatted_days_count
+        - last_chat_at
+
+    GrowthEntryRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        calendar_month:
+          type: string
+          pattern: '^\d{4}-\d{2}$'
+          description: Defaults to current Beijing month.
+
+    GrowthTodaySummary:
+      type: object
+      required:
+        - stat_date
+        - timezone
+        - signin_threshold
+        - user_signin_message_count
+        - remaining_user_messages
+        - is_checked_in
+        - current_natural_streak
+        - longest_natural_streak
+        - makeup_card_balance
+        - today_total_message_count
+        - today_total_word_count
+        - today_reading_equivalent
+      properties:
+        stat_date:
+          type: string
+          format: date
+        timezone:
+          type: string
+          example: Asia/Shanghai
+        signin_threshold:
+          type: integer
+          example: 15
+        user_signin_message_count:
+          type: integer
+        remaining_user_messages:
+          type: integer
+        is_checked_in:
+          type: boolean
+        checked_in_at:
+          type: string
+          format: date-time
+          nullable: true
+        current_natural_streak:
+          type: integer
+        longest_natural_streak:
+          type: integer
+        makeup_card_balance:
+          type: integer
+          minimum: 0
+          maximum: 10
+        today_total_message_count:
+          type: integer
+        today_total_word_count:
+          type: integer
+        today_reading_equivalent:
+          $ref: "#/components/schemas/GrowthReadingEquivalent"
+
+    GrowthCalendarVisualStatus:
+      type: string
+      enum:
+        - natural_signed
+        - makeup_signed
+        - missed
+        - today_pending
+        - today_natural_signed
+        - today_makeup_signed
+        - future
+
+    GrowthCalendarDay:
+      type: object
+      required:
+        - date
+        - day_of_month
+        - visual_status
+        - is_today
+        - is_future
+        - is_natural_signed
+        - is_makeup_signed
+        - can_make_up
+      properties:
+        date:
+          type: string
+          format: date
+        day_of_month:
+          type: integer
+        visual_status:
+          $ref: "#/components/schemas/GrowthCalendarVisualStatus"
+        is_today:
+          type: boolean
+        is_future:
+          type: boolean
+        is_natural_signed:
+          type: boolean
+        is_makeup_signed:
+          type: boolean
+        can_make_up:
+          type: boolean
+
+    GrowthCalendarMonth:
+      type: object
+      required: [month, days]
+      properties:
+        month:
+          type: string
+          pattern: '^\d{4}-\d{2}$'
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/GrowthCalendarDay"
+
+    GrowthPopup:
+      type: object
+      required: [should_show, slogan, calendar]
+      properties:
+        should_show:
+          type: boolean
+        slogan:
+          type: string
+          description: Server-curated short English line.
+        calendar:
+          $ref: "#/components/schemas/GrowthCalendarMonth"
+
+    GrowthEntryResponse:
+      type: object
+      required: [server_now, today, popup]
+      properties:
+        server_now:
+          type: string
+          format: date-time
+        today:
+          $ref: "#/components/schemas/GrowthTodaySummary"
+        popup:
+          $ref: "#/components/schemas/GrowthPopup"
+
+    GrowthCalendarResponse:
+      type: object
+      required: [today, calendar]
+      properties:
+        today:
+          $ref: "#/components/schemas/GrowthTodaySummary"
+        calendar:
+          $ref: "#/components/schemas/GrowthCalendarMonth"
+
+    GrowthMakeUpRequest:
+      type: object
+      additionalProperties: false
+      required: [target_date]
+      properties:
+        target_date:
+          type: string
+          format: date
+
+    GrowthMakeUpResponse:
+      type: object
+      required:
+        - target_date
+        - updated_day
+        - makeup_card_balance
+        - current_natural_streak
+        - longest_natural_streak
+      properties:
+        target_date:
+          type: string
+          format: date
+        updated_day:
+          $ref: "#/components/schemas/GrowthCalendarDay"
+        makeup_card_balance:
+          type: integer
+        current_natural_streak:
+          type: integer
+        longest_natural_streak:
+          type: integer
+
+    GrowthReadingEquivalent:
+      type: object
+      required: [word_count, cet4_equivalent, cet6_equivalent]
+      properties:
+        word_count:
+          type: integer
+        cet4_equivalent:
+          type: number
+          format: float
+        cet6_equivalent:
+          type: number
+          format: float
+
+    GrowthCharacterSummary:
+      type: object
+      required:
+        - character_id
+        - character_name
+        - total_message_count
+        - total_word_count
+        - total_reading_equivalent
+        - chatted_days_count
+        - total_exchange_count
+      properties:
+        character_id:
+          type: string
+          format: uuid
+        character_name:
+          type: string
+        avatar_file_name:
+          type: string
+          nullable: true
+        total_message_count:
+          type: integer
+        total_word_count:
+          type: integer
+        total_reading_equivalent:
+          $ref: "#/components/schemas/GrowthReadingEquivalent"
+        chatted_days_count:
+          type: integer
+        total_exchange_count:
+          type: integer
+        last_chat_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    GrowthChatHeaderResponse:
+      type: object
+      required:
+        - chat_id
+        - character_id
+        - ring_unit_words
+        - current_chat_total_english_words
+        - completed_loops
+        - current_loop_progress_words
+        - current_loop_progress_ratio
+        - next_loop_remaining_words
+        - character_summary
+      properties:
+        chat_id:
+          type: string
+          format: uuid
+        character_id:
+          type: string
+          format: uuid
+        ring_unit_words:
+          type: integer
+          example: 300
+        current_chat_total_english_words:
+          type: integer
+        completed_loops:
+          type: integer
+        current_loop_progress_words:
+          type: integer
+        current_loop_progress_ratio:
+          type: number
+          format: float
+        next_loop_remaining_words:
+          type: integer
+        character_summary:
+          $ref: "#/components/schemas/GrowthCharacterSummary"
+
+    GrowthCharacterHeadline:
+      type: object
+      required:
+        - character_id
+        - character_name
+        - total_message_count
+        - chatted_days_count
+        - total_exchange_count
+      properties:
+        character_id:
+          type: string
+          format: uuid
+        character_name:
+          type: string
+        avatar_file_name:
+          type: string
+          nullable: true
+        total_message_count:
+          type: integer
+        chatted_days_count:
+          type: integer
+        total_exchange_count:
+          type: integer
+
+    GrowthKpis:
+      type: object
+      required:
+        - current_natural_streak
+        - longest_natural_streak
+        - makeup_card_balance
+        - distinct_characters_chatted
+        - total_message_count
+        - total_word_count
+        - today_message_count
+        - today_word_count
+      properties:
+        current_natural_streak:
+          type: integer
+        longest_natural_streak:
+          type: integer
+        makeup_card_balance:
+          type: integer
+        distinct_characters_chatted:
+          type: integer
+        total_message_count:
+          type: integer
+        total_word_count:
+          type: integer
+        today_message_count:
+          type: integer
+        today_word_count:
+          type: integer
+        top_character:
+          oneOf:
+            - $ref: "#/components/schemas/GrowthCharacterHeadline"
+            - type: "null"
+
+    GrowthTrendPoint:
+      type: object
+      required:
+        - stat_date
+        - total_message_count
+        - total_word_count
+        - is_natural_signed
+        - is_makeup_signed
+      properties:
+        stat_date:
+          type: string
+          format: date
+        total_message_count:
+          type: integer
+        total_word_count:
+          type: integer
+        is_natural_signed:
+          type: boolean
+        is_makeup_signed:
+          type: boolean
+
+    GrowthRankingItem:
+      type: object
+      required:
+        - character_id
+        - character_name
+        - total_message_count
+        - total_word_count
+        - chatted_days_count
+        - total_exchange_count
+      properties:
+        character_id:
+          type: string
+          format: uuid
+        character_name:
+          type: string
+        avatar_file_name:
+          type: string
+          nullable: true
+        total_message_count:
+          type: integer
+        total_word_count:
+          type: integer
+        chatted_days_count:
+          type: integer
+        total_exchange_count:
+          type: integer
+        last_chat_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    GrowthReadingEquivalenceBlock:
+      type: object
+      required: [global_today, global_history]
+      properties:
+        global_today:
+          $ref: "#/components/schemas/GrowthReadingEquivalent"
+        global_history:
+          $ref: "#/components/schemas/GrowthReadingEquivalent"
+        focus_character_today:
+          oneOf:
+            - $ref: "#/components/schemas/GrowthReadingEquivalent"
+            - type: "null"
+        focus_character_history:
+          oneOf:
+            - $ref: "#/components/schemas/GrowthReadingEquivalent"
+            - type: "null"
+        focus_character:
+          oneOf:
+            - $ref: "#/components/schemas/GrowthCharacterHeadline"
+            - type: "null"
+
+    GrowthOverviewResponse:
+      type: object
+      required: [kpis, trends, rankings, reading_equivalence]
+      properties:
+        kpis:
+          $ref: "#/components/schemas/GrowthKpis"
+        trends:
+          type: object
+          required: [last_7_days, last_30_days]
+          properties:
+            last_7_days:
+              type: array
+              items:
+                $ref: "#/components/schemas/GrowthTrendPoint"
+            last_30_days:
+              type: array
+              items:
+                $ref: "#/components/schemas/GrowthTrendPoint"
+        rankings:
+          type: object
+          required: [by_messages, by_words, by_chatted_days]
+          properties:
+            by_messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/GrowthRankingItem"
+            by_words:
+              type: array
+              items:
+                $ref: "#/components/schemas/GrowthRankingItem"
+            by_chatted_days:
+              type: array
+              items:
+                $ref: "#/components/schemas/GrowthRankingItem"
+        reading_equivalence:
+          $ref: "#/components/schemas/GrowthReadingEquivalenceBlock"
+
+    GrowthCharacterRow:
+      type: object
+      required:
+        - character_id
+        - character_name
+        - total_message_count
+        - total_word_count
+        - chatted_days_count
+        - total_exchange_count
+      properties:
+        character_id:
+          type: string
+          format: uuid
+        character_name:
+          type: string
+        avatar_file_name:
+          type: string
+          nullable: true
+        total_message_count:
+          type: integer
+        total_word_count:
+          type: integer
+        chatted_days_count:
+          type: integer
+        total_exchange_count:
+          type: integer
+        last_chat_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    GrowthCharactersPageResponse:
+      type: object
+      required: [items, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GrowthCharacterRow"
+        next_cursor:
+          type: string
+          nullable: true
+        has_more:
+          type: boolean
+
+    GrowthShareCardKind:
+      type: string
+      enum:
+        - daily_signin_completed
+        - character_message_milestone
+
+    DailySigninShareCardPayload:
+      type: object
+      required:
+        - stat_date
+        - today_user_message_count
+        - today_total_word_count
+        - reading_equivalent
+        - current_natural_streak
+      properties:
+        stat_date:
+          type: string
+          format: date
+        today_user_message_count:
+          type: integer
+        today_total_word_count:
+          type: integer
+        reading_equivalent:
+          $ref: "#/components/schemas/GrowthReadingEquivalent"
+        current_natural_streak:
+          type: integer
+
+    CharacterMilestoneShareCardPayload:
+      type: object
+      required:
+        - character_id
+        - character_name
+        - milestone_message_count
+        - total_word_count
+        - chatted_days_count
+        - total_exchange_count
+        - reading_equivalent
+      properties:
+        character_id:
+          type: string
+          format: uuid
+        character_name:
+          type: string
+        avatar_file_name:
+          type: string
+          nullable: true
+        milestone_message_count:
+          type: integer
+          enum: [100, 300, 500, 1000, 3000, 10000]
+        total_word_count:
+          type: integer
+        chatted_days_count:
+          type: integer
+        total_exchange_count:
+          type: integer
+        reading_equivalent:
+          $ref: "#/components/schemas/GrowthReadingEquivalent"
+
+    GrowthShareCard:
+      type: object
+      required:
+        - id
+        - kind
+        - triggered_at
+        - title
+        - primary_button_label
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/GrowthShareCardKind"
+        triggered_at:
+          type: string
+          format: date-time
+        chat_id:
+          type: string
+          format: uuid
+          nullable: true
+        character_id:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        primary_button_label:
+          type: string
+          example: 分享
+        daily_signin_payload:
+          oneOf:
+            - $ref: "#/components/schemas/DailySigninShareCardPayload"
+            - type: "null"
+        character_milestone_payload:
+          oneOf:
+            - $ref: "#/components/schemas/CharacterMilestoneShareCardPayload"
+            - type: "null"
+
+    GrowthShareCardsPageResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GrowthShareCard"
+
+    SSEGrowthDailyUpdatedEvent:
+      type: object
+      required: [type, today]
+      properties:
+        type:
+          type: string
+          const: growth_daily_updated
+        today:
+          $ref: "#/components/schemas/GrowthTodaySummary"
+
+    SSEGrowthShareCardReadyEvent:
+      type: object
+      required: [type, share_card]
+      properties:
+        type:
+          type: string
+          const: growth_share_card_ready
+        share_card:
+          $ref: "#/components/schemas/GrowthShareCard"

@@ -877,3 +877,19 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 .message-navigator-preview-scroll::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.72);
 }
+
+/* ── Phase 5: Reading Ring +1 animation ── */
+@keyframes reading-ring-plus-one {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+}
+
+.animate-reading-ring-plus-one {
+  animation: reading-ring-plus-one 1.2s ease-out forwards;
+}
