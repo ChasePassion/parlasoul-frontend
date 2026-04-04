@@ -34,11 +34,7 @@ export default function ReplyCardPopover({
             isFavorited={localFavorited}
             onToggleFavorite={handleToggleFavorite}
         >
-            <p className="text-sm font-semibold text-gray-900 leading-relaxed">
-                {replyCard.surface}
-            </p>
-
-            <p className="mt-1.5 text-sm text-gray-500 leading-relaxed">
+            <p className="text-sm text-gray-700 leading-relaxed">
                 {replyCard.zh}
             </p>
 
