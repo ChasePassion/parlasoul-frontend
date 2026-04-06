@@ -45,3 +45,19 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            BETTER_AUTH_URL=${{ secrets.BETTER_AUTH_URL }}
+            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
+            NEXT_PUBLIC_SITE_URL=${{ secrets.NEXT_PUBLIC_SITE_URL }}
+            INTERNAL_BACKEND_BASE_URL=${{ secrets.INTERNAL_BACKEND_BASE_URL }}
+            REDIS_URL=${{ secrets.REDIS_URL }}
+            OTP_DELIVERY_STATUS_TTL_SECONDS=${{ secrets.OTP_DELIVERY_STATUS_TTL_SECONDS }}
+            OTP_DELIVERY_STATUS_KEY_PREFIX=${{ secrets.OTP_DELIVERY_STATUS_KEY_PREFIX }}
+            PURELYMAIL_SMTP_HOST=${{ secrets.PURELYMAIL_SMTP_HOST }}
+            PURELYMAIL_SMTP_PORT=${{ secrets.PURELYMAIL_SMTP_PORT }}
+            PURELYMAIL_SMTP_USER=${{ secrets.PURELYMAIL_SMTP_USER }}
+            PURELYMAIL_SMTP_PASSWORD=${{ secrets.PURELYMAIL_SMTP_PASSWORD }}
+            PURELYMAIL_FROM_EMAIL=${{ secrets.PURELYMAIL_FROM_EMAIL }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
