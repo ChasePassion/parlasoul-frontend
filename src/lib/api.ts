@@ -129,7 +129,7 @@ export const getCharacterById = apiService.getCharacterById.bind(apiService);
 export const getUserCharacters = apiService.getUserCharacters.bind(apiService);
 export const getMyCharacters = apiService.getMyCharacters.bind(apiService);
 export const updateCharacter = apiService.updateCharacter.bind(apiService);
-export const deleteCharacter = apiService.deleteCharacter.bind(apiService);
+export const unpublishCharacter = apiService.unpublishCharacter.bind(apiService);
 
 // 聊天相关
 export const listChats = apiService.listChats.bind(apiService);
@@ -209,6 +209,7 @@ export type {
   UpdateUserSettingsRequest,
   CreateCharacterRequest,
   CharacterResponse,
+  CharacterStatus,
   UpdateCharacterRequest,
   CharacterVisibility,
   // Phase 1 types

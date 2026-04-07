@@ -62,6 +62,7 @@ export interface UpdateUserSettingsRequest {
 }
 
 export type CharacterVisibility = "PUBLIC" | "PRIVATE" | "UNLISTED";
+export type CharacterStatus = "ACTIVE" | "UNPUBLISHED";
 export type ChatVisibility = CharacterVisibility;
 export type ChatState = "ACTIVE" | "ARCHIVED";
 export type ChatType = "ONE_ON_ONE" | "ROOM";
@@ -185,6 +186,8 @@ export interface CharacterResponse {
   effective_llm_model?: string;
   tags?: string[];
   creator_id: string;
+  status: CharacterStatus;
+  unpublished_at?: string | null;
   visibility: CharacterVisibility;
   identifier?: string;
   interaction_count: number;
@@ -202,6 +205,8 @@ export interface CharacterBrief {
   voice_source_type?: VoiceSourceType;
   voice?: VoiceSelectableItem | null;
   tags?: string[];
+  status: CharacterStatus;
+  unpublished_at?: string | null;
   visibility: CharacterVisibility;
   creator_id?: string | null;
   interaction_count: number;
@@ -765,8 +770,8 @@ export class ApiService {
     return httpClient.put<CharacterResponse>(`/v1/characters/${id}`, data);
   }
 
-  async deleteCharacter(id: string): Promise<void> {
-    await httpClient.delete(`/v1/characters/${id}`);
+  async unpublishCharacter(id: string): Promise<CharacterResponse> {
+    return httpClient.post<CharacterResponse>(`/v1/characters/${id}/unpublish`, {});
   }
 
   async getRecentChat(characterId: string): Promise<ChatDetailResponse | null> {

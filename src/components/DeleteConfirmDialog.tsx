@@ -11,32 +11,44 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-interface DeleteConfirmDialogProps {
+interface ActionConfirmDialogProps {
     isOpen: boolean;
     entityName: string;
     entityLabel?: string;
+    title?: string;
+    description?: string;
+    confirmText?: string;
+    loadingText?: string;
     onConfirm: () => void;
     onCancel: () => void;
     isDeleting?: boolean;
 }
 
-export default function DeleteConfirmDialog({
+export default function ActionConfirmDialog({
     isOpen,
     entityName,
     entityLabel = "角色",
+    title = "确认删除",
+    description,
+    confirmText = "确认删除",
+    loadingText = "删除中...",
     onConfirm,
     onCancel,
     isDeleting = false,
-}: DeleteConfirmDialogProps) {
+}: ActionConfirmDialogProps) {
+    const resolvedDescription =
+        description ??
+        `确定要删除${entityLabel} "${entityName}" 吗？此操作无法撤销。`;
+
     return (
         <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
             <AlertDialogContent className="max-w-md rounded-2xl p-6">
                 <AlertDialogHeader>
                     <AlertDialogTitle className="text-xl font-bold text-gray-900">
-                        确认删除
+                        {title}
                     </AlertDialogTitle>
                     <AlertDialogDescription className="text-gray-600">
-                        确定要删除{entityLabel} <span className="font-semibold text-gray-900">&quot;{entityName}&quot;</span> 吗？此操作无法撤销。
+                        {resolvedDescription}
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter className="gap-3">
@@ -55,10 +67,10 @@ export default function DeleteConfirmDialog({
                         {isDeleting ? (
                             <>
                                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                删除中...
+                                {loadingText}
                             </>
                         ) : (
-                            "确认删除"
+                            confirmText
                         )}
                     </AlertDialogAction>
                 </AlertDialogFooter>

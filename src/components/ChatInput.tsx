@@ -21,6 +21,7 @@ type InputAreaState = "default" | "recording" | "transcribing";
 interface ChatInputProps {
     onSend: (message: string) => void;
     disabled?: boolean;
+    disabledReason?: string | null;
     roleName?: string;
     replySuggestions?: ReplySuggestion[] | null;
     onSelectSuggestion?: (text: string) => void;
@@ -35,6 +36,7 @@ interface ChatInputProps {
 export default function ChatInput({
     onSend,
     disabled = false,
+    disabledReason,
     roleName,
     replySuggestions,
     onSelectSuggestion,
@@ -60,7 +62,9 @@ export default function ChatInput({
     const animationFrameRef = useRef<number | null>(null);
     const maxBarsRef = useRef(0);
 
-    const placeholder = roleName?.trim()
+    const placeholder = disabledReason?.trim()
+        ? disabledReason.trim()
+        : roleName?.trim()
         ? `Chat with ${roleName.trim()}`
         : "Chat with RoleName";
 
@@ -424,6 +428,11 @@ export default function ChatInput({
                         <div className="rounded-full bg-black/80 px-3 py-1 text-xs text-white">{notice}</div>
                     ) : null}
                 </div>
+                {disabledReason ? (
+                    <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                        {disabledReason}
+                    </div>
+                ) : null}
                 <div className="pointer-events-auto relative z-1 flex h-(--composer-container-height,100%) max-w-full flex-(--composer-container-flex,1) flex-col">
                     <div className="absolute start-0 end-0 bottom-full z-20">
                         {replySuggestions && replySuggestions.length > 0 && (

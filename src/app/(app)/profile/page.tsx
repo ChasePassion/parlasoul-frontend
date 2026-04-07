@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Loader2 } from "lucide-react";
 import CharacterCard from "@/components/CharacterCard";
 import CreateCharacterModal from "@/components/CreateCharacterModal";
-import DeleteConfirmDialog from "@/components/DeleteConfirmDialog";
+import ConfirmActionDialog from "@/components/DeleteConfirmDialog";
 import VoiceCard from "@/components/voice/VoiceCard";
 import CreateVoiceCloneModal from "@/components/voice/CreateVoiceCloneModal";
 import EditVoiceModal from "@/components/voice/EditVoiceModal";
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import CreateItemCard from "@/components/CreateItemCard";
 import {
     getMyCharacters,
-    deleteCharacter,
+    unpublishCharacter,
     listMyVoices,
     deleteVoiceById,
     type CharacterResponse,
@@ -39,9 +39,9 @@ export default function ProfilePage() {
     // Modal State
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [editCharacter, setEditCharacter] = useState<Character | undefined>(undefined);
-    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-    const [characterToDelete, setCharacterToDelete] = useState<Character | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
+    const [isUnpublishDialogOpen, setIsUnpublishDialogOpen] = useState(false);
+    const [characterToUnpublish, setCharacterToUnpublish] = useState<Character | null>(null);
+    const [isUnpublishing, setIsUnpublishing] = useState(false);
 
     // Voice Modal State
     const [isCreateVoiceModalOpen, setIsCreateVoiceModalOpen] = useState(false);
@@ -133,26 +133,26 @@ export default function ProfilePage() {
         setIsCreateModalOpen(true);
     };
 
-    const handleDeleteClick = (character: Character) => {
-        setCharacterToDelete(character);
-        setIsDeleteDialogOpen(true);
+    const handleUnpublishClick = (character: Character) => {
+        setCharacterToUnpublish(character);
+        setIsUnpublishDialogOpen(true);
     };
 
-    const handleConfirmDelete = async () => {
-        if (!characterToDelete || !isAuthed) return;
+    const handleConfirmUnpublish = async () => {
+        if (!characterToUnpublish || !isAuthed) return;
 
-        setIsDeleting(true);
+        setIsUnpublishing(true);
         try {
-            await deleteCharacter(characterToDelete.id);
+            await unpublishCharacter(characterToUnpublish.id);
             await loadUserCharacters();
             await refreshSidebarCharacters();
-            setIsDeleteDialogOpen(false);
-            setCharacterToDelete(null);
+            setIsUnpublishDialogOpen(false);
+            setCharacterToUnpublish(null);
         } catch (err) {
-            console.error("Delete failed:", err);
-            alert("删除失败，请稍后重试");
+            console.error("Unpublish failed:", err);
+            alert("下架失败，请稍后重试");
         } finally {
-            setIsDeleting(false);
+            setIsUnpublishing(false);
         }
     };
 
@@ -252,7 +252,7 @@ export default function ProfilePage() {
                                     onClick={() => handleEdit(character)}
                                     showMenu={true}
                                     onEdit={handleEdit}
-                                    onDelete={handleDeleteClick}
+                                    onUnpublish={handleUnpublishClick}
                                 />
                             ))}
                         </div>
@@ -317,15 +317,20 @@ export default function ProfilePage() {
                 mode={editCharacter ? 'edit' : 'create'}
             />
 
-            <DeleteConfirmDialog
-                isOpen={isDeleteDialogOpen}
-                entityName={characterToDelete?.name || ""}
-                onConfirm={handleConfirmDelete}
+            <ConfirmActionDialog
+                isOpen={isUnpublishDialogOpen}
+                entityName={characterToUnpublish?.name || ""}
+                entityLabel="角色"
+                title="确认下架"
+                description={`下架角色 "${characterToUnpublish?.name || ""}" 后，它不会再出现在公开入口，已有聊天会保留为只读历史。`}
+                confirmText="确认下架"
+                loadingText="下架中..."
+                onConfirm={handleConfirmUnpublish}
                 onCancel={() => {
-                    setIsDeleteDialogOpen(false);
-                    setCharacterToDelete(null);
+                    setIsUnpublishDialogOpen(false);
+                    setCharacterToUnpublish(null);
                 }}
-                isDeleting={isDeleting}
+                isDeleting={isUnpublishing}
             />
 
             <CreateVoiceCloneModal
@@ -344,7 +349,7 @@ export default function ProfilePage() {
                 voice={voiceToEdit}
             />
 
-            <DeleteConfirmDialog
+            <ConfirmActionDialog
                 isOpen={!!voiceToDelete}
                 entityName="这个音色"
                 entityLabel="音色"

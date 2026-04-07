@@ -14,7 +14,7 @@ interface CharacterCardProps {
   onClick: (character: Character) => void;
   showMenu?: boolean;
   onEdit?: (character: Character) => void;
-  onDelete?: (character: Character) => void;
+  onUnpublish?: (character: Character) => void;
   disableHoverFloat?: boolean;
 }
 
@@ -23,7 +23,7 @@ export default function CharacterCard({
   onClick,
   showMenu = false,
   onEdit,
-  onDelete,
+  onUnpublish,
   disableHoverFloat = false,
 }: CharacterCardProps) {
   const tags = (character.tags ?? [])
@@ -31,6 +31,7 @@ export default function CharacterCard({
     .filter((tag) => tag.length > 0);
   const visibleTags = tags.slice(0, CHARACTER_CARD_VISIBLE_TAGS);
   const hiddenTags = tags.slice(CHARACTER_CARD_VISIBLE_TAGS);
+  const isUnpublished = character.status === "UNPUBLISHED";
 
   return (
     <Card
@@ -66,9 +67,16 @@ export default function CharacterCard({
 
         <div className="flex-1 flex flex-col justify-center min-w-0">
           <div className="flex justify-between items-center mb-1.5 gap-2">
-            <h3 className="text-base font-bold text-white m-0 whitespace-nowrap overflow-hidden text-ellipsis drop-shadow-(--cc-text-shadow) tracking-wide">
-              {character.name}
-            </h3>
+            <div className="min-w-0 flex items-center gap-2">
+              <h3 className="text-base font-bold text-white m-0 whitespace-nowrap overflow-hidden text-ellipsis drop-shadow-(--cc-text-shadow) tracking-wide">
+                {character.name}
+              </h3>
+              {isUnpublished ? (
+                <span className="shrink-0 rounded-md bg-amber-100/90 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-700">
+                  已下架
+                </span>
+              ) : null}
+            </div>
             <span className="text-[13px] font-medium shrink-0 inline-flex items-center gap-1 leading-none text-(--cc-text-secondary)">
               <svg width="14" height="14" viewBox="0 0 1024 1024" style={{ color: 'currentColor' }}><path d="M512 838c-39.98 0-78.592-5.132-115.02-14.686-23.648-6.2-88.642 15.36-194.98 64.686 28.444-92.068 35.188-144.976 20.232-158.724C153.926 666.49 112 581.53 112 488c0-193.3 179.086-350 400-350s400 156.7 400 350-179.086 350-400 350z m-159-304c24.852 0 45-20.148 45-45S377.852 444 353 444 308 464.148 308 489s20.148 45 45 45z m160 0c24.852 0 45-20.148 45-45S537.852 444 513 444 468 464.148 468 489s20.148 45 45 45z m160 0c24.852 0 45-20.148 45-45S697.852 444 673 444 628 464.148 628 489s20.148 45 45 45z" fill="currentColor"></path></svg>
               5.6k
@@ -156,7 +164,7 @@ export default function CharacterCard({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
-                  setTimeout(() => onDelete?.(character), 50);
+                  setTimeout(() => onUnpublish?.(character), 50);
                 }}
                 className="w-full py-2 px-[10px] flex items-center gap-2 rounded-lg bg-transparent border-none cursor-pointer transition-colors duration-150 hover:bg-(--cc-dropdown-item-danger-hover) focus:bg-(--cc-dropdown-item-danger-hover) focus:outline-none text-red-600 focus:text-red-600 data-highlighted:text-red-600 hover:text-red-600"
               >
@@ -167,7 +175,7 @@ export default function CharacterCard({
                   height={16}
                   style={{ filter: "invert(16%) sepia(96%) saturate(6932%) hue-rotate(357deg) brightness(90%) contrast(125%)" }}
                 />
-                <span className="text-sm">删除</span>
+                <span className="text-sm">下架</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

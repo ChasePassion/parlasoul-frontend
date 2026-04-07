@@ -14,6 +14,7 @@ import { useChatSession } from "@/hooks/useChatSession";
 import { TtsPlaybackManager } from "@/lib/voice/tts-playback-manager";
 import MessageNavigator from "@/components/chat/MessageNavigator";
 import {
+    ApiError,
     createChatInstance,
     deleteChat,
     getRecentChat,
@@ -94,16 +95,20 @@ export default function ChatPage() {
         onGrowthDailyUpdated: updateTodaySummary,
         onGrowthShareCardReady: enqueueShareCard,
     });
+    const isConversationReadOnly = character?.status === "UNPUBLISHED";
+    const readOnlyNotice = isConversationReadOnly
+        ? "该角色已被作者下架，当前聊天仅支持查看历史记录。"
+        : null;
 
     const handleCreateNewChat = useCallback(async () => {
-        if (!characterId || isStreaming) {
+        if (!characterId || isStreaming || isConversationReadOnly) {
             return;
         }
 
         const created = await createChatInstance({ character_id: characterId });
         setHistoryRefreshKey((previous) => previous + 1);
         router.push(`/chat/${created.chat.id}`);
-    }, [characterId, isStreaming, router]);
+    }, [characterId, isConversationReadOnly, isStreaming, router]);
 
     const handleSendMessage = useCallback(
         async (content: string) => {
@@ -156,12 +161,24 @@ export default function ChatPage() {
         if (recent?.chat?.id && recent.chat.id !== targetChatId) {
             router.push(`/chat/${recent.chat.id}`);
         } else {
-            const created = await createChatInstance({ character_id: characterId });
-            router.push(`/chat/${created.chat.id}`);
+            if (character?.status === "UNPUBLISHED") {
+                router.push("/");
+            } else {
+                try {
+                    const created = await createChatInstance({ character_id: characterId });
+                    router.push(`/chat/${created.chat.id}`);
+                } catch (err) {
+                    if (err instanceof ApiError && err.code === "resource_conflict") {
+                        router.push("/");
+                        return;
+                    }
+                    throw err;
+                }
+            }
         }
 
         setHistoryRefreshKey((previous) => previous + 1);
-    }, [characterId, chatId, router]);
+    }, [character?.status, characterId, chatId, router]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesStartRef = useRef<HTMLDivElement | null>(null);
@@ -292,7 +309,8 @@ export default function ChatPage() {
                 onNewChat={() => void handleCreateNewChat()}
                 onToggleHistory={() => setIsHistoryOpen((previous) => !previous)}
                 isHistoryOpen={isHistoryOpen}
-                isNewChatDisabled={!characterId || isStreaming}
+                isNewChatDisabled={!characterId || isStreaming || isConversationReadOnly}
+                isReadOnly={isConversationReadOnly}
             />
         </div>
     );
@@ -319,6 +337,7 @@ export default function ChatPage() {
                 onPlayTts={handlePlayTts}
                 onStopTts={handleStopTts}
                 isLoadingOlder={isLoadingOlder}
+                isConversationLocked={isConversationReadOnly}
             />
             <MessageNavigator
                 messages={messages}
@@ -333,6 +352,8 @@ export default function ChatPage() {
             onSend={handleSendMessage}
             isStreaming={isStreaming}
             onInterrupt={interruptStream}
+            disabled={isConversationReadOnly}
+            disabledReason={readOnlyNotice}
             roleName={character.name}
             replySuggestions={currentReplySuggestions}
             onMicStart={handleMicStart}

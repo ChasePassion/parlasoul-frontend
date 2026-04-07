@@ -12,6 +12,7 @@ interface ChatHeaderProps {
     onToggleHistory?: () => void;
     isHistoryOpen?: boolean;
     isNewChatDisabled?: boolean;
+    isReadOnly?: boolean;
 }
 
 export default function ChatHeader({
@@ -21,6 +22,7 @@ export default function ChatHeader({
     onToggleHistory,
     isHistoryOpen = false,
     isNewChatDisabled = false,
+    isReadOnly = false,
 }: ChatHeaderProps) {
     if (!character) {
         return (
@@ -43,9 +45,16 @@ export default function ChatHeader({
                         {character.name.slice(0, 2)}
                     </AvatarFallback>
                 </Avatar>
-                <h2 className="text-base font-semibold text-text-primary truncate">
-                    {character.name}
-                </h2>
+                <div className="min-w-0 flex items-center gap-2">
+                    <h2 className="text-base font-semibold text-text-primary truncate">
+                        {character.name}
+                    </h2>
+                    {isReadOnly ? (
+                        <span className="shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                            已下架
+                        </span>
+                    ) : null}
+                </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">

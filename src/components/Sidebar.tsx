@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import type { CharacterVisibility, LLMProvider } from "@/lib/api";
+import type { CharacterStatus, CharacterVisibility, LLMProvider } from "@/lib/api";
 
 import { SettingsModal } from "./SettingsModal";
 import {
@@ -25,6 +25,8 @@ export interface Character {
     system_prompt?: string;
     greeting_message?: string;
     tags?: string[];
+    status?: CharacterStatus;
+    unpublished_at?: string | null;
     visibility?: CharacterVisibility;
     creator_id?: string;
     creator_username?: string;

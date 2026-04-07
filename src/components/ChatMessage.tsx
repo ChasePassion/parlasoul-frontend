@@ -37,6 +37,8 @@ interface ChatMessageProps {message: Message;
     messageFontSize: number;
     actionsDisabled?: boolean;
     replyCardDisabled?: boolean;
+    regenDisabled?: boolean;
+    editDisabled?: boolean;
     replyCardStatus?: MessageActionStatus;
     feedbackStatus?: MessageActionStatus;
     displayMode?: DisplayMode;
@@ -62,6 +64,8 @@ export default function ChatMessage({
     messageFontSize,
     actionsDisabled = false,
     replyCardDisabled = false,
+    regenDisabled = false,
+    editDisabled = false,
     replyCardStatus = message.replyCardStatus ?? (message.replyCard ? "ready" : "idle"),
     feedbackStatus = "idle",
     displayMode = "concise",
@@ -268,7 +272,7 @@ export default function ChatMessage({
             onSelectCandidate?.(message.id, k + 1);
             return;
         }
-        if (message.role === "assistant" && n < 10) {
+        if (message.role === "assistant" && n < 10 && !regenDisabled) {
             onRegenAssistant?.(message.id);
         }
     };
@@ -277,6 +281,7 @@ export default function ChatMessage({
         if (actionsDisabled) return;
         if (message.role !== "user") return;
         if (!showNav) return;
+        if (editDisabled) return;
         if (n >= 10) return;
         setIsEditing(true);
     };
@@ -467,7 +472,8 @@ export default function ChatMessage({
                                         onClick={handleRight}
                                         disabled={
                                             actionsDisabled ||
-                                            (k >= n && (message.role !== "assistant" || n >= 10))
+                                            (k >= n &&
+                                                (message.role !== "assistant" || n >= 10 || regenDisabled))
                                         }
                                         aria-label="下一分支"
                                     >
@@ -509,7 +515,7 @@ export default function ChatMessage({
                                     type="button"
                                     className={actionButtonClass}
                                     onClick={handleEdit}
-                                    disabled={actionsDisabled || n >= 10}
+                                    disabled={actionsDisabled || editDisabled || n >= 10}
                                     aria-label="编辑"
                                 >
                                     {renderActionIcon(editIcon)}

@@ -492,7 +492,7 @@ export function useChatSession({
 
   const handleRegenAssistant = useCallback(
     async (turnId: string) => {
-      if (isStreaming) return;
+      if (isStreaming || character?.status === "UNPUBLISHED") return;
       let shouldReloadAfterStream = false;
       let hasStreamError = false;
       let resolvedAssistantCandidateId: string | undefined;
@@ -696,6 +696,7 @@ export function useChatSession({
     [
       applyReplySuggestions,
       beginStream,
+      character?.status,
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
@@ -708,7 +709,7 @@ export function useChatSession({
 
   const handleEditUser = useCallback(
     async (turnId: string, newContent: string) => {
-      if (isStreaming) return;
+      if (isStreaming || character?.status === "UNPUBLISHED") return;
       let shouldReloadAfterStream = false;
       let hasStreamError = false;
 
@@ -969,6 +970,7 @@ export function useChatSession({
     [
       applyReplySuggestions,
       beginStream,
+      character?.status,
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
@@ -982,7 +984,7 @@ export function useChatSession({
 
   const handleSendMessage = useCallback(
     async (content: string) => {
-      if (!character || !canSend || isStreaming) return;
+      if (!character || !canSend || isStreaming || character.status === "UNPUBLISHED") return;
 
       ttsPlaybackManager?.interruptAll();
       void ttsPlaybackManager?.ensureResumed().catch(() => {});

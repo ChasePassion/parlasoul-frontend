@@ -84,6 +84,7 @@ interface ChatThreadProps {
     onPlayTts?: (candidateId: string) => void;
     onStopTts?: (candidateId: string) => void;
     isLoadingOlder?: boolean;
+    isConversationLocked?: boolean;
 }
 
 export default function ChatThread({
@@ -106,6 +107,7 @@ export default function ChatThread({
     onPlayTts,
     onStopTts,
     isLoadingOlder = false,
+    isConversationLocked = false,
 }: ChatThreadProps) {
     const CARD_GAP = 12;
     const VIEWPORT_PADDING = 12;
@@ -1027,6 +1029,8 @@ export default function ChatThread({
                                             messageFontSize={messageFontSize}
                                             actionsDisabled={false}
                                             replyCardDisabled={false}
+                                            regenDisabled={isConversationLocked}
+                                            editDisabled={isConversationLocked}
                                             replyCardStatus={replyCardStatus}
                                             feedbackStatus={feedbackStatus}
                                             displayMode={displayMode}
