@@ -5,7 +5,7 @@ import {
   getGrowthEntryDismissKey,
   shouldEvaluateGrowthEntryAutoOpenForSession,
   shouldAutoOpenGrowthEntryPopup,
-} from "./growth-entry-prompt.ts";
+} from "./growth-entry-prompt";
 
 test("auto opens on entry when today is not dismissed even if backend no longer flags first entry", () => {
   assert.equal(
