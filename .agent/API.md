@@ -1,4 +1,4 @@
-# role-playing API 契约（当前前端实现）
+# parlasoul-frontend API 契约（当前前端实现）
 
 更新时间：2026-04-03
 

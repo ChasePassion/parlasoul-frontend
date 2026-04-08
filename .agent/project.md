@@ -1,10 +1,10 @@
-# role-playing 项目说明（当前前端实现）
+# parlasoul 项目说明（当前前端实现）
 
 更新时间：2026-04-03
 
 ## 1. 仓库定位
 
-- 仓库路径：`E:\code\role-playing`
+- 仓库路径：`E:\code\parlasoul-frontend`
 - 这是 NeuraChar 的 Next.js 前端仓库，不包含 FastAPI、Alembic、数据库迁移、数据库模型或后端运维脚本。
 - 仓库当前职责只有两类：
   1. 消费 `/v1/*` API 与 `/uploads/*` 静态资源
