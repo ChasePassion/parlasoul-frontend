@@ -191,6 +191,7 @@ export interface CharacterResponse {
   visibility: CharacterVisibility;
   identifier?: string;
   interaction_count: number;
+  distinct_user_count: number;
 }
 
 export interface CharacterBrief {

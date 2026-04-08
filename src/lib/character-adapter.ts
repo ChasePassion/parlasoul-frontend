@@ -29,6 +29,7 @@ interface CharacterLike {
     voice_provider_voice_id?: string;
     voice_source_type?: VoiceSelectableItem["source_type"];
     voice?: VoiceSelectableItem | null;
+    distinct_user_count?: number;
 }
 
 interface MapCharacterOptions {
@@ -62,5 +63,6 @@ export function mapCharacterToSidebar(
         voice_provider_voice_id: source.voice_provider_voice_id,
         voice_source_type: source.voice_source_type,
         voice: source.voice ?? undefined,
+        distinct_user_count: source.distinct_user_count ?? 0,
     };
 }

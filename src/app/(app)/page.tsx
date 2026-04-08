@@ -124,6 +124,7 @@ export default function DiscoverPage() {
       uses_system_default_llm: character.uses_system_default_llm,
       effective_llm_provider: character.effective_llm_provider,
       effective_llm_model: character.effective_llm_model,
+      distinct_user_count: character.distinct_user_count,
     }));
   }, [discoverCharacters, user?.id, user?.username]);
 

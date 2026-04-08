@@ -50,6 +50,7 @@ export interface Character {
         preview_audio_url: string | null;
         usage_hint: string | null;
     };
+    distinct_user_count?: number;
 }
 
 function SidebarToggleIcon({ className = "" }: { className?: string }) {
