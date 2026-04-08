@@ -25,7 +25,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
         data: session,
         isPending,
-        isRefetching,
         refetch,
     } = authClient.useSession();
 
@@ -71,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             value={{
                 user,
                 isAuthed,
-                isLoading: isPending || isRefetching,
+                isLoading: isPending,
                 login,
                 logout,
                 refreshUser,
