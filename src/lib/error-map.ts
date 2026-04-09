@@ -146,6 +146,34 @@ const ERROR_MESSAGE_MAP: Record<string, ErrorMapping> = {
     message: "登录已过期，请重新登录",
     severity: "error",
   },
+  "You must be logged in to checkout": {
+    message: "请先登录后再发起购买",
+    severity: "warning",
+  },
+  "User email not verified": {
+    message: "当前账号邮箱尚未验证，暂时无法管理订阅",
+    severity: "warning",
+  },
+  "Product not found": {
+    message: "当前套餐暂时不可购买，请稍后重试",
+    severity: "error",
+  },
+  "Checkout session creation failed": {
+    message: "创建支付会话失败，请稍后重试",
+    severity: "error",
+  },
+  "Customer portal creation failed": {
+    message: "打开订阅管理失败，请稍后重试",
+    severity: "error",
+  },
+  "DodoPayments subscriptions list failed": {
+    message: "获取订阅列表失败，请稍后重试",
+    severity: "error",
+  },
+  "Orders list failed": {
+    message: "获取支付记录失败，请稍后重试",
+    severity: "error",
+  },
 
   // API 层通用错误
   "No response body": {

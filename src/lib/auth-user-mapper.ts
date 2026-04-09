@@ -5,6 +5,7 @@ type BetterAuthUserLike = {
   email: string;
   name?: string | null;
   image?: string | null;
+  emailVerified?: boolean | null;
   createdAt?: Date | string | null;
   lastLoginAt?: Date | string | null;
   username?: string | null;
@@ -49,6 +50,7 @@ export function mapBetterAuthUserToUser(
     id: user.id,
     email: user.email,
     username: toOptionalString(user.username),
+    email_verified: Boolean(user.emailVerified),
     avatar_url: toOptionalString(user.image),
     created_at: toIsoString(user.createdAt),
     last_login_at: user.lastLoginAt ? toIsoString(user.lastLoginAt) : undefined,

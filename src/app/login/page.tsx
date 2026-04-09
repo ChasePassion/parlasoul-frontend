@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth, isProfileComplete } from "@/lib/auth-context";
 import {
     getCurrentUser,
     getVerificationCodeDeliveryStatus,
     loginWithPassword,
-    registerWithPassword,
-    sendVerificationCode,
-    signInWithGoogle,
+  registerWithPassword,
+  sendVerificationCode,
+  signInWithGoogle,
 } from "@/lib/api";
+import { isSetupBypassPath } from "@/lib/billing-plans";
 
 type PasswordMode = "sign-in" | "sign-up";
 
@@ -40,7 +41,39 @@ function getAuthActionErrorMessage(error: unknown, fallback: string): string {
     return fallback;
 }
 
-export default function LoginPage() {
+function normalizeNextPath(value: string | null) {
+    if (!value) {
+        return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+        return null;
+    }
+
+    return trimmed;
+}
+
+function resolvePostAuthDestination(
+    nextPath: string | null,
+    currentUser: Awaited<ReturnType<typeof getCurrentUser>>,
+) {
+    if (nextPath && (isProfileComplete(currentUser) || isSetupBypassPath(nextPath))) {
+        return nextPath;
+    }
+
+    return isProfileComplete(currentUser) ? "/" : "/setup";
+}
+
+function LoginPageFallback() {
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+    );
+}
+
+function LoginPageContent() {
     const [email, setEmail] = useState("");
     const [code, setCode] = useState("");
     const [password, setPassword] = useState("");
@@ -54,15 +87,17 @@ export default function LoginPage() {
 
     const { login, refreshUser, user, isLoading: isAuthLoading } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const nextPath = normalizeNextPath(searchParams.get("next"));
 
     useEffect(() => {
         if (isAuthLoading || !user) {
             return;
         }
 
-        const destination = isProfileComplete(user) ? "/" : "/setup";
+        const destination = resolvePostAuthDestination(nextPath, user);
         router.replace(destination);
-    }, [user, isAuthLoading, router]);
+    }, [user, isAuthLoading, nextPath, router]);
 
     useEffect(() => {
         if (!deliveryTrackingEmail) {
@@ -143,12 +178,7 @@ export default function LoginPage() {
             console.error("Failed to load current user after authentication:", err);
         }
 
-        if (isProfileComplete(currentUser)) {
-            router.push("/");
-            return;
-        }
-
-        router.push("/setup");
+        router.push(resolvePostAuthDestination(nextPath, currentUser));
     };
 
     const handleSendCode = async (e: React.FormEvent) => {
@@ -218,7 +248,7 @@ export default function LoginPage() {
         setIsLoading(true);
 
         try {
-            await signInWithGoogle("/");
+            await signInWithGoogle(nextPath || "/");
         } catch (err) {
             setError(getAuthActionErrorMessage(err, "Google 登录发起失败"));
             setIsLoading(false);
@@ -444,5 +474,13 @@ export default function LoginPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={<LoginPageFallback />}>
+            <LoginPageContent />
+        </Suspense>
     );
 }

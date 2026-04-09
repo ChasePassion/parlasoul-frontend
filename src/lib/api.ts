@@ -1,8 +1,30 @@
 // 重新导出 ApiService 方法，保持向后兼容
+import type {
+  CreateCheckoutResponse,
+  CustomerPortalResponse,
+  PaymentItems,
+  SubscriptionItems,
+} from "@dodopayments/better-auth";
+
 import { apiService } from "./api-service";
 import { authClient } from "./auth-client";
 import { mapBetterAuthSessionToUser } from "./auth-user-mapper";
 import { clearBetterAuthJwt } from "./better-auth-token";
+
+function requireAuthClientData<T>(
+  response: { data?: T | null; error?: { message?: string | null } | null },
+  fallbackMessage: string,
+) {
+  if (response.error) {
+    throw new Error(response.error.message || fallbackMessage);
+  }
+
+  if (!response.data) {
+    throw new Error(fallbackMessage);
+  }
+
+  return response.data;
+}
 
 // 认证相关
 export async function sendVerificationCode(email: string): Promise<void> {
@@ -113,6 +135,66 @@ export async function getCurrentUser() {
   }
 
   return mapBetterAuthSessionToUser(response.data);
+}
+
+export async function createDodoCheckoutSession(params: {
+  slug: string;
+  referenceId?: string;
+}): Promise<CreateCheckoutResponse> {
+  const response = await authClient.dodopayments.checkoutSession({
+    slug: params.slug,
+    referenceId: params.referenceId,
+  });
+
+  return requireAuthClientData(response, "创建支付会话失败");
+}
+
+export async function createDodoCustomerPortal(): Promise<CustomerPortalResponse> {
+  const response = await authClient.dodopayments.customer.portal();
+  return requireAuthClientData(response, "打开订阅管理失败");
+}
+
+export async function listDodoSubscriptions(params?: {
+  page?: number;
+  limit?: number;
+  status?: "pending" | "active" | "on_hold" | "cancelled" | "failed" | "expired";
+}): Promise<SubscriptionItems> {
+  const response = await authClient.dodopayments.customer.subscriptions.list({
+    query: {
+      page: params?.page ?? 1,
+      limit: params?.limit ?? 20,
+      ...(params?.status ? { status: params.status } : {}),
+    },
+  });
+
+  return requireAuthClientData(response, "获取订阅列表失败");
+}
+
+export async function listDodoPayments(params?: {
+  page?: number;
+  limit?: number;
+  status?:
+    | "succeeded"
+    | "failed"
+    | "cancelled"
+    | "processing"
+    | "requires_customer_action"
+    | "requires_merchant_action"
+    | "requires_payment_method"
+    | "requires_confirmation"
+    | "requires_capture"
+    | "partially_captured"
+    | "partially_captured_and_capturable";
+}): Promise<PaymentItems> {
+  const response = await authClient.dodopayments.customer.payments.list({
+    query: {
+      page: params?.page ?? 1,
+      limit: params?.limit ?? 20,
+      ...(params?.status ? { status: params.status } : {}),
+    },
+  });
+
+  return requireAuthClientData(response, "获取支付记录失败");
 }
 
 // 用户相关

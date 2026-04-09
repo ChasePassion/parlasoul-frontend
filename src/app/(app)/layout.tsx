@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, createContext, useContext, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth, isProfileComplete } from "@/lib/auth-context";
 import { getSidebarCharacters } from "@/lib/api";
 import Sidebar, { Character } from "@/components/Sidebar";
@@ -9,6 +9,7 @@ import AppFrame from "@/components/layout/AppFrame";
 import { useSidebarShell } from "@/hooks/useSidebarShell";
 import { mapCharacterToSidebar } from "@/lib/character-adapter";
 import { getOrCreateChatId } from "@/lib/chat-helpers";
+import { isSetupBypassPath } from "@/lib/billing-plans";
 import { UserSettingsProvider } from "@/lib/user-settings-context";
 import { GrowthProvider } from "@/lib/growth-context";
 import CheckInCalendarDialog from "@/components/growth/CheckInCalendarDialog";
@@ -42,6 +43,7 @@ export default function AppLayout({
 }) {
     const { user, isLoading: isAuthLoading } = useAuth();
     const router = useRouter();
+    const pathname = usePathname();
 
     const { isSidebarOpen, isOverlay, toggle: toggleSidebar, close: closeSidebar } = useSidebarShell();
     const [sidebarCharacters, setSidebarCharacters] = useState<Character[]>([]);
@@ -52,11 +54,11 @@ export default function AppLayout({
         if (!isAuthLoading) {
             if (!user) {
                 router.push("/login");
-            } else if (!isProfileComplete(user)) {
+            } else if (!isProfileComplete(user) && !isSetupBypassPath(pathname)) {
                 router.push("/setup");
             }
         }
-    }, [user, isAuthLoading, router]);
+    }, [user, isAuthLoading, pathname, router]);
 
     // Load sidebar characters
     const refreshSidebarCharacters = useCallback(async () => {

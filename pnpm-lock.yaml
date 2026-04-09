@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@dodopayments/better-auth':
+        specifier: ^1.5.0
+        version: 1.5.0(better-auth@1.5.6(@opentelemetry/api@1.9.1)(next@15.5.4(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(pg@8.20.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(zod@4.3.6)
       '@floating-ui/react':
         specifier: ^0.27.19
         version: 0.27.19(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -26,6 +29,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      dodopayments:
+        specifier: ^2.27.0
+        version: 2.27.0
       embla-carousel:
         specifier: ^8.6.0
         version: 8.6.0
@@ -334,6 +340,18 @@ packages:
 
   '@better-fetch/fetch@1.1.21':
     resolution: {integrity: sha512-/ImESw0sskqlVR94jB+5+Pxjf+xBwDZF/N5+y2/q4EqD7IARUTSpPfIo8uf39SYpCxyOCtbyYpUrZ3F/k0zT4A==}
+
+  '@dodopayments/better-auth@1.5.0':
+    resolution: {integrity: sha512-83ksGh/wVm0NnPmBtFOd/4uUkNUu1uduH7mokYAQqI15OPez9XIKhowvhuN52oOzzihGsYx4zihfIxAHmOlNzg==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      better-auth: ^1.4.0
+      zod: ^3.25.0 || ^4.0.0
+
+  '@dodopayments/core@0.3.10':
+    resolution: {integrity: sha512-IX8at0Y8J7M6VzOAnAgEdtyStMsKEonDpb8Elteg3759FHj8Zd2004o5izy3H3dFv5psIghEBYJBOUQsJgdtKw==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@dotenvx/dotenvx@1.52.0':
     resolution: {integrity: sha512-CaQcc8JvtzQhUSm9877b6V4Tb7HCotkcyud9X2YwdqtQKwgljkMRwU96fVYKnzN3V0Hj74oP7Es+vZ0mS+Aa1w==}
@@ -1564,6 +1582,9 @@ packages:
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
     engines: {node: '>=18'}
 
+  '@stablelib/base64@1.0.1':
+    resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
+
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
@@ -2451,6 +2472,10 @@ packages:
     resolution: {integrity: sha512-35mSku4ZXK0vfCuHEDAwt55dg2jNajHZ1odvF+8SSr82EsZY4QmXfuWso8oEd8zRhVObSN18aM0CjSdoBX7zIw==}
     engines: {node: '>=0.10.0'}
 
+  dodopayments@2.27.0:
+    resolution: {integrity: sha512-5Pszp+BCvgieHFbO2q1eQakv7uA8TD5kQeJp1eDEuCvqeAwkAwSU/Jrvxcj2KPz7K91hb4APq8FYljIwb4KBjw==}
+    hasBin: true
+
   dotenv@17.3.1:
     resolution: {integrity: sha512-IO8C/dzEb6O3F9/twg6ZLXz164a2fhTnEWb95H23Dm4OuN+92NmEAlTrupP9VW6Jm3sO26tQlqyvyi4CsnY9GA==}
     engines: {node: '>=12'}
@@ -2736,6 +2761,9 @@ packages:
 
   fast-levenshtein@2.0.6:
     resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
+
+  fast-sha256@1.3.0:
+    resolution: {integrity: sha512-n11RGP/lrWEFI/bWdygLxhI+pVeo1ZYIVwvvPkW7azl/rOy+F3HYRZ2K5zeE9mmkhQppyv9sQFx0JM9UabnpPQ==}
 
   fast-uri@3.1.0:
     resolution: {integrity: sha512-iPeeDKJSWf4IEOasVVrknXpaBV0IApz/gp7S2bb7Z4Lljbl2MGJRqInZiUrQwV16cpzw/D3S5j5Julj/gT52AA==}
@@ -4189,6 +4217,9 @@ packages:
   stable-hash@0.0.5:
     resolution: {integrity: sha512-+L3ccpzibovGXFK+Ap/f8LOS0ahMrHTf3xu7mMLSpEGU0EO9ucaysSylKo9eRDFNhWve/y275iPmIZ4z39a9iA==}
 
+  standardwebhooks@1.0.0:
+    resolution: {integrity: sha512-BbHGOQK9olHPMvQNHWul6MYlrRTAOKn03rOe4A8O3CLWhNf4YHBqq2HJKKC+sfqpxiBY52pNeesD6jIiLDz8jg==}
+
   statuses@2.0.2:
     resolution: {integrity: sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw==}
     engines: {node: '>= 0.8'}
@@ -4844,6 +4875,18 @@ snapshots:
   '@better-auth/utils@0.3.1': {}
 
   '@better-fetch/fetch@1.1.21': {}
+
+  '@dodopayments/better-auth@1.5.0(better-auth@1.5.6(@opentelemetry/api@1.9.1)(next@15.5.4(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(pg@8.20.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(zod@4.3.6)':
+    dependencies:
+      '@dodopayments/core': 0.3.10(zod@4.3.6)
+      better-auth: 1.5.6(@opentelemetry/api@1.9.1)(next@15.5.4(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(pg@8.20.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      zod: 4.3.6
+
+  '@dodopayments/core@0.3.10(zod@4.3.6)':
+    dependencies:
+      dodopayments: 2.27.0
+      standardwebhooks: 1.0.0
+      zod: 4.3.6
 
   '@dotenvx/dotenvx@1.52.0':
     dependencies:
@@ -6043,6 +6086,8 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
+  '@stablelib/base64@1.0.1': {}
+
   '@standard-schema/spec@1.1.0': {}
 
   '@standard-schema/utils@0.3.0': {}
@@ -6826,6 +6871,10 @@ snapshots:
     dependencies:
       esutils: 2.0.3
 
+  dodopayments@2.27.0:
+    dependencies:
+      standardwebhooks: 1.0.0
+
   dotenv@17.3.1: {}
 
   dunder-proto@1.0.1:
@@ -7287,6 +7336,8 @@ snapshots:
   fast-json-stable-stringify@2.1.0: {}
 
   fast-levenshtein@2.0.6: {}
+
+  fast-sha256@1.3.0: {}
 
   fast-uri@3.1.0: {}
 
@@ -9094,6 +9145,11 @@ snapshots:
   split2@4.2.0: {}
 
   stable-hash@0.0.5: {}
+
+  standardwebhooks@1.0.0:
+    dependencies:
+      '@stablelib/base64': 1.0.1
+      fast-sha256: 1.3.0
 
   statuses@2.0.2: {}
 

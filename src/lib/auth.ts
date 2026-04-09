@@ -1,6 +1,12 @@
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { emailOTP, jwt } from "better-auth/plugins";
+import {
+  checkout,
+  dodopayments,
+  portal,
+  webhooks,
+} from "@dodopayments/better-auth";
 import nodemailer from "nodemailer";
 import { Pool } from "pg";
 
@@ -11,6 +17,11 @@ import {
   setEmailOtpDeliverySent,
   type EmailOtpDeliveryType,
 } from "./auth-email-otp-status-store";
+import { DODO_CHECKOUT_PRODUCTS } from "./billing-plans";
+import {
+  getDodoPaymentsClient,
+  getDodoPaymentsWebhookSecret,
+} from "./dodo-payments";
 
 let emailTransporter: nodemailer.Transporter | null = null;
 let pool: Pool | null = null;
@@ -34,6 +45,34 @@ function getBetterAuthUrl() {
 
 function getBetterAuthSecret() {
   return requireEnv("BETTER_AUTH_SECRET");
+}
+
+function buildTrustedOrigins() {
+  const origins = new Set<string>();
+
+  const addOrigin = (value: string | undefined) => {
+    const normalized = value?.trim();
+    if (!normalized) {
+      return;
+    }
+
+    const origin = new URL(normalized).origin;
+    origins.add(origin);
+
+    const variantUrl = new URL(origin);
+    if (variantUrl.hostname === "localhost") {
+      variantUrl.hostname = "127.0.0.1";
+      origins.add(variantUrl.origin);
+    } else if (variantUrl.hostname === "127.0.0.1") {
+      variantUrl.hostname = "localhost";
+      origins.add(variantUrl.origin);
+    }
+  };
+
+  addOrigin(getBetterAuthUrl());
+  addOrigin(process.env.NEXT_PUBLIC_SITE_URL);
+
+  return Array.from(origins);
 }
 
 function getPool() {
@@ -229,13 +268,14 @@ function buildGoogleProvider() {
 function createAuth() {
   const betterAuthUrl = getBetterAuthUrl();
   const betterAuthSecret = getBetterAuthSecret();
+  const trustedOrigins = buildTrustedOrigins();
   const resolvedPool = getPool();
 
   return betterAuth({
     appName: "parlasoul",
     database: resolvedPool,
     baseURL: betterAuthUrl,
-    trustedOrigins: [betterAuthUrl],
+    trustedOrigins,
     secret: betterAuthSecret,
     user: {
       modelName: "users",
@@ -344,6 +384,24 @@ function createAuth() {
         },
       }),
       jwt(),
+      dodopayments({
+        client: getDodoPaymentsClient(),
+        createCustomerOnSignUp: true,
+        use: [
+          checkout({
+            products: DODO_CHECKOUT_PRODUCTS,
+            successUrl: "/billing?checkout=success",
+            authenticatedUsersOnly: true,
+          }),
+          portal(),
+          webhooks({
+            webhookKey: getDodoPaymentsWebhookSecret(),
+            onPayload: async (payload) => {
+              console.log("Received Dodo Payments webhook:", payload.type);
+            },
+          }),
+        ],
+      }),
       nextCookies(),
     ],
   });

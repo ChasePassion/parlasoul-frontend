@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { CreditCard } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useGrowth } from "@/lib/growth-context";
 import type { CharacterStatus, CharacterVisibility, LLMProvider } from "@/lib/api";
@@ -116,6 +117,16 @@ export default function Sidebar({
             >
                 <Image src="/mark.svg" alt="Favorites" width={20} height={20} />
                 <span className="text-sm font-medium text-gray-700">收藏夹</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+                onClick={() => { window.location.href = "/billing"; }}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
+            >
+                <div className="flex h-[20px] w-[20px] items-center justify-center">
+                    <CreditCard className="h-[18px] w-[18px] text-gray-700" />
+                </div>
+                <span className="text-sm font-medium text-gray-700">订阅管理</span>
             </DropdownMenuItem>
 
             <DropdownMenuItem
