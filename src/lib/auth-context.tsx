@@ -3,20 +3,29 @@
 import {
     createContext,
     useContext,
-    ReactNode,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type ReactNode,
 } from "react";
-import { User } from "./api-service";
+import { getMyEntitlements } from "./api";
+import type { User, UserEntitlementsResponse } from "./api-service";
 import { authClient } from "./auth-client";
 import { mapBetterAuthSessionToUser } from "./auth-user-mapper";
 import { clearBetterAuthJwt } from "./better-auth-token";
 
 interface AuthContextType {
     user: User | null;
+    entitlements: UserEntitlementsResponse | null;
     isAuthed: boolean;
     isLoading: boolean;
+    isEntitlementsLoading: boolean;
     login: (email: string, code: string) => Promise<void>;
     logout: () => Promise<void>;
     refreshUser: () => Promise<void>;
+    refreshEntitlements: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,8 +37,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refetch,
     } = authClient.useSession();
 
-    const user = mapBetterAuthSessionToUser(session);
+    const [entitlements, setEntitlements] = useState<UserEntitlementsResponse | null>(null);
+    const [isEntitlementsLoading, setIsEntitlementsLoading] = useState(false);
+    const entitlementsRequestIdRef = useRef(0);
+
+    const user = useMemo(() => mapBetterAuthSessionToUser(session), [session]);
+    const userId = user?.id ?? null;
     const isAuthed = !!user;
+
+    const refreshEntitlements = useCallback(async () => {
+        const requestId = entitlementsRequestIdRef.current + 1;
+        entitlementsRequestIdRef.current = requestId;
+
+        if (!userId) {
+            setEntitlements(null);
+            setIsEntitlementsLoading(false);
+            return;
+        }
+
+        setIsEntitlementsLoading(true);
+
+        try {
+            const nextEntitlements = await getMyEntitlements();
+
+            if (entitlementsRequestIdRef.current === requestId) {
+                setEntitlements(nextEntitlements);
+            }
+        } finally {
+            if (entitlementsRequestIdRef.current === requestId) {
+                setIsEntitlementsLoading(false);
+            }
+        }
+    }, [userId]);
+
+    useEffect(() => {
+        if (!userId) {
+            entitlementsRequestIdRef.current += 1;
+            setEntitlements(null);
+            setIsEntitlementsLoading(false);
+            return;
+        }
+
+        setEntitlements(null);
+
+        void refreshEntitlements().catch((error) => {
+            console.error("Failed to refresh entitlements:", error);
+        });
+    }, [refreshEntitlements, userId]);
 
     const login = async (email: string, code: string) => {
         const result = await authClient.signIn.emailOtp({
@@ -52,6 +106,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         clearBetterAuthJwt();
+        entitlementsRequestIdRef.current += 1;
+        setEntitlements(null);
+        setIsEntitlementsLoading(false);
         await refetch();
     };
 
@@ -63,17 +120,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         await refetch();
+        await refreshEntitlements();
     };
 
     return (
         <AuthContext.Provider
             value={{
                 user,
+                entitlements,
                 isAuthed,
                 isLoading: isPending,
+                isEntitlementsLoading,
                 login,
                 logout,
                 refreshUser,
+                refreshEntitlements,
             }}
         >
             {children}

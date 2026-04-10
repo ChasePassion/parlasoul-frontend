@@ -174,6 +174,18 @@ const ERROR_MESSAGE_MAP: Record<string, ErrorMapping> = {
     message: "获取支付记录失败，请稍后重试",
     severity: "error",
   },
+  subscription_required: {
+    message: "当前功能需要升级到 Plus 或 Pro 套餐后才能使用",
+    severity: "warning",
+  },
+  subscription_expired: {
+    message: "当前订阅已失效，请续费后继续使用该功能",
+    severity: "warning",
+  },
+  feature_not_enabled: {
+    message: "该功能当前处于关闭状态，请开启后再试",
+    severity: "info",
+  },
 
   // API 层通用错误
   "No response body": {

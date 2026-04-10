@@ -18,6 +18,7 @@ const DEFAULT_MESSAGE_FONT_SIZE = 16;
 const MIN_MESSAGE_FONT_SIZE = 14;
 const MAX_MESSAGE_FONT_SIZE = 24;
 const DEFAULT_DISPLAY_MODE: DisplayMode = "concise";
+const DEFAULT_MEMORY_ENABLED = true;
 const DEFAULT_REPLY_CARD_ENABLED = true;
 const DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED = true;
 const DEFAULT_AUTO_READ_ALOUD_ENABLED = true;
@@ -27,6 +28,7 @@ const SETTINGS_SYNC_DEBOUNCE_MS = 400;
 interface SettingsState {
     messageFontSize: number;
     displayMode: DisplayMode;
+    memoryEnabled: boolean;
     replyCardEnabled: boolean;
     mixedInputAutoTranslateEnabled: boolean;
     autoReadAloudEnabled: boolean;
@@ -36,6 +38,7 @@ interface SettingsState {
 interface UserSettingsContextType extends SettingsState {
     setMessageFontSize: (size: number) => void;
     setDisplayMode: (mode: DisplayMode) => void;
+    setMemoryEnabled: (enabled: boolean) => void;
     setReplyCardEnabled: (enabled: boolean) => void;
     setMixedInputAutoTranslateEnabled: (enabled: boolean) => void;
     setAutoReadAloudEnabled: (enabled: boolean) => void;
@@ -46,6 +49,16 @@ interface UserSettingsContextType extends SettingsState {
     isSaving: boolean;
     error: string | null;
     retrySync: () => Promise<void>;
+}
+
+interface RemoteUserSettingsResponse {
+    message_font_size: number;
+    display_mode?: DisplayMode;
+    memory_enabled?: boolean;
+    reply_card_enabled?: boolean;
+    mixed_input_auto_translate_enabled?: boolean;
+    auto_read_aloud_enabled?: boolean;
+    preferred_expression_bias_enabled?: boolean;
 }
 
 const UserSettingsContext = createContext<UserSettingsContextType | undefined>(
@@ -60,11 +73,14 @@ const clampMessageFontSize = (size: number): number => {
 const defaultState: SettingsState = {
     messageFontSize: DEFAULT_MESSAGE_FONT_SIZE,
     displayMode: DEFAULT_DISPLAY_MODE,
+    memoryEnabled: DEFAULT_MEMORY_ENABLED,
     replyCardEnabled: DEFAULT_REPLY_CARD_ENABLED,
     mixedInputAutoTranslateEnabled: DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED,
     autoReadAloudEnabled: DEFAULT_AUTO_READ_ALOUD_ENABLED,
     preferredExpressionBiasEnabled: DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED,
 };
+
+type DirtyField = keyof SettingsState;
 
 const saveToLocalStorage = (state: SettingsState) => {
     try {
@@ -80,6 +96,7 @@ const saveToLocalStorage = (state: SettingsState) => {
 export function UserSettingsProvider({ children }: { children: ReactNode }) {
     const [messageFontSize, setMessageFontSizeState] = useState(defaultState.messageFontSize);
     const [displayMode, setDisplayModeState] = useState<DisplayMode>(defaultState.displayMode);
+    const [memoryEnabled, setMemoryEnabledState] = useState(defaultState.memoryEnabled);
     const [replyCardEnabled, setReplyCardEnabledState] = useState(defaultState.replyCardEnabled);
     const [mixedInputAutoTranslateEnabled, setMixedInputAutoTranslateEnabledState] = useState(defaultState.mixedInputAutoTranslateEnabled);
     const [autoReadAloudEnabled, setAutoReadAloudEnabledState] = useState(defaultState.autoReadAloudEnabled);
@@ -91,11 +108,13 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     const [changeVersion, setChangeVersion] = useState(0);
 
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const dirtyFieldsRef = useRef<Set<DirtyField>>(new Set());
 
     // Track the latest values for sync without stale closure issues
     const latestRef = useRef({
         messageFontSize,
         displayMode,
+        memoryEnabled,
         replyCardEnabled,
         mixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
@@ -104,6 +123,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     latestRef.current = {
         messageFontSize,
         displayMode,
+        memoryEnabled,
         replyCardEnabled,
         mixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
@@ -112,16 +132,45 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
 
     const syncSettings = useCallback(async () => {
         const current = latestRef.current;
+        const dirtyFields = Array.from(dirtyFieldsRef.current);
+        if (dirtyFields.length === 0) {
+            return;
+        }
+
+        const payload: {
+            message_font_size?: number;
+            display_mode?: DisplayMode;
+            memory_enabled?: boolean;
+            reply_card_enabled?: boolean;
+            mixed_input_auto_translate_enabled?: boolean;
+            auto_read_aloud_enabled?: boolean;
+            preferred_expression_bias_enabled?: boolean;
+        } = {};
+
+        for (const field of dirtyFields) {
+            if (field === "messageFontSize") {
+                payload.message_font_size = current.messageFontSize;
+            } else if (field === "displayMode") {
+                payload.display_mode = current.displayMode;
+            } else if (field === "memoryEnabled") {
+                payload.memory_enabled = current.memoryEnabled;
+            } else if (field === "replyCardEnabled") {
+                payload.reply_card_enabled = current.replyCardEnabled;
+            } else if (field === "mixedInputAutoTranslateEnabled") {
+                payload.mixed_input_auto_translate_enabled = current.mixedInputAutoTranslateEnabled;
+            } else if (field === "autoReadAloudEnabled") {
+                payload.auto_read_aloud_enabled = current.autoReadAloudEnabled;
+            } else if (field === "preferredExpressionBiasEnabled") {
+                payload.preferred_expression_bias_enabled = current.preferredExpressionBiasEnabled;
+            }
+        }
+
         setIsSaving(true);
         try {
-            await updateMySettings({
-                message_font_size: current.messageFontSize,
-                display_mode: current.displayMode,
-                reply_card_enabled: current.replyCardEnabled,
-                mixed_input_auto_translate_enabled: current.mixedInputAutoTranslateEnabled,
-                auto_read_aloud_enabled: current.autoReadAloudEnabled,
-                preferred_expression_bias_enabled: current.preferredExpressionBiasEnabled,
-            });
+            await updateMySettings(payload);
+            for (const field of dirtyFields) {
+                dirtyFieldsRef.current.delete(field);
+            }
             setError(null);
         } catch {
             setError("未同步到云端，可重试");
@@ -146,6 +195,9 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
                     if (parsed.displayMode === "concise" || parsed.displayMode === "detailed") {
                         setDisplayModeState(parsed.displayMode);
                     }
+                    if (typeof parsed.memoryEnabled === "boolean") {
+                        setMemoryEnabledState(parsed.memoryEnabled);
+                    }
                     if (typeof parsed.replyCardEnabled === "boolean") {
                         setReplyCardEnabledState(parsed.replyCardEnabled);
                     }
@@ -165,11 +217,15 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
 
             // 2. Remote
             try {
-                const remote = await getMySettings();
+                const remote = (await getMySettings()) as RemoteUserSettingsResponse;
                 if (!cancelled) {
                     const nextFontSize = clampMessageFontSize(remote.message_font_size);
+                    const nextMemoryEnabled = typeof remote.memory_enabled === "boolean"
+                        ? remote.memory_enabled
+                        : DEFAULT_MEMORY_ENABLED;
                     setMessageFontSizeState(nextFontSize);
                     setDisplayModeState(remote.display_mode ?? DEFAULT_DISPLAY_MODE);
+                    setMemoryEnabledState(nextMemoryEnabled);
                     setReplyCardEnabledState(remote.reply_card_enabled ?? DEFAULT_REPLY_CARD_ENABLED);
                     setMixedInputAutoTranslateEnabledState(remote.mixed_input_auto_translate_enabled ?? DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED);
                     setAutoReadAloudEnabledState(remote.auto_read_aloud_enabled ?? DEFAULT_AUTO_READ_ALOUD_ENABLED);
@@ -177,6 +233,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
                     saveToLocalStorage({
                         messageFontSize: nextFontSize,
                         displayMode: remote.display_mode ?? DEFAULT_DISPLAY_MODE,
+                        memoryEnabled: nextMemoryEnabled,
                         replyCardEnabled: remote.reply_card_enabled ?? DEFAULT_REPLY_CARD_ENABLED,
                         mixedInputAutoTranslateEnabled: remote.mixed_input_auto_translate_enabled ?? DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED,
                         autoReadAloudEnabled: remote.auto_read_aloud_enabled ?? DEFAULT_AUTO_READ_ALOUD_ENABLED,
@@ -208,6 +265,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         saveToLocalStorage({
             messageFontSize,
             displayMode,
+            memoryEnabled,
             replyCardEnabled,
             mixedInputAutoTranslateEnabled,
             autoReadAloudEnabled,
@@ -217,6 +275,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         isLoading,
         messageFontSize,
         displayMode,
+        memoryEnabled,
         replyCardEnabled,
         mixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
@@ -255,35 +314,45 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         setChangeVersion((v) => v + 1);
     }, []);
 
-    const setMessageFontSize = useCallback((size: number) => {
-        setMessageFontSizeState(clampMessageFontSize(size));
+    const markDirty = useCallback((field: DirtyField) => {
+        dirtyFieldsRef.current.add(field);
         bumpVersion();
     }, [bumpVersion]);
+
+    const setMessageFontSize = useCallback((size: number) => {
+        setMessageFontSizeState(clampMessageFontSize(size));
+        markDirty("messageFontSize");
+    }, [markDirty]);
 
     const setDisplayMode = useCallback((mode: DisplayMode) => {
         setDisplayModeState(mode);
-        bumpVersion();
-    }, [bumpVersion]);
+        markDirty("displayMode");
+    }, [markDirty]);
+
+    const setMemoryEnabled = useCallback((enabled: boolean) => {
+        setMemoryEnabledState(enabled);
+        markDirty("memoryEnabled");
+    }, [markDirty]);
 
     const setReplyCardEnabled = useCallback((enabled: boolean) => {
         setReplyCardEnabledState(enabled);
-        bumpVersion();
-    }, [bumpVersion]);
+        markDirty("replyCardEnabled");
+    }, [markDirty]);
 
     const setMixedInputAutoTranslateEnabled = useCallback((enabled: boolean) => {
         setMixedInputAutoTranslateEnabledState(enabled);
-        bumpVersion();
-    }, [bumpVersion]);
+        markDirty("mixedInputAutoTranslateEnabled");
+    }, [markDirty]);
 
     const setAutoReadAloudEnabled = useCallback((enabled: boolean) => {
         setAutoReadAloudEnabledState(enabled);
-        bumpVersion();
-    }, [bumpVersion]);
+        markDirty("autoReadAloudEnabled");
+    }, [markDirty]);
 
     const setPreferredExpressionBiasEnabled = useCallback((enabled: boolean) => {
         setPreferredExpressionBiasEnabledState(enabled);
-        bumpVersion();
-    }, [bumpVersion]);
+        markDirty("preferredExpressionBiasEnabled");
+    }, [markDirty]);
 
     const retrySync = useCallback(async () => {
         await syncSettings();
@@ -293,12 +362,14 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         () => ({
             messageFontSize,
             displayMode,
+            memoryEnabled,
             replyCardEnabled,
             mixedInputAutoTranslateEnabled,
             autoReadAloudEnabled,
             preferredExpressionBiasEnabled,
             setMessageFontSize,
             setDisplayMode,
+            setMemoryEnabled,
             setReplyCardEnabled,
             setMixedInputAutoTranslateEnabled,
             setAutoReadAloudEnabled,
@@ -311,8 +382,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             retrySync,
         }),
         [
-            messageFontSize, displayMode, replyCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled, preferredExpressionBiasEnabled,
-            setMessageFontSize, setDisplayMode, setReplyCardEnabled, setMixedInputAutoTranslateEnabled, setAutoReadAloudEnabled, setPreferredExpressionBiasEnabled,
+            messageFontSize, displayMode, memoryEnabled, replyCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled, preferredExpressionBiasEnabled,
+            setMessageFontSize, setDisplayMode, setMemoryEnabled, setReplyCardEnabled, setMixedInputAutoTranslateEnabled, setAutoReadAloudEnabled, setPreferredExpressionBiasEnabled,
             isLoading, isSaving, error, retrySync,
         ]
     );

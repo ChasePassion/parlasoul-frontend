@@ -31,7 +31,8 @@ import {
 type TabType = 'works' | 'voices';
 
 export default function ProfilePage() {
-    const { user, isAuthed } = useAuth();
+    const { user, isAuthed, entitlements, isEntitlementsLoading } = useAuth();
+    const canUseVoiceClone = entitlements?.features.voice_clone ?? null;
     const { setSelectedCharacterId, refreshSidebarCharacters } = useSidebar();
 
     const [characters, setCharacters] = useState<Character[]>([]);
@@ -59,6 +60,19 @@ export default function ProfilePage() {
     const [isLoadingMoreVoices, setIsLoadingMoreVoices] = useState(false);
     const [voiceToDelete, setVoiceToDelete] = useState<string | null>(null);
     const [isDeletingVoice, setIsDeletingVoice] = useState(false);
+
+    const handleCreateVoiceClick = useCallback(() => {
+        if (isEntitlementsLoading) {
+            return;
+        }
+
+        if (canUseVoiceClone === false) {
+            window.location.assign('/billing');
+            return;
+        }
+
+        setIsCreateVoiceModalOpen(true);
+    }, [canUseVoiceClone, isEntitlementsLoading]);
 
     // Clear selected character when on profile page
     useEffect(() => {
@@ -268,9 +282,15 @@ export default function ProfilePage() {
                                 <>
                                     <div className="flex flex-wrap gap-6 mt-4">
                                         <CreateItemCard 
-                                            onClick={() => setIsCreateVoiceModalOpen(true)}
-                                            title="创建新音色"
-                                            description="一键克隆你的专属声音"
+                                            onClick={handleCreateVoiceClick}
+                                            title={canUseVoiceClone === false ? "升级后创建音色" : "创建新音色"}
+                                            description={
+                                                isEntitlementsLoading
+                                                    ? "正在校验当前套餐权益"
+                                                    : canUseVoiceClone === false
+                                                        ? "升级到 Plus 或 Pro 后可解锁专属音色克隆"
+                                                        : "一键克隆你的专属声音"
+                                            }
                                             className="w-[280px] min-h-[148px]"
                                         />
                                         {voices.map((voice) => (

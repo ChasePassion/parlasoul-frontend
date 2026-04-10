@@ -83,7 +83,7 @@ function isCheckoutFailed(status: string | null | undefined) {
 }
 
 export default function BillingPageContent() {
-  const { user } = useAuth();
+  const { user, refreshEntitlements } = useAuth();
   const searchParams = useSearchParams();
 
   const [subscriptions, setSubscriptions] = useState<SubscriptionRecord[]>([]);
@@ -123,13 +123,19 @@ export default function BillingPageContent() {
 
       setSubscriptions(subscriptionsResponse.items);
       setPayments(paymentsResponse.items);
+
+      try {
+        await refreshEntitlements();
+      } catch (refreshError) {
+        setError(getErrorMessage(refreshError));
+      }
     } catch (loadError) {
       setError(getErrorMessage(loadError));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [canManageBilling]);
+  }, [canManageBilling, refreshEntitlements]);
 
   useEffect(() => {
     void loadBillingData(checkoutStatus === "success");

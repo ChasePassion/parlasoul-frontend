@@ -2,11 +2,19 @@
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useUserSettings } from "@/lib/user-settings-context";
+import { useAuth } from "@/lib/auth-context";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Loader2, AlertCircle, Palette, GraduationCap } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+    CheckCircle2,
+    Loader2,
+    AlertCircle,
+    GraduationCap,
+    UserRound,
+} from "lucide-react";
 import { useState } from "react";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
@@ -26,13 +34,24 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
         setAutoReadAloudEnabled,
         preferredExpressionBiasEnabled,
         setPreferredExpressionBiasEnabled,
+        memoryEnabled,
+        setMemoryEnabled,
         isLoading,
         isSaving,
         error,
         retrySync,
     } = useUserSettings();
+    const { entitlements, isEntitlementsLoading } = useAuth();
 
-    const [activeTab, setActiveTab] = useState<"appearance" | "learning">("appearance");
+    const [activeTab, setActiveTab] = useState<"preferences" | "learning">("preferences");
+    const canUseMemoryFeature = entitlements?.features.memory_feature ?? null;
+    const isMemoryLocked = canUseMemoryFeature === false;
+    const isMemoryReadonly = isEntitlementsLoading || canUseMemoryFeature !== true;
+    const displayedMemoryEnabled = canUseMemoryFeature === true ? memoryEnabled : false;
+
+    const handleOpenBilling = () => {
+        window.location.assign("/billing");
+    };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -45,15 +64,15 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
 
                     <nav className="space-y-1">
                         <button
-                            onClick={() => setActiveTab("appearance")}
+                            onClick={() => setActiveTab("preferences")}
                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-[15px] font-medium ${
-                                activeTab === "appearance"
+                                activeTab === "preferences"
                                     ? "bg-white text-gray-900 shadow-sm border border-gray-200/60"
                                     : "text-gray-600 hover:bg-gray-200/50 hover:text-gray-900 border border-transparent"
                             }`}
                         >
-                            <Palette className="w-[18px] h-[18px]" />
-                            外观与排版
+                            <UserRound className="w-[18px] h-[18px]" />
+                            个人偏好
                         </button>
 
                         <button
@@ -104,16 +123,16 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-10 pb-10 pt-6 custom-scrollbar relative h-full">
-                    {activeTab === "appearance" && (
+                    {activeTab === "preferences" && (
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-2xl">
-                            <h3 className="text-xl font-semibold text-gray-900 mb-8 pb-4 border-b border-gray-100">外观与排版</h3>
+                            <h3 className="text-xl font-semibold text-gray-900 mb-8 pb-4 border-b border-gray-100">个人偏好</h3>
 
-                            <div className="space-y-10">
-                                <div>
-                                    <div className="mb-6 flex items-center justify-between">
+                            <div className="flex flex-col">
+                                <div className="pb-5 pt-0">
+                                    <div className="flex items-center justify-between gap-4">
                                         <div>
-                                            <h4 className="font-medium text-gray-900">聊天消息字号</h4>
-                                            <p className="mt-1 text-[13px] text-gray-500">调整消息正文显示大小</p>
+                                            <h4 className="font-medium text-gray-900 text-[15px]">聊天消息字号</h4>
+                                            <p className="mt-1 text-[13px] text-gray-500 leading-relaxed">调整消息正文显示大小，让阅读更贴合你的习惯</p>
                                         </div>
                                         <div className="flex h-8 min-w-12 px-2 items-center justify-center rounded-md bg-gray-50 border border-gray-100 text-sm font-medium text-gray-700 shadow-sm">
                                             {messageFontSize}px
@@ -126,18 +145,56 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
                                         step={1}
                                         value={[messageFontSize]}
                                         onValueChange={(val) => setMessageFontSize(val[0])}
-                                        className="mb-8"
+                                        className="mt-6"
                                     />
+
+                                    <div className="mt-6 flex flex-col items-start rounded-xl border border-gray-100 bg-gray-50 p-6 shadow-sm">
+                                        <span className="mb-4 text-[11px] font-semibold tracking-wider uppercase text-gray-400">字号预览</span>
+                                        <div className="rounded-2xl bg-[#EBF4FF] px-4 py-3 text-gray-800 shadow-xs border border-blue-100/50">
+                                            <p style={{ fontSize: `${messageFontSize}px` }} className="transition-all leading-relaxed">
+                                                This is a preview message. <br />
+                                                这是预览文本，字号会实时同步到聊天界面。
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className="flex flex-col items-start rounded-xl border border-gray-100 bg-gray-50 p-6 shadow-sm">
-                                    <span className="mb-4 text-[11px] font-semibold tracking-wider uppercase text-gray-400">效果预览</span>
-                                    <div className="rounded-2xl rounded-tl-sm bg-[#EBF4FF] px-4 py-3 text-gray-800 shadow-xs border border-blue-100/50">
-                                        <p style={{ fontSize: `${messageFontSize}px` }} className="transition-all leading-relaxed">
-                                            This is a preview message. <br />
-                                            这是预览文本，字号会实时同步到聊天界面。
-                                        </p>
+                                <Separator className="opacity-60" />
+
+                                <div className="py-5">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div className="space-y-0.5 pr-6">
+                                            <h4 className="font-medium text-gray-900 text-[15px]">角色记忆</h4>
+                                            <p className="text-[13px] text-gray-500 leading-relaxed">开启后，系统会记录并在后续对话中检索与你相关的长期记忆。</p>
+                                        </div>
+                                        <Switch
+                                            checked={displayedMemoryEnabled}
+                                            onCheckedChange={setMemoryEnabled}
+                                            disabled={isMemoryReadonly}
+                                        />
                                     </div>
+
+                                    {isEntitlementsLoading ? (
+                                        <div className="mt-3">
+                                            <p className="text-[12px] text-gray-400 leading-relaxed">
+                                                正在校验当前套餐权益，记忆开关暂时不可编辑。
+                                            </p>
+                                        </div>
+                                    ) : null}
+
+                                    {isMemoryLocked ? (
+                                        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[13px] font-medium text-amber-900">当前套餐暂不支持角色记忆</p>
+                                                <p className="mt-1 text-[12px] leading-relaxed text-amber-700">
+                                                    升级到 Plus 或 Pro 后，即可开启记忆采集与回答时的记忆检索。
+                                                </p>
+                                            </div>
+                                            <Button type="button" variant="outline" size="sm" onClick={handleOpenBilling}>
+                                                订阅管理
+                                            </Button>
+                                        </div>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>

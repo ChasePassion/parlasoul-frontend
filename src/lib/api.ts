@@ -202,6 +202,7 @@ export const uploadFile = apiService.uploadFile.bind(apiService);
 export const updateUserProfile = apiService.updateUserProfile.bind(apiService);
 export const getMySettings = apiService.getMySettings.bind(apiService);
 export const updateMySettings = apiService.updateMySettings.bind(apiService);
+export const getMyEntitlements = apiService.getMyEntitlements.bind(apiService);
 
 // 角色相关
 export const createCharacter = apiService.createCharacter.bind(apiService);
@@ -289,6 +290,10 @@ export type {
   UpdateProfileRequest,
   UserSettingsResponse,
   UpdateUserSettingsRequest,
+  UserEntitlementTier,
+  UserEntitlementFeatures,
+  UserEntitlementSettings,
+  UserEntitlementsResponse,
   CreateCharacterRequest,
   CharacterResponse,
   CharacterStatus,

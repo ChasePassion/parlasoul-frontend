@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createVoiceClone } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { getErrorMessage } from "@/lib/error-map";
 import VoiceAvatarField from "./VoiceAvatarField";
 
@@ -28,6 +29,8 @@ export default function CreateVoiceCloneModal({
   onClose,
   onSuccess,
 }: CreateVoiceCloneModalProps) {
+  const { entitlements, isEntitlementsLoading } = useAuth();
+  const canUseVoiceClone = entitlements?.features.voice_clone ?? null;
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [avatarFileName, setAvatarFileName] = useState<string | null>(null);
@@ -38,6 +41,8 @@ export default function CreateVoiceCloneModal({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const isVoiceCloneLocked = canUseVoiceClone === false;
+  const isVoiceClonePending = isEntitlementsLoading || canUseVoiceClone !== true;
 
   const validateForm = (): string | null => {
     if (!name.trim()) {
@@ -99,6 +104,16 @@ export default function CreateVoiceCloneModal({
   };
 
   const handleSubmit = async () => {
+    if (isVoiceCloneLocked) {
+      setError("当前套餐暂不支持音色克隆，请先升级到 Plus 或 Pro");
+      return;
+    }
+
+    if (isVoiceClonePending) {
+      setError("正在校验当前套餐权益，请稍后再试");
+      return;
+    }
+
     const validationError = validateForm();
     if (validationError) {
       setError(validationError);
@@ -180,10 +195,33 @@ export default function CreateVoiceCloneModal({
             </div>
           )}
 
+          {isVoiceCloneLocked ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+              <p className="text-sm font-medium text-amber-900">当前套餐暂不支持音色克隆</p>
+              <p className="mt-1 text-xs leading-5 text-amber-700">
+                升级到 Plus 或 Pro 后，即可创建专属音色并绑定到你的角色。
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3"
+                onClick={() => window.location.assign("/billing")}
+              >
+                订阅管理
+              </Button>
+            </div>
+          ) : null}
+
+          {isEntitlementsLoading ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              正在校验当前套餐权益，暂时无法提交音色克隆。
+            </div>
+          ) : null}
+
           <VoiceAvatarField
             value={avatarFileName}
             onChange={setAvatarFileName}
-            disabled={fetchState === "loading"}
+            disabled={fetchState === "loading" || isVoiceClonePending}
           />
 
           <div className="space-y-2">
@@ -197,7 +235,7 @@ export default function CreateVoiceCloneModal({
               onChange={(e) => setName(e.target.value)}
               placeholder="给你的音色起个名字"
               maxLength={40}
-              disabled={fetchState === "loading"}
+              disabled={fetchState === "loading" || isVoiceClonePending}
               className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200"
             />
             <p className="text-xs text-gray-500 mt-1">{name.length}/40 字符</p>
@@ -214,7 +252,7 @@ export default function CreateVoiceCloneModal({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="描述这个音色的特点（选填）"
               maxLength={160}
-              disabled={fetchState === "loading"}
+              disabled={fetchState === "loading" || isVoiceClonePending}
               className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200"
             />
             <p className="text-xs text-gray-500 mt-1">{description.length}/160 字符</p>
@@ -230,7 +268,7 @@ export default function CreateVoiceCloneModal({
               onChange={(e) => setPreviewText(e.target.value)}
               placeholder="输入试听时要朗读的文字"
               maxLength={120}
-              disabled={fetchState === "loading"}
+              disabled={fetchState === "loading" || isVoiceClonePending}
               className="min-h-[92px] w-full resize-none border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:!border-gray-200"
             />
             <p className="text-xs text-gray-500 mt-1">{previewText.length}/120 字符</p>
@@ -254,7 +292,7 @@ export default function CreateVoiceCloneModal({
                 <button
                   type="button"
                   onClick={handleRemoveAudio}
-                  disabled={fetchState === "loading"}
+                  disabled={fetchState === "loading" || isVoiceClonePending}
                   className="p-1.5 rounded-lg hover:bg-green-100 text-green-600 transition-colors"
                 >
                   <X className="h-5 w-5" />
@@ -263,7 +301,11 @@ export default function CreateVoiceCloneModal({
             ) : (
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-all ${
+                  isVoiceClonePending
+                    ? "cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400"
+                    : "cursor-pointer border-gray-300 hover:border-blue-400 hover:bg-blue-50"
+                }`}
               >
                 <Upload className="h-8 w-8 text-gray-400 mb-2" />
                 <p className="text-sm text-gray-600">点击上传音频文件</p>
@@ -278,6 +320,7 @@ export default function CreateVoiceCloneModal({
               type="file"
               accept="audio/wav,audio/mp3,audio/mpeg,audio/m4a,audio/flac,audio/opus"
               onChange={handleFileSelect}
+              disabled={isVoiceClonePending}
               className="hidden"
             />
           </div>
@@ -294,7 +337,7 @@ export default function CreateVoiceCloneModal({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={fetchState === "loading"}
+            disabled={fetchState === "loading" || isVoiceClonePending}
             className="flex-1 px-4 py-2.5 bg-[#3964FE] text-white rounded-lg font-medium hover:bg-[#2a4fd6] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {fetchState === "loading" ? (

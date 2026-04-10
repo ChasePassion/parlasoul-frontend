@@ -45,6 +45,7 @@ export type DisplayMode = "concise" | "detailed";
 
 export interface UserSettingsResponse {
   display_mode: DisplayMode;
+  memory_enabled: boolean;
   reply_card_enabled: boolean;
   mixed_input_auto_translate_enabled: boolean;
   auto_read_aloud_enabled: boolean;
@@ -55,11 +56,32 @@ export interface UserSettingsResponse {
 
 export interface UpdateUserSettingsRequest {
   display_mode?: DisplayMode;
+  memory_enabled?: boolean;
   reply_card_enabled?: boolean;
   mixed_input_auto_translate_enabled?: boolean;
   auto_read_aloud_enabled?: boolean;
   preferred_expression_bias_enabled?: boolean;
   message_font_size?: number;
+}
+
+export type UserEntitlementTier = "free" | "plus" | "pro";
+
+export interface UserEntitlementFeatures {
+  voice_clone: boolean;
+  memory_feature: boolean;
+}
+
+export interface UserEntitlementSettings {
+  memory_enabled: boolean;
+}
+
+export interface UserEntitlementsResponse {
+  tier: UserEntitlementTier;
+  subscription_status: string | null;
+  subscription_product_id: string | null;
+  current_period_end: string | null;
+  features: UserEntitlementFeatures;
+  settings: UserEntitlementSettings;
 }
 
 export type CharacterVisibility = "PUBLIC" | "PRIVATE" | "UNLISTED";
@@ -734,6 +756,10 @@ export class ApiService {
       "/v1/users/me/settings",
       data,
     );
+  }
+
+  async getMyEntitlements(): Promise<UserEntitlementsResponse> {
+    return httpClient.get<UserEntitlementsResponse>("/v1/users/me/entitlements");
   }
 
   async createCharacter(
