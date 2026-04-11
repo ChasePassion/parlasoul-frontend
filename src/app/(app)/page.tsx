@@ -7,10 +7,9 @@ import { useGrowth } from "@/lib/growth-context";
 import WorkspaceFrame from "@/components/layout/WorkspaceFrame";
 import { useSidebar } from "./layout";
 import { getOrCreateChatId } from "@/lib/chat-helpers";
-import TopConsole, { ViewMode } from "@/components/TopConsole";
+import TopConsole from "@/components/TopConsole";
 import HeroCarousel from "@/components/HeroCarousel";
 import HorizontalSection from "@/components/HorizontalSection";
-import ComingSoonPage from "@/components/ComingSoonPage";
 import {
   fetchAllMarketCharacters,
   getDiscoverConfig,
@@ -29,7 +28,6 @@ export default function DiscoverPage() {
     useSidebar();
   const userId = user?.id ?? null;
 
-  const [mode, setMode] = useState<ViewMode>("character");
   const [discoverCharacters, setDiscoverCharacters] = useState<CharacterResponse[]>([]);
   const [heroCharacterIds, setHeroCharacterIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -145,13 +143,6 @@ export default function DiscoverPage() {
         <div className="max-w-[1400px] mx-auto px-10 py-6 min-h-full flex flex-col">
           {/* 顶部控制台 */}
           <TopConsole
-            mode={mode}
-            onModeChange={(newMode) => {
-              setMode(newMode);
-              if (newMode === "story") {
-                setSearchQuery("");
-              }
-            }}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             searchResults={searchResults}
@@ -160,26 +151,22 @@ export default function DiscoverPage() {
 
           {/* 主内容区 */}
           <div className="flex-1 pb-10">
-            {mode === "story" ? (
-              <ComingSoonPage />
-            ) : (
-              <div className="flex flex-col animate-in fade-in duration-500">
-                {/* 巨幕轮播 */}
-                <HeroCarousel
-                  characters={heroCharacters}
+            <div className="flex flex-col animate-in fade-in duration-500">
+              {/* 巨幕轮播 */}
+              <HeroCarousel
+                characters={heroCharacters}
+                onSelectCharacter={handleSelectCharacter}
+              />
+
+              {/* 全部角色横滑区 */}
+              {mappedCharacters.length > 0 && (
+                <HorizontalSection
+                  title="全部角色"
+                  characters={mappedCharacters}
                   onSelectCharacter={handleSelectCharacter}
                 />
-
-                {/* 全部角色横滑区 */}
-                {mappedCharacters.length > 0 && (
-                  <HorizontalSection
-                    title="全部角色"
-                    characters={mappedCharacters}
-                    onSelectCharacter={handleSelectCharacter}
-                  />
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>

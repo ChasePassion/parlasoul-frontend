@@ -7,11 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { CharacterResponse } from "@/lib/api-service";
 import { resolveCharacterAvatarSrc } from "@/lib/character-avatar";
 
-export type ViewMode = "character" | "story";
-
 interface TopConsoleProps {
-  mode: ViewMode;
-  onModeChange: (mode: ViewMode) => void;
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
   searchResults: CharacterResponse[];
@@ -19,8 +15,6 @@ interface TopConsoleProps {
 }
 
 export default function TopConsole({
-  mode,
-  onModeChange,
   searchQuery,
   onSearchQueryChange,
   searchResults,
@@ -33,7 +27,7 @@ export default function TopConsole({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const isDropdownOpen =
-    isSearchFocused && mode === "character" && searchQuery.trim().length > 0;
+    isSearchFocused && searchQuery.trim().length > 0;
 
   // Reset active index when results change
   useEffect(() => {
@@ -108,7 +102,7 @@ export default function TopConsole({
       <div ref={searchContainerRef} className="relative w-full max-w-[320px]">
         <div
           className={`relative flex items-center h-[44px] rounded-xl border bg-white transition-[border-color,background-color,box-shadow] duration-200 ${
-            isSearchFocused && mode === "character"
+            isSearchFocused
               ? "border-blue-500 bg-blue-50 shadow-[0_0_0_3px_rgba(59,130,246,0.12)]"
               : "border-black/10 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
           }`}
@@ -119,16 +113,11 @@ export default function TopConsole({
           <Input
             ref={searchInputRef}
             className="flex-1 h-full border-0 bg-transparent shadow-none px-0 text-gray-900 placeholder:text-gray-400 focus-visible:ring-0 text-[15px]"
-            placeholder={
-              mode === "character" ? "搜索角色..." : "剧情搜索敬请期待"
-            }
+            placeholder="搜索角色..."
             value={searchQuery}
             onChange={(e) => onSearchQueryChange(e.target.value)}
-            onFocus={() => {
-              if (mode === "character") setIsSearchFocused(true);
-            }}
+            onFocus={() => setIsSearchFocused(true)}
             onBlur={syncSearchFocusState}
-            disabled={mode === "story"}
           />
         </div>
 
@@ -180,29 +169,6 @@ export default function TopConsole({
         )}
       </div>
 
-      {/* 模式切换器 */}
-      <div className="flex items-center p-1 bg-black/5 rounded-[12px]">
-        <button
-          onClick={() => onModeChange("character")}
-          className={`px-4 py-1.5 rounded-[10px] text-[14px] font-medium transition-all duration-200 flex items-center gap-1.5 ${
-            mode === "character"
-              ? "bg-white text-gray-900 shadow-[0_2px_6px_rgba(0,0,0,0.08)]"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <span>🗣️</span> 角色
-        </button>
-        <button
-          onClick={() => onModeChange("story")}
-          className={`px-4 py-1.5 rounded-[10px] text-[14px] font-medium transition-all duration-200 flex items-center gap-1.5 ${
-            mode === "story"
-              ? "bg-white text-gray-900 shadow-[0_2px_6px_rgba(0,0,0,0.08)]"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <span>🎭</span> 剧情
-        </button>
-      </div>
     </div>
   );
 }
