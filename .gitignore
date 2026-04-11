@@ -27,6 +27,7 @@
 *.pem
 example/
 logs/
+!src/app/api/logs/
 
 # debug
 npm-debug.log*

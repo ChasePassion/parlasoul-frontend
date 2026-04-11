@@ -21,6 +21,7 @@ import VoiceSelector from "./voice/VoiceSelector";
 import VoiceUsageManagerDialog from "./voice/VoiceUsageManagerDialog";
 import ModelSelector from "./ModelSelector";
 import { getErrorMessage } from "@/lib/error-map";
+import { logger, Module, CharacterEvent } from "@/lib/logger";
 import type { Character } from "./Sidebar";
 import {
     CHARACTER_TAG_LIMIT,
@@ -333,6 +334,12 @@ export default function CreateCharacterModal({
         setIsSubmitting(true);
         setError(null);
 
+        const startTime = Date.now();
+        logger.info(Module.CHARACTER, CharacterEvent.STARTED, `Character ${mode} started`, {
+          mode,
+          name: name.trim(),
+        });
+
         try {
             if (!isAuthed) throw new Error("请先登录");
             let voiceProvider = selectedVoice.provider;
@@ -354,6 +361,11 @@ export default function CreateCharacterModal({
                 throw new Error("所选音色缺少模型信息，请重新选择");
             }
 
+            logger.info(Module.CHARACTER, CharacterEvent.VOICE_RESOLVED, "Voice profile resolved", {
+              voice_provider: voiceProvider,
+              voice_source_type: voiceSourceType,
+            });
+
             const baseData = {
                 name: name.trim(),
                 description: description.trim(),
@@ -371,6 +383,11 @@ export default function CreateCharacterModal({
             };
 
             let savedCharacter: CharacterResponse;
+            logger.info(Module.CHARACTER, CharacterEvent.API_CALLED, `Calling ${mode === "edit" ? "updateCharacter" : "createCharacter"} API`, {
+              llm_provider: selectedLLMProvider,
+              llm_model: selectedLLMModel,
+            });
+
             if (mode === 'edit' && character) {
                 const updateData: UpdateCharacterRequest = baseData;
                 savedCharacter = await updateCharacter(character.id, updateData);
@@ -408,9 +425,18 @@ export default function CreateCharacterModal({
                 setVoiceUsageVoiceId(null);
             }
 
+            logger.info(Module.CHARACTER, CharacterEvent.COMPLETED, `Character ${mode} completed`, {
+              character_id: savedCharacter.id,
+              elapsed_ms: Date.now() - startTime,
+            });
+
             onSuccess();
             onClose();
         } catch (err) {
+            logger.fromError(Module.CHARACTER, err, CharacterEvent.FAILED, {
+              mode,
+              elapsed_ms: Date.now() - startTime,
+            });
             setError(getErrorMessage(err));
         } finally {
             setIsSubmitting(false);
@@ -484,7 +510,7 @@ export default function CreateCharacterModal({
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="给角色起个名字"
-                            maxLength={100}
+                            maxLength={20}
                             className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:border-gray-200! [&::selection]:bg-blue-500 [&::selection]:text-white"
                         />
                     </div>
