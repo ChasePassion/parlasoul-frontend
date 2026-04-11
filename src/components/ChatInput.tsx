@@ -46,6 +46,7 @@ export default function ChatInput({
     onInterrupt,
 }: ChatInputProps) {
     const editorRef = useRef<HTMLDivElement>(null);
+    const savedSelectionRef = useRef<Range | null>(null);
     const [message, setMessage] = useState("");
     const [notice, setNotice] = useState<string | null>(null);
     const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
@@ -68,26 +69,61 @@ export default function ChatInput({
         ? `Chat with ${roleName.trim()}`
         : "Chat with RoleName";
 
-    const renderPlaceholder = useCallback(() => {
+    const setEditorEmptyState = useCallback((isEmpty: boolean) => {
         const root = editorRef.current;
         if (!root) return;
 
-        root.textContent = "";
+        root.dataset.placeholder = placeholder;
+        root.classList.toggle("is-empty", isEmpty);
 
-        const paragraph = document.createElement("p");
-        paragraph.className = "placeholder";
-        paragraph.setAttribute("data-placeholder", placeholder);
-
-        const trailingBreak = document.createElement("br");
-        trailingBreak.className = "ProseMirror-trailingBreak";
-
-        paragraph.appendChild(trailingBreak);
-        root.appendChild(paragraph);
+        if (isEmpty) {
+            savedSelectionRef.current = null;
+        }
     }, [placeholder]);
+
+    const clearEditor = useCallback(() => {
+        const root = editorRef.current;
+        if (!root) return;
+
+        root.innerHTML = "";
+        setEditorEmptyState(true);
+    }, [setEditorEmptyState]);
 
     const getEditorText = useCallback(() => {
         const raw = editorRef.current?.innerText || "";
         return raw.replace(/\u00A0/g, " ");
+    }, []);
+
+    const isSelectionInsideEditor = useCallback((range: Range) => {
+        const root = editorRef.current;
+        if (!root) return false;
+
+        return root.contains(range.commonAncestorContainer);
+    }, []);
+
+    const captureEditorSelection = useCallback(() => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+
+        const range = selection.getRangeAt(0);
+        if (!isSelectionInsideEditor(range)) return;
+
+        savedSelectionRef.current = range.cloneRange();
+    }, [isSelectionInsideEditor]);
+
+    const moveCaretToEnd = useCallback(() => {
+        const root = editorRef.current;
+        if (!root || !root.lastChild) return;
+
+        const selection = window.getSelection();
+        if (!selection) return;
+
+        const range = document.createRange();
+        range.selectNodeContents(root.lastChild);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        savedSelectionRef.current = range.cloneRange();
     }, []);
 
     const showNotice = (text: string) => {
@@ -99,12 +135,22 @@ export default function ChatInput({
         if (!content || disabled) return;
         onSend(content);
         setMessage("");
-        renderPlaceholder();
+        clearEditor();
     };
 
     useEffect(() => {
-        renderPlaceholder();
-    }, [renderPlaceholder]);
+        clearEditor();
+    }, [clearEditor]);
+
+    useEffect(() => {
+        const handleSelectionChange = () => {
+            if (inputAreaState !== "default") return;
+            captureEditorSelection();
+        };
+
+        document.addEventListener("selectionchange", handleSelectionChange);
+        return () => document.removeEventListener("selectionchange", handleSelectionChange);
+    }, [captureEditorSelection, inputAreaState]);
 
     useEffect(() => {
         if (!notice) return;
@@ -121,15 +167,12 @@ export default function ChatInput({
         setMessage(trimmed);
 
         if (!trimmed) {
-            renderPlaceholder();
+            root.innerHTML = "";
+            setEditorEmptyState(true);
             return;
         }
 
-        const placeholderNode = root.querySelector("p.placeholder");
-        if (placeholderNode) {
-            placeholderNode.classList.remove("placeholder");
-            placeholderNode.removeAttribute("data-placeholder");
-        }
+        setEditorEmptyState(false);
     };
 
     const handleEditorKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -303,6 +346,7 @@ export default function ChatInput({
         }
 
         try {
+            captureEditorSelection();
             await sttRecorderRef.current.startRecording();
             // Recording has actually started, now notify parent to interrupt TTS.
             onMicStart?.();
@@ -370,37 +414,43 @@ export default function ChatInput({
         const root = editorRef.current;
         if (!root) return;
 
-        // Remove placeholder if present
-        const placeholderNode = root.querySelector("p.placeholder");
-        if (placeholderNode) {
-            placeholderNode.classList.remove("placeholder");
-            placeholderNode.removeAttribute("data-placeholder");
-            placeholderNode.textContent = text;
-        } else {
-            // Append to existing content
-            const currentText = getEditorText().trim();
-            const newText = currentText ? `${currentText} ${text}` : text;
-            root.textContent = "";
-            const p = document.createElement("p");
-            p.textContent = newText;
-            root.appendChild(p);
+        const selection = window.getSelection();
+        let activeRange =
+            savedSelectionRef.current && isSelectionInsideEditor(savedSelectionRef.current)
+                ? savedSelectionRef.current.cloneRange()
+                : selection && selection.rangeCount > 0 && isSelectionInsideEditor(selection.getRangeAt(0))
+                ? selection.getRangeAt(0).cloneRange()
+                : null;
+
+        if (!activeRange) {
+            activeRange = document.createRange();
+            activeRange.selectNodeContents(root);
+            activeRange.collapse(false);
         }
+
+        if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(activeRange);
+        }
+
+        activeRange.deleteContents();
+        const textNode = document.createTextNode(text);
+        activeRange.insertNode(textNode);
+        activeRange.setStartAfter(textNode);
+        activeRange.setEndAfter(textNode);
+        selection?.removeAllRanges();
+        selection?.addRange(activeRange);
+        savedSelectionRef.current = activeRange.cloneRange();
 
         // Update state
         const updatedText = getEditorText().trim();
         setMessage(updatedText);
+        setEditorEmptyState(updatedText.length === 0);
         root.focus();
-
-        // Place cursor at end
-        const selection = window.getSelection();
-        if (selection && root.lastChild) {
-            const range = document.createRange();
-            range.selectNodeContents(root.lastChild);
-            range.collapse(false);
-            selection.removeAllRanges();
-            selection.addRange(range);
+        if (updatedText.length === 0) {
+            moveCaretToEnd();
         }
-    }, [getEditorText]);
+    }, [getEditorText, isSelectionInsideEditor, moveCaretToEnd, setEditorEmptyState]);
 
     useEffect(() => {
         if (inputAreaState !== "default") return;
@@ -439,41 +489,7 @@ export default function ChatInput({
                             <ReplySuggestionsBar
                                 suggestions={replySuggestions}
                                 onSelect={(text) => {
-                                    // Append suggestion text to editor
-                                    const root = editorRef.current;
-                                    if (!root) return;
-
-                                    // Remove placeholder if present
-                                    const placeholderNode = root.querySelector("p.placeholder");
-                                    if (placeholderNode) {
-                                        placeholderNode.classList.remove("placeholder");
-                                        placeholderNode.removeAttribute("data-placeholder");
-                                        placeholderNode.textContent = text;
-                                    } else {
-                                        // Append to existing content
-                                        const currentText = getEditorText().trim();
-                                        const newText = currentText ? `${currentText} ${text}` : text;
-                                        root.textContent = "";
-                                        const p = document.createElement("p");
-                                        p.textContent = newText;
-                                        root.appendChild(p);
-                                    }
-
-                                    // Update state
-                                    const updatedText = getEditorText().trim();
-                                    setMessage(updatedText);
-                                    root.focus();
-
-                                    // Place cursor at end
-                                    const selection = window.getSelection();
-                                    if (selection && root.lastChild) {
-                                        const range = document.createRange();
-                                        range.selectNodeContents(root.lastChild);
-                                        range.collapse(false);
-                                        selection.removeAllRanges();
-                                        selection.addRange(range);
-                                    }
-
+                                    appendTextToEditor(text);
                                     onSelectSuggestion?.(text);
                                 }}
                             />
@@ -524,55 +540,57 @@ export default function ChatInput({
                             >
                                 {/* ── Primary area: text input OR waveform OR transcribing ── */}
                                 <div
-                                    className="-my-2.5 flex min-h-14 items-end overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5 cursor-text"
+                                    className={`-my-2.5 relative flex min-h-14 overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5 ${isInRecordingFlow ? "[grid-column:1/-1] items-center" : "items-end"} cursor-text`}
                                     style={{ transform: "none", transformOrigin: "50% 50% 0px" }}
                                 >
-                                    {inputAreaState === "default" && (
-                                        <div className="wcDTda_prosemirror-parent text-token-text-primary max-h-[max(30svh,5rem)] max-h-52 min-h-[var(--deep-research-composer-extra-height,unset)] flex-1 overflow-y-auto default-browser vertical-scroll-fade-mask w-full flex flex-col-reverse">
-                                            <textarea
-                                                className="wcDTda_fallbackTextarea"
-                                                name="prompt-textarea"
-                                                placeholder={placeholder}
-                                                data-virtualkeyboard="true"
-                                                style={{ display: "none" }}
-                                                readOnly
-                                            />
+                                    <div
+                                        className={`wcDTda_prosemirror-parent text-token-text-primary max-h-[max(30svh,5rem)] max-h-52 min-h-[var(--deep-research-composer-extra-height,unset)] flex-1 overflow-y-auto default-browser vertical-scroll-fade-mask w-full flex flex-col-reverse ${isInRecordingFlow ? "pointer-events-none opacity-0" : ""}`}
+                                        aria-hidden={isInRecordingFlow}
+                                    >
+                                        <textarea
+                                            className="wcDTda_fallbackTextarea"
+                                            name="prompt-textarea"
+                                            placeholder={placeholder}
+                                            data-virtualkeyboard="true"
+                                            style={{ display: "none" }}
+                                            readOnly
+                                        />
+                                        <div
+                                            contentEditable={!disabled && inputAreaState === "default"}
+                                            translate="no"
+                                            className="ProseMirror w-full"
+                                            id="prompt-textarea"
+                                            data-virtualkeyboard="true"
+                                            ref={editorRef}
+                                            onInput={handleEditorInput}
+                                            onKeyDown={handleEditorKeyDown}
+                                            suppressContentEditableWarning
+                                        />
+                                    </div>
+
+                                    {inputAreaState === "recording" && (
+                                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-1.5">
                                             <div
-                                                contentEditable={!disabled}
-                                                translate="no"
-                                                className="ProseMirror w-full"
-                                                id="prompt-textarea"
-                                                data-virtualkeyboard="true"
-                                                ref={editorRef}
-                                                onInput={handleEditorInput}
-                                                onKeyDown={handleEditorKeyDown}
-                                                suppressContentEditableWarning
+                                                ref={waveformContainerRef}
+                                                className="recording-waveform-container w-full"
+                                                style={{ maxWidth: "min(42rem, calc(100% - 9rem))" }}
                                             >
-                                                <p data-placeholder={placeholder} className="placeholder">
-                                                    <br className="ProseMirror-trailingBreak" />
-                                                </p>
+                                                <canvas
+                                                    ref={canvasRef}
+                                                    className="recording-waveform-canvas"
+                                                />
                                             </div>
                                         </div>
                                     )}
 
-                                    {inputAreaState === "recording" && (
-                                        <div
-                                            ref={waveformContainerRef}
-                                            className="recording-waveform-container flex-1"
-                                        >
-                                            <canvas
-                                                ref={canvasRef}
-                                                className="recording-waveform-canvas"
-                                            />
-                                        </div>
-                                    )}
-
                                     {inputAreaState === "transcribing" && (
-                                        <div className="flex-1 flex items-center gap-2 px-1">
-                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
-                                            <span className="text-token-text-secondary text-sm">
-                                                正在转写文字...
-                                            </span>
+                                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-1.5">
+                                            <div className="flex items-center gap-2 px-1">
+                                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
+                                                <span className="text-token-text-secondary text-sm">
+                                                    正在转写文字...
+                                                </span>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -610,7 +628,7 @@ export default function ChatInput({
 
                                 {/* ── Trailing area: mic/send OR cancel/confirm ── */}
                                 <div
-                                    className="flex items-end gap-2 [grid-area:trailing]"
+                                    className={`${isInRecordingFlow ? "absolute right-2.5 bottom-2.5 z-20 flex items-center gap-2" : "flex items-end gap-2 [grid-area:trailing]"}`}
                                     style={{ transform: "none", transformOrigin: "50% 50% 0px" }}
                                 >
                                     <div className="ms-auto flex items-center gap-1.5">

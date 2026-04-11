@@ -281,6 +281,7 @@ strong,
 .wcDTda_prosemirror-parent .ProseMirror[contenteditable] {
   outline-width: 0;
   outline-style: none;
+  position: relative;
 }
 
 .wcDTda_fallbackTextarea,
@@ -312,29 +313,22 @@ strong,
   color: var(--text-tertiary);
 }
 
-.wcDTda_prosemirror-parent.default-browser .placeholder:after {
+.wcDTda_prosemirror-parent.default-browser .ProseMirror.is-empty::before {
   pointer-events: none;
   cursor: text;
   color: var(--text-tertiary);
   content: attr(data-placeholder);
-  padding-left: 1px;
-  position: relative;
-}
-
-.wcDTda_prosemirror-parent.default-browser
-  .placeholder
-  .ProseMirror-trailingBreak {
-  display: none !important;
+  position: absolute;
+  top: 0;
+  left: 1px;
+  right: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wcDTda_prosemirror-parent p {
   white-space: pre-wrap;
-}
-
-.wcDTda_prosemirror-parent p.placeholder {
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
 }
 
 .content-fade {
