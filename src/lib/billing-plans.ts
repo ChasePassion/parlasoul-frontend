@@ -1,5 +1,6 @@
 export type BillingPeriod = "monthly" | "yearly";
 export type BillingTier = "plus" | "pro";
+export type PricingMode = "subscription" | "wechat";
 
 export interface PricingPlanDefinition {
   period: BillingPeriod;
@@ -92,6 +93,10 @@ export function getBillingPeriodFromValue(value: string | null | undefined): Bil
   return value === "yearly" ? "yearly" : "monthly";
 }
 
+export function getPricingModeFromValue(value: string | null | undefined): PricingMode {
+  return value === "wechat" ? "wechat" : "subscription";
+}
+
 export function isPricingPlanSlug(value: string | null | undefined): value is string {
   if (!value) {
     return false;
@@ -111,13 +116,23 @@ export function getPricingPlansForPeriod(period: BillingPeriod) {
 export function buildPricingPath(params?: {
   period?: BillingPeriod;
   checkout?: string | null;
+  mode?: PricingMode;
+  productId?: string | null;
 }) {
   const period = params?.period ?? "monthly";
   const searchParams = new URLSearchParams();
   searchParams.set("period", period);
 
+  if (params?.mode === "wechat") {
+    searchParams.set("mode", "wechat");
+  }
+
   if (params?.checkout) {
     searchParams.set("checkout", params.checkout);
+  }
+
+  if (params?.productId) {
+    searchParams.set("product_id", params.productId);
   }
 
   return `/pricing?${searchParams.toString()}`;
@@ -153,4 +168,14 @@ export function formatDateTime(value: string | null | undefined) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(parsed);
+}
+
+export function getBillingTierRank(value: BillingTier | "free" | null | undefined) {
+  if (value === "pro") {
+    return 2;
+  }
+  if (value === "plus") {
+    return 1;
+  }
+  return 0;
 }

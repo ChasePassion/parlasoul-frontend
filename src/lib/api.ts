@@ -197,6 +197,12 @@ export async function listDodoPayments(params?: {
   return requireAuthClientData(response, "获取支付记录失败");
 }
 
+export const getWechatPaymentProducts = apiService.getWechatPaymentProducts.bind(apiService);
+export const createWechatCheckoutSession =
+  apiService.createWechatCheckoutSession.bind(apiService);
+export const getWechatPaymentOrder = apiService.getWechatPaymentOrder.bind(apiService);
+export const listWechatPaymentOrders = apiService.listWechatPaymentOrders.bind(apiService);
+
 // 用户相关
 export const uploadFile = apiService.uploadFile.bind(apiService);
 export const updateUserProfile = apiService.updateUserProfile.bind(apiService);
@@ -291,9 +297,15 @@ export type {
   UserSettingsResponse,
   UpdateUserSettingsRequest,
   UserEntitlementTier,
+  EffectiveEntitlementSource,
   UserEntitlementFeatures,
   UserEntitlementSettings,
+  UserAccessPass,
   UserEntitlementsResponse,
+  WechatPaymentProduct,
+  WechatPaymentProductListResponse,
+  CreateWechatCheckoutSessionResponse,
+  PaymentOrderResponse,
   CreateCharacterRequest,
   CharacterResponse,
   CharacterStatus,

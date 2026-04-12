@@ -75,13 +75,85 @@ export interface UserEntitlementSettings {
   memory_enabled: boolean;
 }
 
+export type EffectiveEntitlementSource =
+  | "none"
+  | "recurring_subscription"
+  | "one_time_pass";
+
+export interface UserAccessPass {
+  id: string;
+  channel: "wechat_pay";
+  product_id: string;
+  tier: Extract<UserEntitlementTier, "plus" | "pro">;
+  starts_at: string;
+  ends_at: string;
+  status: "active" | "expired" | "refunded" | "revoked";
+  source_order_id: string;
+}
+
 export interface UserEntitlementsResponse {
   tier: UserEntitlementTier;
   subscription_status: string | null;
   subscription_product_id: string | null;
   current_period_end: string | null;
+  effective_source: EffectiveEntitlementSource;
+  effective_expires_at: string | null;
+  active_pass: UserAccessPass | null;
   features: UserEntitlementFeatures;
   settings: UserEntitlementSettings;
+}
+
+export interface WechatPaymentProduct {
+  product_id: string;
+  name: string;
+  tier: Extract<UserEntitlementTier, "plus" | "pro">;
+  duration_days: number;
+  base_price_minor: number;
+  base_price_currency: string;
+  base_price_display: string;
+  billing_currency: string;
+  channel: "wechat_pay";
+  price_note: string;
+}
+
+export interface WechatPaymentProductListResponse {
+  items: WechatPaymentProduct[];
+}
+
+export interface CreateWechatCheckoutSessionResponse {
+  order_id: string;
+  checkout_url: string;
+  checkout_session_id: string;
+  product_id: string;
+  tier: Extract<UserEntitlementTier, "plus" | "pro">;
+  duration_days: number;
+  billing_currency: string;
+  channel: "wechat_pay";
+}
+
+export interface PaymentOrderResponse {
+  id: string;
+  status:
+    | "created"
+    | "checkout_created"
+    | "pending"
+    | "succeeded"
+    | "failed"
+    | "cancelled"
+    | "refunded"
+    | "expired";
+  product_id: string;
+  tier: Extract<UserEntitlementTier, "plus" | "pro">;
+  duration_days: number;
+  channel: "wechat_pay";
+  billing_currency: string;
+  paid_at: string | null;
+  refunded_at: string | null;
+  created_at: string;
+  charged_total_minor: number | null;
+  charged_currency: string | null;
+  settlement_total_minor: number | null;
+  settlement_currency: string | null;
 }
 
 export type CharacterVisibility = "PUBLIC" | "PRIVATE" | "UNLISTED";
@@ -760,6 +832,43 @@ export class ApiService {
 
   async getMyEntitlements(): Promise<UserEntitlementsResponse> {
     return httpClient.get<UserEntitlementsResponse>("/v1/users/me/entitlements");
+  }
+
+  async getWechatPaymentProducts(): Promise<WechatPaymentProductListResponse> {
+    return httpClient.get<WechatPaymentProductListResponse>("/v1/payments/wechat/products");
+  }
+
+  async createWechatCheckoutSession(params: {
+    product_id: string;
+  }): Promise<CreateWechatCheckoutSessionResponse> {
+    return httpClient.post<
+      CreateWechatCheckoutSessionResponse,
+      { product_id: string }
+    >("/v1/payments/wechat/checkout-session", params);
+  }
+
+  async getWechatPaymentOrder(orderId: string): Promise<PaymentOrderResponse> {
+    return httpClient.get<PaymentOrderResponse>(`/v1/payments/orders/${orderId}`);
+  }
+
+  async listWechatPaymentOrders(params?: {
+    channel?: "wechat_pay";
+    skip?: number;
+    limit?: number;
+  }): Promise<PaymentOrderResponse[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.channel) {
+      searchParams.set("channel", params.channel);
+    }
+    if (params?.skip !== undefined) {
+      searchParams.set("skip", String(params.skip));
+    }
+    if (params?.limit !== undefined) {
+      searchParams.set("limit", String(params.limit));
+    }
+    const query = searchParams.toString();
+    const suffix = query ? `?${query}` : "";
+    return httpClient.get<PaymentOrderResponse[]>(`/v1/payments/orders${suffix}`);
   }
 
   async createCharacter(

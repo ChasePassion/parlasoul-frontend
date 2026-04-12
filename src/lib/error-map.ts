@@ -162,6 +162,14 @@ const ERROR_MESSAGE_MAP: Record<string, ErrorMapping> = {
     message: "创建支付会话失败，请稍后重试",
     severity: "error",
   },
+  "external timeout: Dodo checkout session creation timed out": {
+    message: "支付会话创建超时，请稍后重试",
+    severity: "error",
+  },
+  "external error: failed to create Dodo checkout session": {
+    message: "支付会话创建失败，请稍后重试",
+    severity: "error",
+  },
   "Customer portal creation failed": {
     message: "打开订阅管理失败，请稍后重试",
     severity: "error",
@@ -227,6 +235,19 @@ export function mapApiError(error: unknown): MappedError {
   if (error instanceof ApiError) {
     const statusKey = error.status?.toString() || "DEFAULT";
     const codeKey = error.code || statusKey;
+
+    if (
+      error.detail?.includes(
+        "current effective tier already covers requested purchase",
+      )
+    ) {
+      return {
+        code: "resource_conflict",
+        message: "你当前已有有效权益，暂不可重复购买该档位",
+        severity: "info",
+        rawMessage: error.detail,
+      };
+    }
 
     if (error.detail?.includes("character is unpublished")) {
       return {
