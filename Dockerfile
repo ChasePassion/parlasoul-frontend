@@ -17,6 +17,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /app
 
+RUN corepack enable
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
