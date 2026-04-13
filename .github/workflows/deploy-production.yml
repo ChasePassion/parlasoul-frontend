@@ -40,6 +40,23 @@ jobs:
       DEPLOY_HOST_KEY_FINGERPRINT: ${{ secrets.DEPLOY_HOST_KEY_FINGERPRINT }}
       IMAGE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.event.inputs.image_sha }}
     steps:
+      - name: Normalize deployment settings
+        run: |
+          set -euo pipefail
+
+          sanitize() {
+            printf '%s' "$1" | tr -d '\r\n' | sed $'1s/^\xEF\xBB\xBF//'
+          }
+
+          {
+            echo "DEPLOY_HOST=$(sanitize "${DEPLOY_HOST}")"
+            echo "DEPLOY_USER=$(sanitize "${DEPLOY_USER}")"
+            echo "DEPLOY_PASSWORD=$(sanitize "${DEPLOY_PASSWORD}")"
+            echo "DEPLOY_ROOT=$(sanitize "${DEPLOY_ROOT}")"
+            echo "DEPLOY_HOST_KEY_FINGERPRINT=$(sanitize "${DEPLOY_HOST_KEY_FINGERPRINT}")"
+            echo "IMAGE_SHA=$(sanitize "${IMAGE_SHA}")"
+          } >> "$GITHUB_ENV"
+
       - name: Validate deployment inputs
         run: |
           set -euo pipefail
