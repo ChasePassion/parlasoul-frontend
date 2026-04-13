@@ -108,5 +108,14 @@ jobs:
 
           deployed_revision="\$(docker inspect parlasoul-frontend-1 --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
           test "\${deployed_revision}" = "${IMAGE_SHA}"
-          curl -fsS https://parlasoul.com/login >/dev/null
+
+          for attempt in \$(seq 1 20); do
+            if curl -fsS https://parlasoul.com/login >/dev/null; then
+              exit 0
+            fi
+            sleep 3
+          done
+
+          echo "Frontend health check did not pass in time" >&2
+          exit 1
           EOF
