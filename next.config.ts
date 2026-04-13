@@ -44,6 +44,7 @@ const baseConfig: NextConfig = {
   // Disable compression so SSE responses aren't buffered by the proxy layer.
   // (Streaming endpoints rely on incremental flush of chunks.)
   compress: false,
+  output: "standalone",
   images: {
     remotePatterns: [
       {
