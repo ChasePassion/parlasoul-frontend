@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     await appendFile(logFile, `${fields.join(" ")}\n`, "utf8");
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to write log" }, { status: 500 });
   }
 }
