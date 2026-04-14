@@ -38,35 +38,6 @@ export async function sendVerificationCode(email: string): Promise<void> {
   }
 }
 
-export async function getVerificationCodeDeliveryStatus(
-  email: string,
-): Promise<{
-  status: "idle" | "queued" | "sent" | "failed";
-  errorMessage: string | null;
-}> {
-  const response = await fetch(
-    `/api/auth/email-otp-status?email=${encodeURIComponent(email)}&type=sign-in`,
-    {
-      method: "GET",
-      cache: "no-store",
-    },
-  );
-
-  const payload = (await response.json()) as {
-    status?: "idle" | "queued" | "sent" | "failed";
-    errorMessage?: string | null;
-  };
-
-  if (!response.ok) {
-    throw new Error(payload.errorMessage || "验证码状态查询失败");
-  }
-
-  return {
-    status: payload.status || "idle",
-    errorMessage: payload.errorMessage ?? null,
-  };
-}
-
 export async function loginWithCode(
   email: string,
   code: string,
@@ -249,6 +220,8 @@ export const deleteSavedItem = apiService.deleteSavedItem.bind(apiService);
 // Phase 2: 语音相关
 export const sttTranscribe = apiService.sttTranscribe.bind(apiService);
 export const getTtsAudioStream = apiService.getTtsAudioStream.bind(apiService);
+export const createRealtimeSession = apiService.createRealtimeSession.bind(apiService);
+export const deleteRealtimeSession = apiService.deleteRealtimeSession.bind(apiService);
 
 // Phase 2.1: 音色相关
 export const getSidebarCharacters = apiService.getSidebarCharacters.bind(apiService);
@@ -327,6 +300,9 @@ export type {
   SavedItemsPage,
   // Phase 2 types
   STTTranscriptionResult,
+  RealtimeSessionDescription,
+  RealtimeSessionCreateRequest,
+  RealtimeSessionCreateResponse,
   // Phase 2.1 types
   VoiceStatus,
   VoiceSourceType,

@@ -10,13 +10,6 @@ import {
 import nodemailer from "nodemailer";
 import { Pool } from "pg";
 
-import { logEmailOtpEvent } from "./auth-email-otp-log";
-import {
-  setEmailOtpDeliveryFailed,
-  setEmailOtpDeliveryQueued,
-  setEmailOtpDeliverySent,
-  type EmailOtpDeliveryType,
-} from "./auth-email-otp-status-store";
 import { DODO_CHECKOUT_PRODUCTS } from "./billing-plans";
 import {
   getDodoPaymentsClient,
@@ -151,64 +144,14 @@ function normalizeDeliveryError(error: unknown): string {
   return message || "邮件发送失败，请稍后重试";
 }
 
-function buildUserFacingDeliveryErrorMessage(errorMessage: string): string {
-  const lowered = errorMessage.toLowerCase();
-  if (
-    lowered.includes("smtp") ||
-    lowered.includes("econnection") ||
-    lowered.includes("greeting") ||
-    lowered.includes("timeout") ||
-    lowered.includes("invalid login") ||
-    lowered.includes("auth")
-  ) {
-    return "邮件服务暂时不可用，请稍后重试";
-  }
-  return "邮件发送失败，请稍后重试";
-}
-
-async function persistEmailOtpDeliveryFailed(params: {
-  email: string;
-  type: EmailOtpDeliveryType;
-  errorMessage: string;
-}) {
-  const { email, type, errorMessage } = params;
-  try {
-    await setEmailOtpDeliveryFailed(
-      email,
-      type,
-      buildUserFacingDeliveryErrorMessage(errorMessage),
-    );
-  } catch (error) {
-    console.error("Failed to persist OTP delivery status:", error);
-  }
-}
-
-async function persistEmailOtpDeliverySent(email: string, type: EmailOtpDeliveryType) {
-  try {
-    await setEmailOtpDeliverySent(email, type);
-  } catch (error) {
-    console.error("Failed to persist OTP delivery status:", error);
-  }
-}
-
-async function writeEmailOtpDeliveryLog(params: Parameters<typeof logEmailOtpEvent>[0]) {
-  try {
-    await logEmailOtpEvent(params);
-  } catch (error) {
-    console.error("Failed to write OTP delivery log:", error);
-  }
-}
-
 function queueEmailOtpDelivery(params: {
   email: string;
-  type: EmailOtpDeliveryType;
   subject: string;
   html: string;
 }) {
-  const { email, type, subject, html } = params;
+  const { email, subject, html } = params;
   const config = getPurelymailConfig();
   const transporter = getPurelymailTransporter();
-  const startedAt = Date.now();
 
   setTimeout(() => {
     void (async () => {
@@ -219,31 +162,8 @@ function queueEmailOtpDelivery(params: {
           subject,
           html,
         });
-
-        await persistEmailOtpDeliverySent(email, type);
-        await writeEmailOtpDeliveryLog({
-          event: "email_otp.delivery_sent",
-          message: "OTP email delivered to SMTP provider",
-          email,
-          otpType: type,
-          durationMs: Date.now() - startedAt,
-        });
       } catch (error) {
-        const normalizedError = normalizeDeliveryError(error);
-        console.error("Failed to deliver OTP email:", normalizedError);
-        await persistEmailOtpDeliveryFailed({
-          email,
-          type,
-          errorMessage: normalizedError,
-        });
-        await writeEmailOtpDeliveryLog({
-          event: "email_otp.delivery_failed",
-          message: "OTP email delivery failed",
-          email,
-          otpType: type,
-          durationMs: Date.now() - startedAt,
-          errorMessage: normalizedError,
-        });
+        console.error("Failed to deliver OTP email:", normalizeDeliveryError(error));
       }
     })();
   }, 0);
@@ -368,16 +288,8 @@ function createAuth() {
             </div>
           `;
 
-          await setEmailOtpDeliveryQueued(normalizedEmail, type);
-          await writeEmailOtpDeliveryLog({
-            event: "email_otp.delivery_queued",
-            message: "OTP email queued for background delivery",
-            email: normalizedEmail,
-            otpType: type,
-          });
           queueEmailOtpDelivery({
             email: normalizedEmail,
-            type,
             subject,
             html,
           });
@@ -390,7 +302,7 @@ function createAuth() {
         use: [
           checkout({
             products: DODO_CHECKOUT_PRODUCTS,
-            successUrl: "/billing?checkout=success",
+            successUrl: "/pricing?checkout=success",
             authenticatedUsersOnly: true,
           }),
           portal(),
