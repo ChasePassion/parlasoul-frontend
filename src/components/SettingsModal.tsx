@@ -50,7 +50,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
     const displayedMemoryEnabled = canUseMemoryFeature === true ? memoryEnabled : false;
 
     const handleOpenBilling = () => {
-        window.location.assign("/billing");
+        window.location.assign("/pricing");
     };
 
     return (

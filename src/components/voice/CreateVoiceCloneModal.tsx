@@ -205,7 +205,7 @@ export default function CreateVoiceCloneModal({
                 type="button"
                 variant="outline"
                 className="mt-3"
-                onClick={() => window.location.assign("/billing")}
+                onClick={() => window.location.assign("/pricing")}
               >
                 订阅管理
               </Button>

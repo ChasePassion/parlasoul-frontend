@@ -139,7 +139,7 @@ export function buildPricingPath(params?: {
 }
 
 export function isSetupBypassPath(pathname: string) {
-  return pathname.startsWith("/pricing") || pathname.startsWith("/billing");
+  return pathname.startsWith("/pricing");
 }
 
 export function formatMinorCurrency(amountMinor: number, currency: string) {

@@ -67,7 +67,7 @@ export default function ProfilePage() {
         }
 
         if (canUseVoiceClone === false) {
-            window.location.assign('/billing');
+            window.location.assign('/pricing');
             return;
         }
 

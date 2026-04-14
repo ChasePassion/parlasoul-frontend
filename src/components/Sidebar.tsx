@@ -120,7 +120,7 @@ export default function Sidebar({
             </DropdownMenuItem>
 
             <DropdownMenuItem
-                onClick={() => { window.location.href = "/billing"; }}
+                onClick={() => { window.location.href = "/pricing"; }}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer focus:bg-accent"
             >
                 <div className="flex h-[20px] w-[20px] items-center justify-center">
