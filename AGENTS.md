@@ -35,7 +35,7 @@
   * 后端代码库在E:code\parlasoul-backend
   * 服务器信息可在.env.local文件中看到，让服务器上面的配置文件和代码库的配置文件键集合一致，值按照环境维护
   * 当需要创建原型的时候，直接在 src/app/prototype/ 下创建任何原型页面，比如
-  src/app/prototype/xxx/page.tsx
+  src/app/prototype/xxx/page.tsx, 编写原型界面的时候需要对接真实数据，可以在原型页面里直接 import { api } from "@/lib/api"，然后在 useEffect或事件处理里调接口，和正式页面写法完全一样。
 ---
 
 ## 1 · 总体推理与规划框架（全局规则）
