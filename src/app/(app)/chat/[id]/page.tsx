@@ -24,8 +24,7 @@ import {
 import { useGrowth } from "@/lib/growth-context";
 import ShareCardDialog from "@/components/growth/ShareCardDialog";
 
-const AUTO_SCROLL_THRESHOLD_PX = 160;
-const AUTO_SCROLL_SETTLED_FRAME_TARGET = 2;
+const SETTLED_FRAME_TARGET = 2;
 
 export default function ChatPage() {
     const params = useParams();
@@ -113,6 +112,7 @@ export default function ChatPage() {
 
     const handleSendMessage = useCallback(
         async (content: string) => {
+            shouldAutoScrollRef.current = true;
             await originalHandleSendMessage(content);
             void refreshSidebarCharacters().catch((err) => {
                 console.error("Failed to refresh sidebar characters:", err);
@@ -185,26 +185,39 @@ export default function ChatPage() {
     const messagesStartRef = useRef<HTMLDivElement | null>(null);
     const scrollRootRef = useRef<HTMLDivElement>(null);
     const shouldAutoScrollRef = useRef(true);
+    /** True while we are programmatically setting scrollTop — scroll listener should ignore */
+    const isProgrammaticScrollRef = useRef(false);
 
+    // Reset on chat switch
     useEffect(() => {
         shouldAutoScrollRef.current = true;
     }, [chatId]);
 
+    // Listen for user scroll: scroll up → stop following; reach bottom → resume
     useEffect(() => {
         const root = scrollRootRef.current;
         if (!root) return;
 
-        const updateShouldAutoScroll = () => {
+        let lastScrollTop = root.scrollTop;
+
+        const onScroll = () => {
+            if (isProgrammaticScrollRef.current) return;
+
             const distanceToBottom = root.scrollHeight - root.scrollTop - root.clientHeight;
-            shouldAutoScrollRef.current = distanceToBottom <= AUTO_SCROLL_THRESHOLD_PX;
+
+            if (root.scrollTop < lastScrollTop) {
+                // User scrolled up → stop following immediately
+                shouldAutoScrollRef.current = false;
+            } else if (distanceToBottom <= 5) {
+                // User scrolled back to very bottom → resume
+                shouldAutoScrollRef.current = true;
+            }
+
+            lastScrollTop = root.scrollTop;
         };
 
-        updateShouldAutoScroll();
-        root.addEventListener("scroll", updateShouldAutoScroll, { passive: true });
-
-        return () => {
-            root.removeEventListener("scroll", updateShouldAutoScroll);
-        };
+        root.addEventListener("scroll", onScroll, { passive: true });
+        return () => root.removeEventListener("scroll", onScroll);
     }, []);
 
     useEffect(() => {
@@ -249,7 +262,9 @@ export default function ChatPage() {
                 return;
             }
 
+            isProgrammaticScrollRef.current = true;
             root.scrollTop = root.scrollHeight;
+            isProgrammaticScrollRef.current = false;
 
             const distanceToBottom = root.scrollHeight - root.scrollTop - root.clientHeight;
             const isSettled =
@@ -258,7 +273,7 @@ export default function ChatPage() {
             settledFrames = isSettled ? settledFrames + 1 : 0;
             lastScrollHeight = root.scrollHeight;
 
-            if (settledFrames >= AUTO_SCROLL_SETTLED_FRAME_TARGET) {
+            if (settledFrames >= SETTLED_FRAME_TARGET) {
                 frameId = 0;
                 return;
             }
