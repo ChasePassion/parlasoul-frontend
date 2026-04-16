@@ -139,12 +139,21 @@ export interface GrowthKpis {
   top_character: GrowthCharacterHeadline | null;
 }
 
+export interface GrowthTrendBreakdownItem {
+  character_id: string;
+  character_name: string;
+  word_count: number;
+  message_count: number;
+  user_message_count?: number;
+}
+
 export interface GrowthTrendPoint {
   stat_date: string;
   total_message_count: number;
   total_word_count: number;
   is_natural_signed: boolean;
   is_makeup_signed: boolean;
+  character_breakdown?: GrowthTrendBreakdownItem[];
 }
 
 export interface GrowthRankingItem {

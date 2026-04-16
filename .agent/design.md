@@ -695,6 +695,41 @@ The `!` is Tailwind's important flag to ensure the style has highest priority.
 
 ---
 
+### Dropdown Trigger: Keep the Default Border, Only Remove the Extra Focus Ring
+
+When fixing a shadcn `DropdownMenuTrigger` that shows an unwanted gray border after open / select / outside-click close, do **not** remove the trigger's normal border.
+
+The actual problem is usually:
+
+- the default shadcn button uses `focus-visible:border-ring`
+- and `focus-visible:ring-[3px]`
+- so after focus is handed back to the trigger, a temporary extra border / ring appears
+
+**Wrong fix:**
+
+```tsx
+className="border-transparent hover:border-transparent focus-visible:border-transparent focus-visible:ring-0"
+```
+
+This removes the abnormal focus border, but it also removes the component's intended resting border, making the trigger look flatter than the prototype.
+
+**Correct fix for outline-style dropdown triggers:**
+
+```tsx
+className="border-gray-200 bg-white shadow-none hover:border-gray-200 hover:bg-background focus-visible:!border-gray-200 focus-visible:ring-0 focus-visible:outline-none"
+```
+
+**Rule:**
+
+- Keep the trigger's normal border color in resting / hover state
+- Keep the same border color in `focus-visible`
+- Remove only the extra ring / outline if the prototype does not want it
+- Do not use `border-transparent` unless the design truly has no border in the resting state
+
+This is a **stable border ownership** problem, not a "remove all borders" problem.
+
+---
+
 ### Search Input Container: Border Ownership and Focus Synchronization
 
 When a search box uses a **custom outer container** to draw the border, background tint, and focus halo, that outer container must own the focus UI in **every state**.
@@ -1610,3 +1645,81 @@ Then the root cause is almost certainly `scrollIntoView` propagating to the ance
 * **Never use `scrollIntoView` inside a `position: fixed` component that is a DOM descendant of another scroll container.** Use manual `container.scrollTop` adjustment instead.
 * `position: fixed` only affects visual rendering (paint layer). It does **not** create a scroll boundary in the DOM tree. `scrollIntoView` follows DOM parentage, not visual stacking.
 * When implementing "keep active item visible" in a scrollable list, prefer explicit `scrollTop` math over `scrollIntoView` — it gives full control over which container is affected and prevents cross-container interference.
+
+---
+
+### Narrow Separator on Glass/Frosted Background: Use `border`, Not `background-color`
+
+#### Problem
+
+When rendering a thin vertical divider (1-3px) inside a `backdrop-filter: blur()` glass header, using `background-color` on a `<div>` results in an invisible separator, even with seemingly visible colors like `bg-gray-500`.
+
+Tested results on the same `h-4 w-0.5` element:
+
+| Approach | Result |
+|----------|--------|
+| `<div className="h-4 w-0.5 bg-black" />` | Visible (high contrast) |
+| `<div className="h-4 w-0.5 bg-black/30" />` | **Invisible** |
+| `<div className="h-4 w-0.5 bg-gray-500" />` | **Invisible** |
+| `<span className="inline-block h-4 border-l border-gray-500" />` | **Visible** |
+
+#### Root Cause (Three Factors)
+
+**1. Global `border-border` base style**
+
+The project's `globals.css` applies `@apply border-border` to all elements:
+
+```css
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+}
+```
+
+This sets `border-color: var(--color-border)` = `oklch(0.92 0.004 286.32)` (near-white) on every element. This means:
+- `border-l` with no explicit color uses this near-white default — invisible on glass
+- `border-l border-gray-500` **overrides** it and works correctly
+- This rule does **not** affect `background-color`, so it's not the direct cause of bg issues
+
+**2. Browser subpixel rendering on narrow elements**
+
+On Windows 11 (especially at 125%/150% DPI scaling), `background-color` on 1-3px wide elements is affected by subpixel anti-aliasing. Medium-to-low contrast colors (gray-500, black/30) get "anti-aliased away" and become invisible, while `border` is rendered by the browser's border engine with guaranteed pixel precision.
+
+**3. shadcn Separator component overrides**
+
+The shadcn Separator hardcodes `bg-border` (near-white) and `data-[orientation=vertical]:h-full`:
+```tsx
+className={cn(
+  "shrink-0 bg-border data-[orientation=horizontal]:h-px ... data-[orientation=vertical]:h-full data-[orientation=vertical]:w-px",
+  className
+)}
+```
+- `bg-border` = near-white, invisible on glass backgrounds
+- `data-[orientation=vertical]:h-full` overrides user-provided `h-4` (tailwind-merge cannot resolve data-attribute variants vs plain classes)
+
+#### Correct Pattern
+
+```tsx
+// Thin vertical separator on glass/frosted backgrounds
+<span className="inline-block h-4 border-l border-gray-500" />
+```
+
+**Why this works:**
+- `border-l` creates a left border rendered by the browser's border engine (pixel-precise)
+- `border-gray-500` overrides the global `border-border` near-white default
+- `inline-block` allows width/height control on the span
+
+**Avoid:**
+```tsx
+// These will be invisible on glass backgrounds
+<div className="h-4 w-0.5 bg-gray-500" />
+<div className="h-4 w-px bg-gray-400" />
+<Separator orientation="vertical" className="h-4 bg-gray-400" />
+```
+
+#### Rule of Thumb
+
+- On `backdrop-filter` glass/frosted surfaces, use `border` for thin separators, not `background-color`
+- The global `@layer base { * { @apply border-border } }` means `border-l` without explicit color uses near-white — always specify border color explicitly
+- shadcn Separator component's internal styles override both height and color; prefer a plain `<span>` with `border-l` for custom separators

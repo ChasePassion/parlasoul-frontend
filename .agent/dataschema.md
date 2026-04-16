@@ -2,10 +2,10 @@
 
 本文档由脚本直接连接 PostgreSQL 实例并基于实时元数据生成。
 
-- 生成时间: `2026-04-11 07:37:02 北京时间`
+- 生成时间: `2026-04-15 09:13:34 北京时间`
 - 目标数据库: `localhost:5432/role_play_mem`
 - Schema: `public`
-- 表数量: `19`
+- 表数量: `22`
 
 ## 业务语义总览
 
@@ -127,8 +127,8 @@ sequenceDiagram
 - 回复卡、输入改写、错误信息主要落在 [`candidates.extra`](#table-candidates)。
 - 收藏不是把候选或卡片直接外键化，而是把卡片快照写入 [`saved_items`](#table-saved_items)。
 - 成长系统在“聊天完成”后实时更新，而不是离线跑批：
-  - [`growth_daily_stats`](#table-growth_daily_stats)
-  - [`growth_character_daily_stats`](#table-growth_character_daily_stats)
+  - [`growth_daily_stats`](#table-growth_daily_stats)：概览页趋势主线与签到状态
+  - [`growth_character_daily_stats`](#table-growth_character_daily_stats)：概览页趋势 `character_breakdown` 与角色日级分布
   - [`growth_character_stats`](#table-growth_character_stats)
   - [`growth_user_stats`](#table-growth_user_stats)
   - [`growth_share_triggers`](#table-growth_share_triggers)
@@ -517,6 +517,7 @@ sequenceDiagram
 - 表协作
   - 和 [`growth_user_stats`](#table-growth_user_stats) 一起完成签到推进。
   - 和前端 `GrowthProvider` / 签到日历弹窗直接对应。
+  - 也是 `/v1/growth/overview` 中 `trends.last_7_days` / `trends.last_30_days` 总量趋势的日级来源。
 - 当前地位
   - 主链路核心表。
 
@@ -542,6 +543,7 @@ sequenceDiagram
   - 保存“某用户在某天和某角色”的日粒度互动统计。
 - 表协作
   - 是阅读环、角色日历、角色分布数据的日级基础。
+  - 也是 `/v1/growth/overview` 中 `trends.last_7_days[].character_breakdown` / `trends.last_30_days[].character_breakdown` 的直接数据来源。
 - 当前地位
   - 主链路核心表。
 
@@ -676,10 +678,13 @@ sequenceDiagram
 | [`growth_share_triggers`](#table-growth_share_triggers) | BASE TABLE |
 | [`growth_user_stats`](#table-growth_user_stats) | BASE TABLE |
 | [`jwks`](#table-jwks) | BASE TABLE |
+| [`payment_orders`](#table-payment_orders) | BASE TABLE |
+| [`payment_webhook_events`](#table-payment_webhook_events) | BASE TABLE |
 | [`saved_items`](#table-saved_items) | BASE TABLE |
 | [`session`](#table-session) | BASE TABLE |
 | [`subscription_webhook_events`](#table-subscription_webhook_events) | BASE TABLE |
 | [`turns`](#table-turns) | BASE TABLE |
+| [`user_access_passes`](#table-user_access_passes) | BASE TABLE |
 | [`user_settings`](#table-user_settings) | BASE TABLE |
 | [`users`](#table-users) | BASE TABLE |
 | [`verification`](#table-verification) | BASE TABLE |
@@ -816,16 +821,16 @@ sequenceDiagram
   大小: `40 kB`
   定义: `CREATE UNIQUE INDEX candidates_pkey ON public.candidates USING btree (id)`
 - `candidates_turn_candidate_no_uniq` [UNIQUE]
-  大小: `40 kB`
+  大小: `48 kB`
   定义: `CREATE UNIQUE INDEX candidates_turn_candidate_no_uniq ON public.candidates USING btree (turn_id, candidate_no)`
 - `candidates_turn_id_idx`
   大小: `40 kB`
   定义: `CREATE INDEX candidates_turn_id_idx ON public.candidates USING btree (turn_id)`
 - `idx_candidates_turn_created`
-  大小: `40 kB`
+  大小: `48 kB`
   定义: `CREATE INDEX idx_candidates_turn_created ON public.candidates USING btree (turn_id, created_at DESC)`
 - `uq_candidates_turn_id_id` [UNIQUE]
-  大小: `40 kB`
+  大小: `56 kB`
   定义: `CREATE UNIQUE INDEX uq_candidates_turn_id_id ON public.candidates USING btree (turn_id, id)`
 
 ## Table `characters`
@@ -1204,13 +1209,13 @@ sequenceDiagram
 ### 索引
 
 - `growth_share_triggers_pkey` [PRIMARY / UNIQUE]
-  大小: `8192 bytes`
+  大小: `16 kB`
   定义: `CREATE UNIQUE INDEX growth_share_triggers_pkey ON public.growth_share_triggers USING btree (id)`
 - `growth_share_triggers_trigger_key_uniq` [UNIQUE]
-  大小: `8192 bytes`
+  大小: `16 kB`
   定义: `CREATE UNIQUE INDEX growth_share_triggers_trigger_key_uniq ON public.growth_share_triggers USING btree (trigger_key)`
 - `growth_share_triggers_user_pending_idx`
-  大小: `8192 bytes`
+  大小: `16 kB`
   定义: `CREATE INDEX growth_share_triggers_user_pending_idx ON public.growth_share_triggers USING btree (user_id, consumed_at, triggered_at, id)`
 
 ## Table `growth_user_stats`
@@ -1290,6 +1295,145 @@ sequenceDiagram
 - `jwks_pkey` [PRIMARY / UNIQUE]
   大小: `16 kB`
   定义: `CREATE UNIQUE INDEX jwks_pkey ON public.jwks USING btree (id)`
+
+## Table `payment_orders`
+
+<a id="table-payment_orders"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `未启用`
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `uuid` | NOT NULL | - | - | - |
+| `user_id` | `uuid` | NOT NULL | - | - | - |
+| `provider` | `character varying(32)` | NOT NULL | 'dodo'::character varying | - | - |
+| `channel` | `character varying(32)` | NOT NULL | 'wechat_pay'::character varying | - | - |
+| `order_kind` | `character varying(32)` | NOT NULL | 'one_time_pass'::character varying | - | - |
+| `dodo_product_id` | `text` | NOT NULL | - | - | - |
+| `tier` | `character varying(20)` | NOT NULL | - | - | - |
+| `duration_days` | `bigint` | NOT NULL | - | - | - |
+| `base_price_minor` | `bigint` | NULL | - | - | - |
+| `base_price_currency` | `character varying(8)` | NULL | - | - | - |
+| `billing_currency` | `character varying(8)` | NOT NULL | 'CNY'::character varying | - | - |
+| `dodo_customer_id` | `text` | NULL | - | - | - |
+| `dodo_checkout_session_id` | `text` | NULL | - | - | - |
+| `dodo_payment_id` | `text` | NULL | - | - | - |
+| `dodo_refund_id` | `text` | NULL | - | - | - |
+| `checkout_url` | `text` | NULL | - | - | - |
+| `charged_total_minor` | `bigint` | NULL | - | - | - |
+| `charged_currency` | `character varying(8)` | NULL | - | - | - |
+| `settlement_total_minor` | `bigint` | NULL | - | - | - |
+| `settlement_currency` | `character varying(8)` | NULL | - | - | - |
+| `status` | `character varying(32)` | NOT NULL | 'created'::character varying | - | - |
+| `paid_at` | `timestamp with time zone` | NULL | - | - | - |
+| `refunded_at` | `timestamp with time zone` | NULL | - | - | - |
+| `checkout_payload_json` | `jsonb` | NULL | - | - | - |
+| `last_event_payload_json` | `jsonb` | NULL | - | - | - |
+| `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `updated_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+
+### 约束
+
+- `payment_orders_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (id)`
+- `payment_orders_dodo_payment_uniq` [UNIQUE]
+  定义: `UNIQUE (dodo_payment_id)`
+- `payment_orders_dodo_session_uniq` [UNIQUE]
+  定义: `UNIQUE (dodo_checkout_session_id)`
+- `payment_orders_user_id_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+- `payment_orders_channel_check` [CHECK]
+  定义: `CHECK (channel::text = 'wechat_pay'::text)`
+- `payment_orders_kind_check` [CHECK]
+  定义: `CHECK (order_kind::text = 'one_time_pass'::text)`
+- `payment_orders_provider_check` [CHECK]
+  定义: `CHECK (provider::text = 'dodo'::text)`
+- `payment_orders_status_check` [CHECK]
+  定义: `CHECK (status::text = ANY (ARRAY['created'::character varying, 'checkout_created'::character varying, 'pending'::character varying, 'succeeded'::character varying, 'failed'::character varying, 'cancelled'::character varying, 'refunded'::character varying, 'expired'::character varying]::text[]))`
+- `payment_orders_tier_check` [CHECK]
+  定义: `CHECK (tier::text = ANY (ARRAY['plus'::character varying, 'pro'::character varying]::text[]))`
+
+### 外键出站引用
+
+- `payment_orders_user_id_fkey` -> `public.users`
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+
+### 被其他表引用
+
+- `public.user_access_passes` 通过 `user_access_passes_source_order_id_fkey` 引用本表
+  定义: `FOREIGN KEY (source_order_id) REFERENCES payment_orders(id) ON DELETE CASCADE`
+
+### 索引
+
+- `payment_orders_dodo_payment_uniq` [UNIQUE]
+  大小: `16 kB`
+  定义: `CREATE UNIQUE INDEX payment_orders_dodo_payment_uniq ON public.payment_orders USING btree (dodo_payment_id)`
+- `payment_orders_dodo_session_uniq` [UNIQUE]
+  大小: `16 kB`
+  定义: `CREATE UNIQUE INDEX payment_orders_dodo_session_uniq ON public.payment_orders USING btree (dodo_checkout_session_id)`
+- `payment_orders_pkey` [PRIMARY / UNIQUE]
+  大小: `16 kB`
+  定义: `CREATE UNIQUE INDEX payment_orders_pkey ON public.payment_orders USING btree (id)`
+- `payment_orders_user_created_at_idx`
+  大小: `16 kB`
+  定义: `CREATE INDEX payment_orders_user_created_at_idx ON public.payment_orders USING btree (user_id, created_at)`
+- `payment_orders_user_status_idx`
+  大小: `16 kB`
+  定义: `CREATE INDEX payment_orders_user_status_idx ON public.payment_orders USING btree (user_id, status)`
+
+## Table `payment_webhook_events`
+
+<a id="table-payment_webhook_events"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `未启用`
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `uuid` | NOT NULL | - | - | - |
+| `webhook_id` | `text` | NOT NULL | - | - | - |
+| `event_type` | `character varying(80)` | NOT NULL | - | - | - |
+| `webhook_timestamp` | `timestamp with time zone` | NULL | - | - | - |
+| `customer_id` | `text` | NULL | - | - | - |
+| `payment_id` | `text` | NULL | - | - | - |
+| `refund_id` | `text` | NULL | - | - | - |
+| `dodo_product_id` | `text` | NULL | - | - | - |
+| `payload_json` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+| `processing_status` | `character varying(32)` | NOT NULL | 'received'::character varying | - | - |
+| `processed_at` | `timestamp with time zone` | NULL | - | - | - |
+| `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+
+### 约束
+
+- `payment_webhook_events_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (id)`
+- `payment_webhook_events_webhook_id_uniq` [UNIQUE]
+  定义: `UNIQUE (webhook_id)`
+
+### 外键出站引用
+
+- 无
+
+### 被其他表引用
+
+- 无
+
+### 索引
+
+- `payment_webhook_events_pkey` [PRIMARY / UNIQUE]
+  大小: `16 kB`
+  定义: `CREATE UNIQUE INDEX payment_webhook_events_pkey ON public.payment_webhook_events USING btree (id)`
+- `payment_webhook_events_processing_status_created_at_idx`
+  大小: `16 kB`
+  定义: `CREATE INDEX payment_webhook_events_processing_status_created_at_idx ON public.payment_webhook_events USING btree (processing_status, created_at)`
+- `payment_webhook_events_webhook_id_uniq` [UNIQUE]
+  大小: `16 kB`
+  定义: `CREATE UNIQUE INDEX payment_webhook_events_webhook_id_uniq ON public.payment_webhook_events USING btree (webhook_id)`
 
 ## Table `saved_items`
 
@@ -1515,24 +1659,93 @@ sequenceDiagram
 ### 索引
 
 - `idx_turns_chat_turnno_desc`
-  大小: `40 kB`
+  大小: `48 kB`
   定义: `CREATE INDEX idx_turns_chat_turnno_desc ON public.turns USING btree (chat_id, turn_no DESC)`
 - `turns_chat_id_idx`
   大小: `16 kB`
   定义: `CREATE INDEX turns_chat_id_idx ON public.turns USING btree (chat_id)`
 - `turns_chat_parent_turn_idx`
-  大小: `40 kB`
+  大小: `48 kB`
   定义: `CREATE INDEX turns_chat_parent_turn_idx ON public.turns USING btree (chat_id, parent_turn_id)`
 - `turns_chat_turn_no_uniq` [UNIQUE]
-  大小: `40 kB`
+  大小: `48 kB`
   定义: `CREATE UNIQUE INDEX turns_chat_turn_no_uniq ON public.turns USING btree (chat_id, turn_no)`
 - `turns_parent_candidate_uniq` [UNIQUE]
   大小: `40 kB`
   定义: `CREATE UNIQUE INDEX turns_parent_candidate_uniq ON public.turns USING btree (parent_candidate_id) WHERE (parent_candidate_id IS NOT NULL)`
   谓词: `parent_candidate_id IS NOT NULL`
 - `turns_pkey` [PRIMARY / UNIQUE]
-  大小: `16 kB`
+  大小: `40 kB`
   定义: `CREATE UNIQUE INDEX turns_pkey ON public.turns USING btree (id)`
+
+## Table `user_access_passes`
+
+<a id="table-user_access_passes"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `未启用`
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `uuid` | NOT NULL | - | - | - |
+| `user_id` | `uuid` | NOT NULL | - | - | - |
+| `source_order_id` | `uuid` | NOT NULL | - | - | - |
+| `source_type` | `character varying(32)` | NOT NULL | 'one_time_payment'::character varying | - | - |
+| `channel` | `character varying(32)` | NOT NULL | 'wechat_pay'::character varying | - | - |
+| `dodo_product_id` | `text` | NOT NULL | - | - | - |
+| `tier` | `character varying(20)` | NOT NULL | - | - | - |
+| `starts_at` | `timestamp with time zone` | NOT NULL | - | - | - |
+| `ends_at` | `timestamp with time zone` | NOT NULL | - | - | - |
+| `status` | `character varying(20)` | NOT NULL | 'active'::character varying | - | - |
+| `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `updated_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+
+### 约束
+
+- `user_access_passes_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (id)`
+- `user_access_passes_source_order_uniq` [UNIQUE]
+  定义: `UNIQUE (source_order_id)`
+- `user_access_passes_source_order_id_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (source_order_id) REFERENCES payment_orders(id) ON DELETE CASCADE`
+- `user_access_passes_user_id_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+- `user_access_passes_channel_check` [CHECK]
+  定义: `CHECK (channel::text = 'wechat_pay'::text)`
+- `user_access_passes_source_type_check` [CHECK]
+  定义: `CHECK (source_type::text = 'one_time_payment'::text)`
+- `user_access_passes_status_check` [CHECK]
+  定义: `CHECK (status::text = ANY (ARRAY['active'::character varying, 'expired'::character varying, 'refunded'::character varying, 'revoked'::character varying]::text[]))`
+- `user_access_passes_tier_check` [CHECK]
+  定义: `CHECK (tier::text = ANY (ARRAY['plus'::character varying, 'pro'::character varying]::text[]))`
+
+### 外键出站引用
+
+- `user_access_passes_source_order_id_fkey` -> `public.payment_orders`
+  定义: `FOREIGN KEY (source_order_id) REFERENCES payment_orders(id) ON DELETE CASCADE`
+- `user_access_passes_user_id_fkey` -> `public.users`
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+
+### 被其他表引用
+
+- 无
+
+### 索引
+
+- `user_access_passes_pkey` [PRIMARY / UNIQUE]
+  大小: `16 kB`
+  定义: `CREATE UNIQUE INDEX user_access_passes_pkey ON public.user_access_passes USING btree (id)`
+- `user_access_passes_source_order_uniq` [UNIQUE]
+  大小: `16 kB`
+  定义: `CREATE UNIQUE INDEX user_access_passes_source_order_uniq ON public.user_access_passes USING btree (source_order_id)`
+- `user_access_passes_user_ends_at_idx`
+  大小: `16 kB`
+  定义: `CREATE INDEX user_access_passes_user_ends_at_idx ON public.user_access_passes USING btree (user_id, ends_at)`
+- `user_access_passes_user_status_idx`
+  大小: `16 kB`
+  定义: `CREATE INDEX user_access_passes_user_status_idx ON public.user_access_passes USING btree (user_id, status)`
 
 ## Table `user_settings`
 
@@ -1642,12 +1855,16 @@ sequenceDiagram
   定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
 - `public.growth_user_stats` 通过 `growth_user_stats_user_id_fkey` 引用本表
   定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+- `public.payment_orders` 通过 `payment_orders_user_id_fkey` 引用本表
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
 - `public.saved_items` 通过 `saved_items_user_id_fkey` 引用本表
   定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
 - `public.session` 通过 `session_userId_fkey` 引用本表
   定义: `FOREIGN KEY ("userId") REFERENCES users(id) ON DELETE CASCADE`
 - `public.turns` 通过 `turns_author_user_id_fkey` 引用本表
   定义: `FOREIGN KEY (author_user_id) REFERENCES users(id)`
+- `public.user_access_passes` 通过 `user_access_passes_user_id_fkey` 引用本表
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
 - `public.user_settings` 通过 `user_settings_user_id_fkey` 引用本表
   定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
 - `public.voice_profiles` 通过 `voice_profiles_owner_user_id_fkey` 引用本表
