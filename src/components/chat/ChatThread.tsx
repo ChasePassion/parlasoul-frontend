@@ -10,6 +10,7 @@ import {
     flip,
     shift,
     autoUpdate,
+    type Placement,
 } from "@floating-ui/react";
 import ChatMessage, {
     type Message,
@@ -111,6 +112,11 @@ export default function ChatThread({
 }: ChatThreadProps) {
     const CARD_GAP = 12;
     const VIEWPORT_PADDING = 12;
+    const feedbackCardFallbackPlacements: Placement[] = [
+        "bottom-end",
+        "top-end",
+        "right-start",
+    ];
 
     const router = useRouter();
     const { messageFontSize, displayMode, replyCardEnabled } = useUserSettings();
@@ -152,7 +158,7 @@ export default function ChatThread({
     const [feedbackFavoriteOverrides, setFeedbackFavoriteOverrides] = useState<
         Record<string, { isFavorited: boolean; savedItemId: string | null }>
     >({});
-    const messageAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+    const feedbackAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const feedbackCardStatesRef = useRef<Record<string, FeedbackCardState>>({});
     const feedbackRequestIdRef = useRef(0);
     const feedbackPrefetchInitializedRef = useRef(false);
@@ -172,6 +178,7 @@ export default function ChatThread({
         setFeedbackCardKey(null);
         setFeedbackCardStates({});
         setFeedbackFavoriteOverrides({});
+        feedbackAnchorRefs.current.clear();
         previousUserVersionsRef.current = new Map();
         feedbackPrefetchInitializedRef.current = false;
     }, [chatId]);
@@ -836,6 +843,17 @@ export default function ChatThread({
         flip(),
         shift({ padding: VIEWPORT_PADDING }),
     ];
+    const feedbackCardMiddleware = [
+        offset({
+            mainAxis: CARD_GAP,
+            crossAxis: 4,
+        }),
+        flip({
+            fallbackPlacements: feedbackCardFallbackPlacements,
+            padding: VIEWPORT_PADDING,
+        }),
+        shift({ padding: VIEWPORT_PADDING }),
+    ];
     const {
         refs: replyCardRefs,
         floatingStyles: replyCardStyles,
@@ -870,9 +888,9 @@ export default function ChatThread({
         y: feedbackCardY,
     } = useFloating({
         open: Boolean(feedbackCard && feedbackCardMessage),
-        placement: "right",
+        placement: "left-start",
         strategy: "fixed",
-        middleware: floatingCardMiddleware,
+        middleware: feedbackCardMiddleware,
         whileElementsMounted: autoUpdate,
     });
 
@@ -909,7 +927,7 @@ export default function ChatThread({
         }
 
         feedbackCardRefs.setReference(
-            messageAnchorRefs.current.get(feedbackCardMessage.id) ?? null
+            feedbackAnchorRefs.current.get(feedbackCardMessage.id) ?? null
         );
     }, [feedbackCardMessage?.id, feedbackCardRefs]);
 
@@ -1008,11 +1026,6 @@ export default function ChatThread({
                                         dir="auto"
                                         className="min-h-8 text-message relative flex w-full flex-col items-end gap-2 text-start break-words whitespace-normal [.text-message+&]:mt-1"
                                         ref={(el) => {
-                                            if (el) {
-                                                messageAnchorRefs.current.set(message.id, el);
-                                            } else {
-                                                messageAnchorRefs.current.delete(message.id);
-                                            }
                                             if (!isUserTurn) {
                                                 if (el) {
                                                     cardAnchorRefs.current.set(message.id, el);
@@ -1046,6 +1059,22 @@ export default function ChatThread({
                                             onEditUser={onEditUser}
                                             onOpenReplyCard={handleOpenReplyCard}
                                             onRequestFeedback={handleRequestFeedback}
+                                            feedbackAnchorRef={
+                                                isUserTurn
+                                                    ? (el) => {
+                                                          if (el) {
+                                                              feedbackAnchorRefs.current.set(
+                                                                  message.id,
+                                                                  el
+                                                              );
+                                                          } else {
+                                                              feedbackAnchorRefs.current.delete(
+                                                                  message.id
+                                                              );
+                                                          }
+                                                      }
+                                                    : undefined
+                                            }
                                         />
                                     </div>
                                 </div>

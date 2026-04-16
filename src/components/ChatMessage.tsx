@@ -31,7 +31,8 @@ export interface Message {
     replyCardErrorCode?: string | null;
 }
 
-interface ChatMessageProps {message: Message;
+interface ChatMessageProps {
+    message: Message;
     userAvatar: string;
     assistantAvatar: string;
     messageFontSize: number;
@@ -55,6 +56,7 @@ interface ChatMessageProps {message: Message;
     onEditUser?: (turnId: string, newContent: string) => void | Promise<void>;
     onOpenReplyCard?: (message: Message) => void;
     onRequestFeedback?: (message: Message) => void;
+    feedbackAnchorRef?: (element: HTMLDivElement | null) => void;
 }
 
 export default function ChatMessage({
@@ -81,6 +83,7 @@ export default function ChatMessage({
     onEditUser,
     onOpenReplyCard,
     onRequestFeedback,
+    feedbackAnchorRef,
 }: ChatMessageProps) {
     const userActionRowHideDelayMs = 500;
     const chevronLeftIcon = "/icons/chevron-left-8ee2e9.svg";
@@ -89,7 +92,7 @@ export default function ChatMessage({
     const editIcon = "/icons/edit-6d87e1.svg";
     const ideaIcon = "/icons/os-icon-idea.svg";
     const replyCardIcon = "/book.svg";
-    
+
     const branchButtonClass =
         "text-token-text-secondary hover:bg-token-bg-secondary rounded-md disabled:opacity-50";
     const actionButtonClass =
@@ -98,7 +101,7 @@ export default function ChatMessage({
     const k = message.candidateNo ?? 1;
     const n = message.candidateCount ?? 1;
     const showNav =
-        (isUser|| !message.isTemp) &&
+        (isUser || !message.isTemp) &&
         !message.isGreeting &&
         message.candidateNo !== undefined &&
         message.candidateCount !== undefined;
@@ -378,6 +381,8 @@ export default function ChatMessage({
                     }
                 >
                     <div
+                        ref={isUser ? feedbackAnchorRef : undefined}
+                        data-feedback-anchor={isUser ? "true" : undefined}
                         className={`w-fit max-w-full min-h-9 flex items-center ${
                             isEditing
                                 ? "bg-background shadow-md ring-1 ring-border rounded-2xl w-full min-w-[280px] sm:min-w-[400px]"
