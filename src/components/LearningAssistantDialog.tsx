@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, LoaderCircle, Sparkles, X } from "lucide-react";
+import { Check, Copy, Sparkles, X } from "lucide-react";
 
 import Markdown from "@/components/Markdown";
 import { Textarea } from "@/components/ui/textarea";
@@ -200,6 +200,20 @@ async function copyText(value: string): Promise<boolean> {
   }
 }
 
+function LoadingShimmerStyle() {
+  return (
+    <style jsx>{`
+      @keyframes assistant-shimmer {
+        0% {
+          transform: translateX(-130%);
+        }
+        100% {
+          transform: translateX(130%);
+        }
+      }
+    `}</style>
+  );
+}
 export default function LearningAssistantDialog({
   open,
   onOpenChange,
@@ -407,175 +421,182 @@ export default function LearningAssistantDialog({
   if (!open || !rect) {
     return null;
   }
-
   return (
-    <div
-      ref={windowRef}
-      role="dialog"
-      aria-label="AI智能助教"
-      className="fixed top-0 left-0 z-40 flex flex-col overflow-hidden rounded-2xl border border-black/8 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] shadow-[0_18px_55px_rgba(22,37,66,0.16)]"
-      style={{
-        width: rect.width,
-        height: rect.height,
-        maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
-        transform: `translate3d(${rect.x}px, ${rect.y}px, 0)`,
-      }}
-    >
-      <div className="relative flex items-center justify-end border-b border-black/6 px-4 py-3">
-        <div
-          className="absolute top-2 left-1/2 flex -translate-x-1/2 cursor-grab touch-none select-none flex-col items-center gap-1 active:cursor-grabbing"
-          onPointerDown={handleDragStart}
-        >
-          <div className="h-1.5 w-16 rounded-full bg-black/12" />
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-            <Sparkles className="h-4 w-4 text-[#3964FE]" />
-            <span>AI智能助教</span>
+    <>
+      <LoadingShimmerStyle />
+      <div
+        ref={windowRef}
+        role="dialog"
+        aria-label="AI智能助教"
+        className="fixed top-0 left-0 z-40 flex flex-col overflow-hidden rounded-2xl border border-black/8 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] shadow-[0_18px_55px_rgba(22,37,66,0.16)]"
+        style={{
+          width: rect.width,
+          height: rect.height,
+          maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+          transform: `translate3d(${rect.x}px, ${rect.y}px, 0)`,
+        }}
+      >
+        <div className="relative flex items-center justify-end border-b border-black/6 px-4 py-3">
+          <div
+            className="absolute top-2 left-1/2 flex -translate-x-1/2 cursor-grab touch-none select-none flex-col items-center gap-1 active:cursor-grabbing"
+            onPointerDown={handleDragStart}
+          >
+            <div className="h-1.5 w-16 rounded-full bg-black/12" />
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+              <Sparkles className="h-4 w-4 text-[#3964FE]" />
+              <span>AI智能助教</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={reset}
+            className="mr-2 flex h-9 w-9 items-center justify-center rounded-lg border border-divider bg-white transition-colors hover:bg-sidebar-hover"
+            aria-label="新建助教会话"
+          >
+            <Image
+              src="/icons/edit-square-3a5c87.svg"
+              alt=""
+              width={18}
+              height={18}
+            />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-black/5 hover:text-gray-700"
+            aria-label="关闭AI智能助教"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <div className="space-y-4">
+              {messages.map((message) =>
+                message.role === "user" ? (
+                  <div key={message.id} className="flex justify-end">
+                    <div
+                      className="max-w-[82%] rounded-[10px] px-4 py-2 text-sm leading-6 text-[var(--text-primary)]"
+                      style={{
+                        backgroundColor: "var(--user-bubble)",
+                        filter: "var(--chat-bubble-shadow)",
+                      }}
+                    >
+                      {message.content}
+                    </div>
+                  </div>
+                ) : (
+                  <div key={message.id} className="relative space-y-3 pr-1 pb-10 text-sm leading-7 text-gray-800">
+                    <div className="text-black">
+                      <Markdown content={message.content} variant="assistant" />
+                    </div>
+
+                    {message.status === "streaming" && !message.content.trim() ? (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Sparkles className="h-4 w-4 shrink-0 text-[#3964FE]" />
+                        <span className="relative inline-block overflow-hidden text-gray-500">
+                          <span
+                            className="pointer-events-none absolute inset-0 -translate-x-[130%] bg-gradient-to-r from-transparent via-white/95 to-transparent animate-[assistant-shimmer_1.8s_ease-in-out_infinite]"
+                            aria-hidden="true"
+                          />
+                          <span className="relative">思考中...</span>
+                        </span>
+                      </div>
+                    ) : null}
+
+                    {message.content ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleCopyAnswer(message.id, message.content);
+                        }}
+                        className="absolute right-0 bottom-0 inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-black/5 hover:text-gray-700"
+                        aria-label={copiedMessageId === message.id ? "已复制" : "复制回答"}
+                      >
+                        {copiedMessageId === message.id ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    ) : null}
+                  </div>
+                ),
+              )}
+            </div>
+          </div>
+
+          <div className="border-t border-black/6 bg-white/88 px-4 py-3 backdrop-blur-sm">
+            <div className="flex items-start gap-2 rounded-[10px] bg-[#F4F7FB] px-2 py-1.5">
+              <Textarea
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    if (isStreaming) {
+                      stop();
+                      return;
+                    }
+                    void handleSubmit();
+                  }
+                }}
+                rows={1}
+                placeholder="询问任何问题"
+                className="max-h-32 min-h-[32px] flex-1 resize-none overflow-y-auto border-transparent bg-transparent py-1.5 pr-1 pl-1.5 text-sm leading-5 shadow-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+              />
+
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={stop}
+                  aria-label="暂停生成"
+                  className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white"
+                >
+                  <span className="rounded-[3px] bg-white" style={{ width: "16px", height: "16px" }} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleSubmit();
+                  }}
+                  disabled={!question.trim()}
+                  aria-label="发送问题"
+                  className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white"
+                >
+                  <Image
+                    src="/icons/laptop-01bab7.svg"
+                    width={20}
+                    height={20}
+                    aria-hidden="true"
+                    className="h-5 w-5 brightness-0 invert"
+                    alt=""
+                  />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         <button
           type="button"
-          onClick={reset}
-          className="mr-2 flex h-9 w-9 items-center justify-center rounded-lg border border-divider bg-white transition-colors hover:bg-sidebar-hover"
-          aria-label="新建助教会话"
+          onPointerDown={(event) => handleResizeStart(event, "bottom-right")}
+          className="absolute right-0 bottom-0 flex h-8 w-8 touch-none cursor-nwse-resize items-end justify-end"
+          aria-label="右下角调整AI智能助教大小"
         >
           <Image
-            src="/icons/edit-square-3a5c87.svg"
+            src="/icons/resize-corner.svg"
+            width={32}
+            height={32}
+            aria-hidden="true"
+            className="pointer-events-none h-8 w-8 opacity-70"
             alt=""
-            width={18}
-            height={18}
           />
         </button>
-
-        <button
-          type="button"
-          onClick={handleClose}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-black/5 hover:text-gray-700"
-          aria-label="关闭AI智能助教"
-        >
-          <X className="h-4 w-4" />
-        </button>
       </div>
-
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          <div className="space-y-4">
-            {messages.map((message) =>
-              message.role === "user" ? (
-                <div key={message.id} className="flex justify-end">
-                  <div
-                    className="max-w-[82%] rounded-[10px] px-4 py-2 text-sm leading-6 text-[var(--text-primary)]"
-                    style={{
-                      backgroundColor: "var(--user-bubble)",
-                      filter: "var(--chat-bubble-shadow)",
-                    }}
-                  >
-                    {message.content}
-                  </div>
-                </div>
-              ) : (
-                <div key={message.id} className="relative space-y-3 pr-1 pb-10 text-sm leading-7 text-gray-800">
-                  <div>
-                    <Markdown content={message.content} variant="assistant" />
-                  </div>
-
-                  {message.status === "streaming" ? (
-                    <div className="flex items-center gap-2 text-sm text-[#3964FE]">
-                      <LoaderCircle className="h-4 w-4 animate-spin" />
-                      <span>正在生成回答…</span>
-                    </div>
-                  ) : null}
-
-                  {message.content ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleCopyAnswer(message.id, message.content);
-                      }}
-                      className="absolute right-0 bottom-0 inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-black/5 hover:text-gray-700"
-                      aria-label={copiedMessageId === message.id ? "已复制" : "复制回答"}
-                    >
-                      {copiedMessageId === message.id ? (
-                        <Check className="h-3.5 w-3.5 text-emerald-600" />
-                      ) : (
-                        <Copy className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                  ) : null}
-                </div>
-              ),
-            )}
-          </div>
-        </div>
-
-        <div className="border-t border-black/6 bg-white/88 px-4 py-3 backdrop-blur-sm">
-          <div className="flex items-start gap-2 rounded-[10px] bg-[#F4F7FB] px-2 py-1.5">
-            <Textarea
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  if (isStreaming) {
-                    stop();
-                    return;
-                  }
-                  void handleSubmit();
-                }
-              }}
-              rows={1}
-              placeholder="询问任何问题"
-              className="max-h-32 min-h-[32px] flex-1 resize-none overflow-y-auto border-transparent bg-transparent py-1.5 pr-1 pl-1.5 text-sm leading-5 shadow-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
-            />
-
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={stop}
-                aria-label="暂停生成"
-                className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white"
-              >
-                <span className="rounded-[3px] bg-white" style={{ width: "16px", height: "16px" }} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  void handleSubmit();
-                }}
-                disabled={!question.trim()}
-                aria-label="发送问题"
-                className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white"
-              >
-                <Image
-                  src="/icons/laptop-01bab7.svg"
-                  width={20}
-                  height={20}
-                  aria-hidden="true"
-                  className="h-5 w-5 brightness-0 invert"
-                  alt=""
-                />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onPointerDown={(event) => handleResizeStart(event, "bottom-right")}
-        className="absolute right-0 bottom-0 flex h-8 w-8 touch-none cursor-nwse-resize items-end justify-end"
-        aria-label="右下角调整AI智能助教大小"
-      >
-        <Image
-          src="/icons/resize-corner.svg"
-          width={32}
-          height={32}
-          aria-hidden="true"
-          className="pointer-events-none h-8 w-8 opacity-70"
-          alt=""
-        />
-      </button>
-    </div>
+    </>
   );
-}
