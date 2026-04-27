@@ -77,7 +77,7 @@ export default function ChatMainFrame({
         <div
             ref={scrollRootRef}
             data-scroll-root
-            className="@container/main @w-sm/main:[scrollbar-gutter:stable_both-edges] touch:[scrollbar-width:none] custom-scrollbar relative flex min-h-0 min-w-0 flex-1 flex-col [scrollbar-gutter:stable] not-print:overflow-x-clip not-print:overflow-y-auto"
+            className="@container/main @w-sm/main:[scrollbar-gutter:stable_both-edges] touch:[scrollbar-width:none] custom-scrollbar relative flex min-h-0 min-w-0 flex-1 flex-col [scrollbar-gutter:stable] not-print:overflow-x-clip not-print:overflow-y-auto [overflow-anchor:none]"
             data-chat-main-shell
             style={{
                 backgroundColor: "var(--workspace-bg)",

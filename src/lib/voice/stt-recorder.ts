@@ -1,15 +1,13 @@
 import { sttTranscribe } from "@/lib/api";
 import { ApiError } from "@/lib/token-store";
+import {
+  getMicPermissionState,
+  mapMicStartError,
+  type MicStartErrorCode,
+} from "@/lib/voice/mic-errors";
 
+export type { MicStartErrorCode };
 export type SttRecorderState = "idle" | "recording" | "transcribing";
-export type MicStartErrorCode =
-  | "MIC_API_UNAVAILABLE"
-  | "MIC_INSECURE_CONTEXT"
-  | "MIC_PERMISSION_DENIED"
-  | "MIC_DEVICE_NOT_FOUND"
-  | "MIC_DEVICE_BUSY"
-  | "MIC_CONSTRAINT_UNSUPPORTED"
-  | "MIC_START_FAILED";
 
 const TARGET_STT_SAMPLE_RATE = 16000;
 
@@ -42,53 +40,14 @@ export class SttRecorder {
 
   // ── Recording control ──
 
-  static async getMicPermissionState(): Promise<PermissionState | "unsupported"> {
-    if (typeof navigator === "undefined") {
-      return "unsupported";
-    }
-    if (!("permissions" in navigator) || !navigator.permissions?.query) {
-      return "unsupported";
-    }
-    try {
-      const status = await navigator.permissions.query({
-        name: "microphone" as PermissionName,
-      });
-      return status.state;
-    } catch {
-      return "unsupported";
-    }
+  static async getMicPermissionState(): Promise<
+    PermissionState | "unsupported"
+  > {
+    return getMicPermissionState();
   }
 
   private mapMicStartError(err: unknown): MicStartErrorCode {
-    if (!window.isSecureContext) {
-      return "MIC_INSECURE_CONTEXT";
-    }
-
-    if (err instanceof DOMException) {
-      switch (err.name) {
-        case "NotAllowedError":
-        case "PermissionDeniedError":
-        case "SecurityError":
-          return "MIC_PERMISSION_DENIED";
-        case "NotFoundError":
-        case "DevicesNotFoundError":
-          return "MIC_DEVICE_NOT_FOUND";
-        case "NotReadableError":
-        case "TrackStartError":
-          return "MIC_DEVICE_BUSY";
-        case "OverconstrainedError":
-        case "ConstraintNotSatisfiedError":
-          return "MIC_CONSTRAINT_UNSUPPORTED";
-        default:
-          return "MIC_START_FAILED";
-      }
-    }
-
-    if (err instanceof TypeError) {
-      return "MIC_API_UNAVAILABLE";
-    }
-
-    return "MIC_START_FAILED";
+    return mapMicStartError(err);
   }
 
   async startRecording(): Promise<void> {

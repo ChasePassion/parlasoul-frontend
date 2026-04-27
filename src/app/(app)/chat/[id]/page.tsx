@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useUserSettings } from "@/lib/user-settings-context";
@@ -26,9 +26,29 @@ import {
 } from "@/lib/api";
 import { useGrowth } from "@/lib/growth-context";
 import ShareCardDialog from "@/components/growth/ShareCardDialog";
+import { useRealtimeVoiceSession } from "@/hooks/useRealtimeVoiceSession";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ERROR_MESSAGE_MAP } from "@/lib/error-map";
 
 const SETTLED_FRAME_TARGET = 2;
 const LEARNING_ASSISTANT_CONTEXT_LIMIT = 20;
+const OLDER_MESSAGES_ROOT_MARGIN = "24px 0px 0px 0px";
+const CHAT_TURN_SELECTOR = "[data-turn-id]";
+
+interface OlderMessagesRestoreSnapshot {
+    previousScrollTop: number;
+    previousScrollHeight: number;
+    anchorId: string | null;
+    anchorTop: number;
+}
 
 function buildLearningAssistantContext(
     messages: Message[],
@@ -80,6 +100,7 @@ export default function ChatPage() {
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [isAssistantOpen, setIsAssistantOpen] = useState(false);
     const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+    const [micDialogMessage, setMicDialogMessage] = useState<string | null>(null);
 
     useEffect(() => {
         const manager = new TtsPlaybackManager();
@@ -99,6 +120,7 @@ export default function ChatPage() {
     }, []);
 
     const { updateTodaySummary, enqueueShareCard } = useGrowth();
+    const shouldAutoScrollRef = useRef(true);
 
     const {
         chat,
@@ -119,6 +141,7 @@ export default function ChatPage() {
         loadOlderMessages,
         hasOlderMessages,
         isLoadingOlder,
+        reloadChatTurns,
     } = useChatSession({
         chatId,
         isAuthed,
@@ -128,6 +151,30 @@ export default function ChatPage() {
         autoReadAloudEnabled,
         onGrowthDailyUpdated: updateTodaySummary,
         onGrowthShareCardReady: enqueueShareCard,
+    });
+
+    const realtimeSession = useRealtimeVoiceSession({
+        chatId,
+        characterId: character?.id ?? null,
+        translationEnabled: true,
+        onSessionEnded: async () => {
+            await reloadChatTurns();
+            void refreshSidebarCharacters().catch((err) => {
+                console.error("Failed to refresh sidebar after realtime session:", err);
+            });
+        },
+        onConversationEvent: async (event) => {
+            shouldAutoScrollRef.current = true;
+            if (event.type === "conversation.turn.created") {
+                await reloadChatTurns({
+                    requiredTurnIds: [event.user_turn_id],
+                });
+                return;
+            }
+            await reloadChatTurns({
+                requiredTurnIds: [event.assistant_turn_id],
+            });
+        },
     });
 
     const isConversationReadOnly = character?.status === "UNPUBLISHED";
@@ -149,12 +196,15 @@ export default function ChatPage() {
     const handleSendMessage = useCallback(
         async (content: string) => {
             shouldAutoScrollRef.current = true;
+            if (realtimeSession.isConnected && realtimeSession.isBotSpeaking) {
+                await realtimeSession.interruptAssistant();
+            }
             await originalHandleSendMessage(content);
             void refreshSidebarCharacters().catch((err) => {
                 console.error("Failed to refresh sidebar characters:", err);
             });
         },
-        [originalHandleSendMessage, refreshSidebarCharacters],
+        [originalHandleSendMessage, realtimeSession, refreshSidebarCharacters],
     );
 
     const handleSelectHistoryChat = useCallback(
@@ -220,14 +270,111 @@ export default function ChatPage() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesStartRef = useRef<HTMLDivElement | null>(null);
     const scrollRootRef = useRef<HTMLDivElement>(null);
-    const shouldAutoScrollRef = useRef(true);
     /** True while we are programmatically setting scrollTop — scroll listener should ignore */
     const isProgrammaticScrollRef = useRef(false);
+    const isLoadingOlderRef = useRef(false);
+    const olderMessagesRestoreRef = useRef<OlderMessagesRestoreSnapshot | null>(null);
+    const [olderRestoreRevision, setOlderRestoreRevision] = useState(0);
 
     // Reset on chat switch
     useEffect(() => {
         shouldAutoScrollRef.current = true;
+        isLoadingOlderRef.current = false;
+        olderMessagesRestoreRef.current = null;
     }, [chatId]);
+
+    useEffect(() => {
+        isLoadingOlderRef.current = isLoadingOlder;
+    }, [isLoadingOlder]);
+
+    const getViewportStart = useCallback((root: HTMLDivElement) => {
+        const headerHeightValue = window
+            .getComputedStyle(root)
+            .getPropertyValue("--header-height")
+            .trim();
+        const headerHeight = Number.parseFloat(headerHeightValue);
+        return root.getBoundingClientRect().top + (Number.isFinite(headerHeight) ? headerHeight : 0);
+    }, []);
+
+    const captureOlderMessagesSnapshot = useCallback((root: HTMLDivElement): OlderMessagesRestoreSnapshot => {
+        const viewportStart = getViewportStart(root);
+        const messageElements = Array.from(
+            root.querySelectorAll<HTMLElement>(CHAT_TURN_SELECTOR),
+        );
+        const anchorElement = messageElements.find(
+            (element) => element.getBoundingClientRect().bottom > viewportStart,
+        ) ?? messageElements[0] ?? null;
+
+        return {
+            previousScrollTop: root.scrollTop,
+            previousScrollHeight: root.scrollHeight,
+            anchorId: anchorElement?.dataset.turnId ?? null,
+            anchorTop: anchorElement
+                ? anchorElement.getBoundingClientRect().top - viewportStart
+                : 0,
+        };
+    }, [getViewportStart]);
+
+    const restoreOlderMessagesViewport = useCallback(() => {
+        const root = scrollRootRef.current;
+        const snapshot = olderMessagesRestoreRef.current;
+        olderMessagesRestoreRef.current = null;
+
+        if (!root || !snapshot) {
+            return;
+        }
+
+        let nextScrollTop: number | null = null;
+
+        if (snapshot.anchorId) {
+            const anchorElement = root.querySelector<HTMLElement>(
+                `[data-turn-id="${snapshot.anchorId}"]`,
+            );
+            if (anchorElement) {
+                const viewportStart = getViewportStart(root);
+                const currentAnchorTop = anchorElement.getBoundingClientRect().top - viewportStart;
+                nextScrollTop = root.scrollTop + (currentAnchorTop - snapshot.anchorTop);
+            }
+        }
+
+        if (nextScrollTop === null) {
+            const scrollDelta = root.scrollHeight - snapshot.previousScrollHeight;
+            nextScrollTop = snapshot.previousScrollTop + scrollDelta;
+        }
+
+        isProgrammaticScrollRef.current = true;
+        root.scrollTop = Math.max(nextScrollTop, 0);
+        isProgrammaticScrollRef.current = false;
+    }, [getViewportStart]);
+
+    const loadOlderMessagesPreservingViewport = useCallback(async () => {
+        const root = scrollRootRef.current;
+        if (!root || isLoadingOlderRef.current) return;
+
+        isLoadingOlderRef.current = true;
+        olderMessagesRestoreRef.current = captureOlderMessagesSnapshot(root);
+
+        try {
+            await loadOlderMessages();
+        } finally {
+            setOlderRestoreRevision((previous) => previous + 1);
+        }
+    }, [captureOlderMessagesSnapshot, loadOlderMessages]);
+
+    useLayoutEffect(() => {
+        if (olderRestoreRevision === 0) {
+            return;
+        }
+        if (!olderMessagesRestoreRef.current) {
+            return;
+        }
+        if (isLoadingOlder) {
+            return;
+        }
+
+        restoreOlderMessagesViewport();
+        isLoadingOlderRef.current = false;
+    }, [isLoadingOlder, messages, olderRestoreRevision, restoreOlderMessagesViewport]);
 
     // Listen for user scroll: scroll up → stop following; reach bottom → resume
     useEffect(() => {
@@ -268,14 +415,14 @@ export default function ChatPage() {
                     entry.isIntersecting &&
                     !isLoading &&
                     hasOlderMessages &&
-                    !isLoadingOlder
+                    !isLoadingOlderRef.current
                 ) {
-                    loadOlderMessages();
+                    void loadOlderMessagesPreservingViewport();
                 }
             },
             {
                 root: root,
-                rootMargin: "200px",
+                rootMargin: OLDER_MESSAGES_ROOT_MARGIN,
                 threshold: 0,
             },
         );
@@ -283,7 +430,7 @@ export default function ChatPage() {
         observer.observe(sentinel);
 
         return () => observer.disconnect();
-    }, [isLoading, hasOlderMessages, isLoadingOlder, loadOlderMessages]);
+    }, [hasOlderMessages, isLoading, loadOlderMessagesPreservingViewport]);
 
     useEffect(() => {
         if (!shouldAutoScrollRef.current) return;
@@ -336,6 +483,7 @@ export default function ChatPage() {
         setIsRecording(false);
     }, []);
 
+
     // Phase 2: Speaker button handlers
     const handlePlayTts = useCallback(async (candidateId: string) => {
         if (isRecording) return;
@@ -369,8 +517,98 @@ export default function ChatPage() {
         </div>
     );
 
+    const handleStartRealtimeCall = useCallback(() => {
+        if (!character?.id || isConversationReadOnly) return;
+        if (isStreaming) {
+            interruptStream();
+        }
+        ttsManagerRef.current?.interruptAll();
+        realtimeSession.clearMicError();
+        setMicDialogMessage(null);
+        void realtimeSession.startCall();
+    }, [character?.id, interruptStream, isConversationReadOnly, isStreaming, realtimeSession]);
+
+    const handleCancelRealtimeConnect = useCallback(() => {
+        void realtimeSession.cancelStart();
+    }, [realtimeSession]);
+
+    const handleEndRealtimeCall = useCallback(() => {
+        void realtimeSession.endCall();
+    }, [realtimeSession]);
+
+    useEffect(() => {
+        if (!realtimeSession.isConnected || !realtimeSession.isUserSpeaking) return;
+        interruptStream();
+        ttsManagerRef.current?.interruptAll();
+    }, [interruptStream, realtimeSession.isConnected, realtimeSession.isUserSpeaking]);
+
+    useEffect(() => {
+        const code = realtimeSession.micErrorCode;
+        if (!code) return;
+
+        const message =
+            code === "MIC_PERMISSION_DENIED"
+                ? realtimeSession.micPermissionAction === "settings"
+                    ? "请在浏览器或系统设置中允许使用麦克风后重试"
+                    : "请允许麦克风权限以开始实时通话"
+                : ERROR_MESSAGE_MAP[code]?.message ?? "无法启动实时通话";
+
+        setMicDialogMessage(message);
+    }, [realtimeSession.micErrorCode, realtimeSession.micPermissionAction]);
+
+    useEffect(() => {
+        if (!realtimeSession.lastError) return;
+        setMicDialogMessage(realtimeSession.lastError);
+    }, [realtimeSession.lastError]);
+
+    const voiceButtonState = realtimeSession.isConnecting
+        ? "connecting"
+        : realtimeSession.isConnected
+        ? realtimeSession.isUserSpeaking
+            ? "active_user_speaking"
+            : "active_ready"
+        : "idle";
+
+    const micCaptureState = realtimeSession.isConnected
+        ? realtimeSession.isMicCaptureEnabled
+            ? "mic_hot"
+            : "mic_cold"
+        : "hidden";
+
     const threadContent = (
         <>
+            <audio ref={realtimeSession.audioRef} className="hidden" autoPlay playsInline />
+            <AlertDialog
+                open={!!micDialogMessage}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        realtimeSession.clearMicError();
+                        setMicDialogMessage(null);
+                    }
+                }}
+            >
+                <AlertDialogContent className="max-w-md rounded-2xl p-6">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-xl font-bold text-gray-900">
+                            无法开始实时通话
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-600">
+                            {micDialogMessage}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction
+                            onClick={() => {
+                                realtimeSession.clearMicError();
+                                setMicDialogMessage(null);
+                            }}
+                            className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                        >
+                            知道了
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
             <ChatThread
                 character={character}
                 messages={messages}
@@ -392,6 +630,7 @@ export default function ChatPage() {
                 onStopTts={handleStopTts}
                 isLoadingOlder={isLoadingOlder}
                 isConversationLocked={isConversationReadOnly}
+                messageActionProfile={realtimeSession.isConnected ? "voice-active" : "text"}
             />
             <MessageNavigator
                 messages={messages}
@@ -409,9 +648,16 @@ export default function ChatPage() {
             disabled={isConversationReadOnly}
             disabledReason={readOnlyNotice}
             roleName={character.name}
-            replySuggestions={currentReplySuggestions}
+            replySuggestions={realtimeSession.isConnected ? null : currentReplySuggestions}
             onMicStart={handleMicStart}
             onMicCancel={handleMicCancel}
+            voiceButtonState={voiceButtonState}
+            micCaptureState={micCaptureState}
+            onStartRealtimeVoice={handleStartRealtimeCall}
+            onCancelRealtimeVoiceStart={handleCancelRealtimeConnect}
+            onStopRealtimeVoice={handleEndRealtimeCall}
+            onToggleMicCapture={realtimeSession.toggleMicCapture}
+            getRealtimeMicAnalyserNode={realtimeSession.getMicAnalyserNode}
         />
     ) : (
         <div className="text-base mx-auto px-4 sm:px-6 lg:px-16">

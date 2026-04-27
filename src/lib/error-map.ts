@@ -14,7 +14,7 @@ interface ErrorMapping {
   severity: ErrorSeverity;
 }
 
-const ERROR_MESSAGE_MAP: Record<string, ErrorMapping> = {
+export const ERROR_MESSAGE_MAP: Record<string, ErrorMapping> = {
   DEFAULT: { message: "操作失败，请稍后重试", severity: "error" },
   NETWORK_ERROR: { message: "网络连接失败，请检查网络", severity: "error" },
 

@@ -56,6 +56,9 @@ interface UseChatSessionResult {
   loadOlderMessages: () => Promise<void>;
   hasOlderMessages: boolean;
   isLoadingOlder: boolean;
+  reloadChatTurns: (options?: {
+    requiredTurnIds?: Array<string | null | undefined>;
+  }) => Promise<void>;
 }
 
 type ReplySuggestionsByCandidateId = Record<string, ReplySuggestion[]>;
@@ -107,7 +110,11 @@ const mapTurnsPageMessage = (turn: TurnsPageResponse["turns"][number]): Message 
     replyCard,
     assistantTurnId: isAssistant ? turn.id : undefined,
     assistantCandidateId: isAssistant ? turn.primary_candidate.id : undefined,
-    messageStreamStatus: isAssistant ? "done" : undefined,
+    messageStreamStatus: isAssistant
+      ? turn.primary_candidate.is_final
+        ? "done"
+        : "streaming"
+      : undefined,
     replyCardStatus: isAssistant ? (replyCard ? "ready" : "idle") : undefined,
     replyCardErrorCode: null,
   };
@@ -136,6 +143,7 @@ export function useChatSession({
   const [hasOlderMessages, setHasOlderMessages] = useState(true);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const beforeTurnIdRef = useRef<string | null>(null);
+  const loadOlderInFlightRef = useRef(false);
 
   const streamAbortRef = useRef<AbortController | null>(null);
   const tailAbortControllersRef = useRef<Set<AbortController>>(new Set());
@@ -336,7 +344,9 @@ export function useChatSession({
   const loadOlderMessages = useCallback(async () => {
     if (!chatId || !isAuthed || isLoadingOlder || !hasOlderMessages) return;
     if (!beforeTurnIdRef.current) return;
+    if (loadOlderInFlightRef.current) return;
 
+    loadOlderInFlightRef.current = true;
     setIsLoadingOlder(true);
     try {
       const data = await getChatTurns(chatId, {
@@ -368,6 +378,7 @@ export function useChatSession({
       console.error("Failed to load older messages:", err);
     } finally {
       setIsLoadingOlder(false);
+      loadOlderInFlightRef.current = false;
     }
   }, [chatId, isAuthed, isLoadingOlder, hasOlderMessages]);
 
@@ -386,6 +397,7 @@ export function useChatSession({
 
       try {
         beforeTurnIdRef.current = null;
+        loadOlderInFlightRef.current = false;
         setHasOlderMessages(true);
         setIsLoadingOlder(false);
         await reloadChatTurns();
@@ -399,10 +411,11 @@ export function useChatSession({
 
     loadChat();
 
-      return () => {
+    return () => {
       abortAllTrackedControllers();
+      loadOlderInFlightRef.current = false;
         setSelectedCharacterId(null);
-      };
+    };
   }, [
     abortAllTrackedControllers,
     chatId,
@@ -984,7 +997,15 @@ export function useChatSession({
 
   const handleSendMessage = useCallback(
     async (content: string) => {
-      if (!character || !canSend || isStreaming || character.status === "UNPUBLISHED") return;
+      if (!character || !canSend || character.status === "UNPUBLISHED") return;
+
+      if (isStreaming) {
+        abortActiveTextStream();
+        setIsStreaming(false);
+        setMessages((prev) =>
+          prev.filter((message) => message.role === "user" || !message.isTemp),
+        );
+      }
 
       ttsPlaybackManager?.interruptAll();
       void ttsPlaybackManager?.ensureResumed().catch(() => {});
@@ -1324,6 +1345,7 @@ export function useChatSession({
       }
     },
     [
+      abortActiveTextStream,
       applyReplySuggestions,
       beginStream,
       canSend,
@@ -1373,5 +1395,6 @@ export function useChatSession({
     loadOlderMessages,
     hasOlderMessages,
     isLoadingOlder,
+    reloadChatTurns,
   };
 }

@@ -14,6 +14,7 @@ import {
 } from "@floating-ui/react";
 import ChatMessage, {
     type Message,
+    type MessageActionProfile,
     type MessageActionStatus,
 } from "@/components/ChatMessage";
 import ReplyCardPopover from "@/components/ReplyCardPopover";
@@ -86,6 +87,7 @@ interface ChatThreadProps {
     onStopTts?: (candidateId: string) => void;
     isLoadingOlder?: boolean;
     isConversationLocked?: boolean;
+    messageActionProfile?: MessageActionProfile;
 }
 
 export default function ChatThread({
@@ -109,6 +111,7 @@ export default function ChatThread({
     onStopTts,
     isLoadingOlder = false,
     isConversationLocked = false,
+    messageActionProfile = "text",
 }: ChatThreadProps) {
     const CARD_GAP = 12;
     const VIEWPORT_PADDING = 12;
@@ -120,6 +123,7 @@ export default function ChatThread({
 
     const router = useRouter();
     const { messageFontSize, displayMode, replyCardEnabled } = useUserSettings();
+    const isVoiceActiveProfile = messageActionProfile === "voice-active";
 
     // Reply card popover state
     const [openReplyCardKey, setOpenReplyCardKey] = useState<string | null>(null);
@@ -169,6 +173,13 @@ export default function ChatThread({
     useEffect(() => {
         feedbackCardStatesRef.current = feedbackCardStates;
     }, [feedbackCardStates]);
+
+    useEffect(() => {
+        setOpenReplyCardKey(null);
+        setPendingReplyCardKey(null);
+        setFeedbackCard(null);
+        setFeedbackCardKey(null);
+    }, [messageActionProfile]);
 
     useEffect(() => {
         setOpenReplyCardKey(null);
@@ -587,6 +598,9 @@ export default function ChatThread({
     );
 
     useEffect(() => {
+        if (isVoiceActiveProfile) {
+            return;
+        }
         if (isLoading) return;
 
         const currentUsers = messages.filter(
@@ -623,7 +637,7 @@ export default function ChatThread({
                 void ensureFeedbackCard(message);
             }
         });
-    }, [ensureFeedbackCard, isLoading, messages]);
+    }, [ensureFeedbackCard, isLoading, isVoiceActiveProfile, messages]);
 
     useEffect(() => {
         const readyEntry = Object.entries(feedbackCardStates).find(
@@ -1059,6 +1073,7 @@ export default function ChatThread({
                                             onEditUser={onEditUser}
                                             onOpenReplyCard={handleOpenReplyCard}
                                             onRequestFeedback={handleRequestFeedback}
+                                            messageActionProfile={messageActionProfile}
                                             feedbackAnchorRef={
                                                 isUserTurn
                                                     ? (el) => {

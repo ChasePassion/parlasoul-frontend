@@ -406,6 +406,7 @@ export interface SavedItemsPage {
 export interface CandidateExtra {
   input_transform?: InputTransform | null;
   reply_card?: ReplyCard | null;
+  interrupted?: boolean;
 }
 
 export interface CandidateResponse {
@@ -715,6 +716,29 @@ export interface STTTranscriptionResult {
   text: string;
   model: string;
   request_id?: string | null;
+}
+
+export interface RealtimeSessionDescription {
+  type: string;
+  sdp: string;
+}
+
+export interface RealtimeSessionCreateRequest {
+  chat_id: string;
+  character_id: string;
+  sdp: RealtimeSessionDescription;
+}
+
+export interface RealtimeIceConfigResponse {
+  ice_servers: RTCIceServer[];
+}
+
+export interface RealtimeSessionCreateResponse {
+  session_id: string;
+  chat_id: string;
+  character_id: string;
+  sdp: RealtimeSessionDescription;
+  ice_servers: RTCIceServer[];
 }
 
 // =============================================================================
@@ -1662,6 +1686,64 @@ export class ApiService {
     }
 
     return response.arrayBuffer();
+  }
+
+  async createRealtimeSession(
+    request: RealtimeSessionCreateRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<RealtimeSessionCreateResponse> {
+    const response = await fetchWithBetterAuth("/v1/realtime/session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(request),
+      signal: options?.signal,
+    });
+
+    if (!response.ok) {
+      return throwApiErrorResponse(response);
+    }
+
+    const payload = await parseJsonResponse(response);
+    return unwrapEnvelopePayload<RealtimeSessionCreateResponse>(payload);
+  }
+
+  async getRealtimeIceConfig(options?: {
+    signal?: AbortSignal;
+  }): Promise<RealtimeIceConfigResponse> {
+    const response = await fetchWithBetterAuth("/v1/realtime/config", {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: options?.signal,
+    });
+
+    if (!response.ok) {
+      return throwApiErrorResponse(response);
+    }
+
+    const payload = await parseJsonResponse(response);
+    return unwrapEnvelopePayload<RealtimeIceConfigResponse>(payload);
+  }
+
+  async deleteRealtimeSession(
+    sessionId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<void> {
+    const response = await fetchWithBetterAuth(`/v1/realtime/session/${sessionId}`, {
+      method: "DELETE",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: options?.signal,
+    });
+
+    if (!response.ok) {
+      return throwApiErrorResponse(response);
+    }
   }
 
   // Phase 2.1: Voice APIs

@@ -2,7 +2,7 @@ import { formatEntry, formatHumanReadable } from "./format";
 import type { LogEntry } from "./format";
 import { ApiError } from "@/lib/token-store";
 
-export { CharacterEvent, Module } from "./events";
+export { CharacterEvent, Module, RealtimeEvent } from "./events";
 
 // ─── Transports ────────────────────────────────────────────────────────────────
 

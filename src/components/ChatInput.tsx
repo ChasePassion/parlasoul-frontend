@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, KeyboardEvent } from "react";
 import Image from "next/image";
+import { LoaderCircle } from "lucide-react";
 import ReplySuggestionsBar from "./ReplySuggestionsBar";
 import { SttRecorder } from "@/lib/voice/stt-recorder";
 import type { ReplySuggestion } from "@/lib/api";
@@ -17,6 +18,8 @@ const WAVEFORM_CONFIG = {
 };
 
 type InputAreaState = "default" | "recording" | "transcribing";
+export type VoiceButtonState = "idle" | "connecting" | "active_ready" | "active_user_speaking";
+export type MicCaptureState = "hidden" | "mic_hot" | "mic_cold";
 
 interface ChatInputProps {
     onSend: (message: string) => void;
@@ -31,6 +34,13 @@ interface ChatInputProps {
     // Streaming interrupt
     isStreaming?: boolean;
     onInterrupt?: () => void;
+    voiceButtonState?: VoiceButtonState;
+    micCaptureState?: MicCaptureState;
+    onStartRealtimeVoice?: () => void;
+    onCancelRealtimeVoiceStart?: () => void;
+    onStopRealtimeVoice?: () => void;
+    onToggleMicCapture?: () => void;
+    getRealtimeMicAnalyserNode?: () => AnalyserNode | null;
 }
 
 export default function ChatInput({
@@ -44,6 +54,13 @@ export default function ChatInput({
     onMicCancel,
     isStreaming = false,
     onInterrupt,
+    voiceButtonState = "idle",
+    micCaptureState = "hidden",
+    onStartRealtimeVoice,
+    onCancelRealtimeVoiceStart,
+    onStopRealtimeVoice,
+    onToggleMicCapture,
+    getRealtimeMicAnalyserNode,
 }: ChatInputProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const savedSelectionRef = useRef<Range | null>(null);
@@ -461,8 +478,36 @@ export default function ChatInput({
 
     const hasText = message.length > 0;
     const isInRecordingFlow = inputAreaState === "recording" || inputAreaState === "transcribing";
+    const isVoiceConnecting = voiceButtonState === "connecting";
+    const isVoiceActive =
+        voiceButtonState === "active_ready" || voiceButtonState === "active_user_speaking";
+    const showVoiceWave = voiceButtonState === "active_user_speaking";
+    const showMicCaptureButton = micCaptureState !== "hidden";
+    const isMicCaptureEnabled = micCaptureState === "mic_hot";
 
+    const handleVoiceButtonClick = useCallback(() => {
+        if (disabled || isInRecordingFlow) return;
 
+        if (voiceButtonState === "connecting") {
+            onCancelRealtimeVoiceStart?.();
+            return;
+        }
+
+        if (isVoiceActive) {
+            onStopRealtimeVoice?.();
+            return;
+        }
+
+        onStartRealtimeVoice?.();
+    }, [
+        disabled,
+        isInRecordingFlow,
+        isVoiceActive,
+        onCancelRealtimeVoiceStart,
+        onStartRealtimeVoice,
+        onStopRealtimeVoice,
+        voiceButtonState,
+    ]);
 
     return (
         <div
@@ -634,25 +679,42 @@ export default function ChatInput({
                                     <div className="ms-auto flex items-center gap-1.5">
                                         {inputAreaState === "default" && (
                                             <>
-                                                {/* Mic button */}
-                                                <span data-state="closed">
+                                                {!isVoiceConnecting && !isVoiceActive && (
+                                                    <span data-state="closed">
+                                                        <button
+                                                            aria-label="语音输入"
+                                                            type="button"
+                                                            className="composer-btn"
+                                                            onClick={handleMicClick}
+                                                            disabled={disabled}
+                                                        >
+                                                            <Image
+                                                                src="/icons/close-29f921.svg"
+                                                                width="20"
+                                                                height="20"
+                                                                aria-label=""
+                                                                className="icon"
+                                                                alt=""
+                                                            />
+                                                        </button>
+                                                    </span>
+                                                )}
+
+                                                {showMicCaptureButton && (
                                                     <button
-                                                        aria-label="语音输入"
                                                         type="button"
-                                                        className="composer-btn"
-                                                        onClick={handleMicClick}
-                                                        disabled={disabled}
+                                                        aria-label={isMicCaptureEnabled ? "关闭收音" : "打开收音"}
+                                                        aria-pressed={isMicCaptureEnabled}
+                                                        className={`composer-btn relative transition-colors focus-visible:outline-black focus-visible:outline-none dark:focus-visible:outline-white ${
+                                                            isMicCaptureEnabled
+                                                                ? "text-token-text-primary"
+                                                                : "text-token-text-secondary"
+                                                        }`}
+                                                        onClick={onToggleMicCapture}
                                                     >
-                                                        <Image
-                                                            src="/icons/close-29f921.svg"
-                                                            width="20"
-                                                            height="20"
-                                                            aria-label=""
-                                                            className="icon"
-                                                            alt=""
-                                                        />
+                                                        <MicCaptureStatusGlyph muted={!isMicCaptureEnabled} />
                                                     </button>
-                                                </span>
+                                                )}
 
                                                 {/* Send button / Pause button */}
                                                 <div>
@@ -671,33 +733,80 @@ export default function ChatInput({
                                                                 ) : (
                                                                     <button
                                                                         type="button"
-                                                                        aria-label={hasText ? "Send message" : "Start Voice"}
-                                                                        className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white"
+                                                                        aria-label={
+                                                                            hasText
+                                                                                ? "发送消息"
+                                                                                : voiceButtonState === "connecting"
+                                                                                ? "取消语音连接"
+                                                                                : isVoiceActive
+                                                                                ? "退出语音模式"
+                                                                                : "进入语音模式"
+                                                                        }
+                                                                        className={`composer-submit-button-color text-submit-btn-text flex h-9 shrink-0 items-center overflow-hidden rounded-full transition-[width,padding,opacity] duration-200 ease-out hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white ${
+                                                                            isVoiceConnecting
+                                                                                ? "w-[6rem] justify-center px-3"
+                                                                                : "w-9 justify-center px-0"
+                                                                        }`}
                                                                         style={{
                                                                             viewTransitionName:
                                                                                 "var(--vt-composer-speech-button)",
+                                                                            transformOrigin: "right center",
                                                                         }}
-                                                                        disabled={disabled}
+                                                                        disabled={
+                                                                            isInRecordingFlow ||
+                                                                            (disabled &&
+                                                                                !hasText &&
+                                                                                !isVoiceActive &&
+                                                                                !isVoiceConnecting) ||
+                                                                            (disabled && hasText)
+                                                                        }
                                                                         onClick={() => {
                                                                             if (!hasText) {
-                                                                                showNotice("功能开发中");
+                                                                                handleVoiceButtonClick();
                                                                                 return;
                                                                             }
                                                                             handleSend();
                                                                         }}
                                                                     >
-                                                                        <Image
-                                                                            src={
-                                                                                hasText
-                                                                                    ? "/icons/laptop-01bab7.svg"
-                                                                                    : "/icons/sliders-f8aa74.svg"
-                                                                            }
-                                                                            width="20"
-                                                                            height="20"
-                                                                            aria-hidden="true"
-                                                                            className="h-5 w-5 brightness-0 invert"
-                                                                            alt=""
-                                                                        />
+                                                                        {hasText ? (
+                                                                            <Image
+                                                                                src="/icons/laptop-01bab7.svg"
+                                                                                width="20"
+                                                                                height="20"
+                                                                                aria-hidden="true"
+                                                                                className="h-5 w-5 brightness-0 invert"
+                                                                                alt=""
+                                                                            />
+                                                                        ) : isVoiceConnecting ? (
+                                                                            <span className="flex items-center gap-2 whitespace-nowrap">
+                                                                                <LoaderCircle className="h-4 w-4 shrink-0 animate-spin" />
+                                                                                <span className="text-[13px] font-medium tracking-[0.01em]">
+                                                                                    Cancel
+                                                                                </span>
+                                                                            </span>
+                                                                        ) : showVoiceWave ? (
+                                                                            <VoiceSpeakingGlyph
+                                                                                getAnalyserNode={getRealtimeMicAnalyserNode}
+                                                                            />
+                                                                        ) : isVoiceActive ? (
+                                                                            <Image
+                                                                                src="/hangup.svg"
+                                                                                width="24"
+                                                                                height="24"
+                                                                                aria-hidden="true"
+                                                                                className="h-6 w-6"
+                                                                                alt=""
+                                                                            />
+                                                                        ) : (
+                                                                            <Image
+                                                                                src="/icons/sliders-f8aa74.svg"
+                                                                                width="20"
+                                                                                height="20"
+                                                                                aria-hidden="true"
+                                                                                className="h-5 w-5 brightness-0 invert"
+                                                                                alt=""
+                                                                            />
+                                                                        )}
                                                                     </button>
                                                                 )}
                                                             </div>
@@ -775,5 +884,110 @@ export default function ChatInput({
                 />
             </div>
         </div>
+    );
+}
+
+const SPEAKING_CAPSULE_BASE_LEVELS = [0.24, 0.52, 0.4, 0.3] as const;
+const SPEAKING_CAPSULE_WIDTHS = [3, 3, 4, 3] as const;
+const SPEAKING_CAPSULE_MIN_HEIGHTS = [4, 4.5, 5, 4.25] as const;
+const SPEAKING_CAPSULE_TRAVEL = [6, 7.5, 7.5, 6] as const;
+
+function VoiceSpeakingGlyph({
+    getAnalyserNode,
+}: {
+    getAnalyserNode?: () => AnalyserNode | null;
+}) {
+    const [levels, setLevels] = useState<number[]>(() => [...SPEAKING_CAPSULE_BASE_LEVELS]);
+    const levelsRef = useRef<number[]>([...SPEAKING_CAPSULE_BASE_LEVELS]);
+
+    useEffect(() => {
+        levelsRef.current = levels;
+    }, [levels]);
+
+    useEffect(() => {
+        let frameId = 0;
+
+        const tick = () => {
+            const analyser = getAnalyserNode?.() ?? null;
+            if (!analyser) {
+                frameId = requestAnimationFrame(tick);
+                return;
+            }
+
+            const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(frequencyData);
+
+            const relevantBinCount = Math.min(24, frequencyData.length);
+            const binsPerCapsule = Math.max(1, Math.floor(relevantBinCount / 4));
+
+            const nextLevels = SPEAKING_CAPSULE_BASE_LEVELS.map((baseLevel, index) => {
+                const start = index * binsPerCapsule;
+                const end =
+                    index === SPEAKING_CAPSULE_BASE_LEVELS.length - 1
+                        ? relevantBinCount
+                        : Math.min(relevantBinCount, start + binsPerCapsule);
+
+                let sum = 0;
+                for (let cursor = start; cursor < end; cursor += 1) {
+                    sum += frequencyData[cursor] / 255;
+                }
+
+                const average = end > start ? sum / (end - start) : 0;
+                const scaled = Math.max(baseLevel * 0.8, Math.min(1, average * 2.15));
+                const previous = levelsRef.current[index] ?? baseLevel;
+                const eased =
+                    scaled >= previous
+                        ? previous + (scaled - previous) * 0.3
+                        : previous + (scaled - previous) * 0.16;
+
+                return eased;
+            });
+
+            setLevels(nextLevels);
+            frameId = requestAnimationFrame(tick);
+        };
+
+        frameId = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(frameId);
+    }, [getAnalyserNode]);
+
+    return (
+        <span className="flex h-4 items-center justify-center gap-[2px]" aria-hidden="true">
+            {levels.map((level, index) => (
+                <div
+                    key={index}
+                    className="shrink-0"
+                    style={{
+                        width: SPEAKING_CAPSULE_WIDTHS[index],
+                        height: SPEAKING_CAPSULE_MIN_HEIGHTS[index] + level * SPEAKING_CAPSULE_TRAVEL[index],
+                        display: "block",
+                        backgroundColor: "rgba(255, 255, 255, 0.92)",
+                        borderRadius: 999,
+                        boxShadow: "0 0 6px rgba(255, 255, 255, 0.14)",
+                        opacity: 0.85 + level * 0.15,
+                        transform: `translateY(${(1 - level) * 0.55}px)`,
+                    }}
+                />
+            ))}
+        </span>
+    );
+}
+
+function MicCaptureStatusGlyph({ muted }: { muted: boolean }) {
+    return (
+        <span className="relative flex h-5 w-5 items-center justify-center" aria-hidden="true">
+            <Image
+                src="/icons/close-29f921.svg"
+                width="20"
+                height="20"
+                className="h-5 w-5"
+                alt=""
+            />
+            {muted ? (
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <span className="h-px w-5 rotate-[45deg] rounded-full bg-current" />
+                </span>
+            ) : null}
+        </span>
     );
 }

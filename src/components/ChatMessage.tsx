@@ -10,6 +10,7 @@ import type { InputTransform, ReplyCard, ReplySuggestion, DisplayMode } from "@/
 
 export type MessageActionStatus = "idle" | "loading" | "ready" | "error";
 export type MessageStreamStatus = "idle" | "streaming" | "done" | "error";
+export type MessageActionProfile = "text" | "voice-active";
 
 export interface Message {
     id: string;
@@ -57,6 +58,7 @@ interface ChatMessageProps {
     onOpenReplyCard?: (message: Message) => void;
     onRequestFeedback?: (message: Message) => void;
     feedbackAnchorRef?: (element: HTMLDivElement | null) => void;
+    messageActionProfile?: MessageActionProfile;
 }
 
 export default function ChatMessage({
@@ -84,6 +86,7 @@ export default function ChatMessage({
     onOpenReplyCard,
     onRequestFeedback,
     feedbackAnchorRef,
+    messageActionProfile = "text",
 }: ChatMessageProps) {
     const userActionRowHideDelayMs = 500;
     const chevronLeftIcon = "/icons/chevron-left-8ee2e9.svg";
@@ -98,9 +101,11 @@ export default function ChatMessage({
     const actionButtonClass =
         "text-token-text-secondary hover:bg-token-bg-secondary rounded-lg disabled:opacity-50";
     const isUser = message.role === "user";
+    const isVoiceActiveProfile = messageActionProfile === "voice-active";
     const k = message.candidateNo ?? 1;
     const n = message.candidateCount ?? 1;
     const showNav =
+        !isVoiceActiveProfile &&
         (isUser || !message.isTemp) &&
         !message.isGreeting &&
         message.candidateNo !== undefined &&
@@ -334,17 +339,23 @@ export default function ChatMessage({
 
     // Phase 1: Whether to show reply card (lightbulb) button
     const showReplyCardBtn =
+        !isVoiceActiveProfile &&
         !isUser &&
         replyCardEnabled &&
         !message.isTemp &&
         (!!message.replyCard || !!message.assistantCandidateId);
     // Phase 2: Whether to show speaker button
-    const showSpeakerBtn = !isUser && !message.isTemp && !!message.assistantCandidateId;
+    const showSpeakerBtn =
+        !isVoiceActiveProfile && !isUser && !message.isTemp && !!message.assistantCandidateId;
     const isSpeakerPlaying = showSpeakerBtn && playingCandidateId === message.assistantCandidateId;
     const isSpeakerLoading = showSpeakerBtn && ttsLoadingCandidateId === message.assistantCandidateId;
     // Phase 3: Whether to show feedback button (for user messages)
-    const showFeedbackBtn = isUser && !message.isTemp && !isEditing && !!onRequestFeedback;
-    const showActionRow = showNav || showReplyCardBtn || showSpeakerBtn || showFeedbackBtn;
+    const showFeedbackBtn =
+        !isVoiceActiveProfile && isUser && !message.isTemp && !isEditing && !!onRequestFeedback;
+    const showCopyOnlyButton =
+        isVoiceActiveProfile && !message.isTemp && Boolean(message.content.trim());
+    const showActionRow =
+        showCopyOnlyButton || showNav || showReplyCardBtn || showSpeakerBtn || showFeedbackBtn;
 
     return (
         <div className="relative flex w-full min-w-0 flex-col">
@@ -487,7 +498,7 @@ export default function ChatMessage({
                                 </div>
                             )}
 
-                            {(!isUser && (message.isGreeting || showNav)) && (
+                            {(showCopyOnlyButton || (!isUser && (message.isGreeting || showNav))) && (
                                 <button
                                     type="button"
                                     className={actionButtonClass}

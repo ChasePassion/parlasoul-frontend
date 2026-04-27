@@ -220,6 +220,7 @@ export const deleteSavedItem = apiService.deleteSavedItem.bind(apiService);
 // Phase 2: 语音相关
 export const sttTranscribe = apiService.sttTranscribe.bind(apiService);
 export const getTtsAudioStream = apiService.getTtsAudioStream.bind(apiService);
+export const getRealtimeIceConfig = apiService.getRealtimeIceConfig.bind(apiService);
 export const createRealtimeSession = apiService.createRealtimeSession.bind(apiService);
 export const deleteRealtimeSession = apiService.deleteRealtimeSession.bind(apiService);
 
@@ -303,6 +304,7 @@ export type {
   // Phase 2 types
   STTTranscriptionResult,
   RealtimeSessionDescription,
+  RealtimeIceConfigResponse,
   RealtimeSessionCreateRequest,
   RealtimeSessionCreateResponse,
   // Phase 2.1 types
