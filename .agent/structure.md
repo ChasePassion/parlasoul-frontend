@@ -247,6 +247,7 @@ flowchart TD
 当前关键 hook：
 
 - `useChatSession`
+- `useRealtimeVoiceSession`
 - `useDismissiblePopover`
 - `useOptimisticFavorite`
 - `useSidebarShell`
@@ -281,6 +282,8 @@ flowchart TD
   - `growth-api.ts`
   - `dodo-payments.ts`
   - `billing-plans.ts`
+- Realtime
+  - `realtime/realtime-voice-session-client.ts`
 - 适配器
   - `character-adapter.ts`
   - `voice-adapter.ts`
@@ -369,10 +372,12 @@ flowchart TD
 - `ChatHistorySidebar`
 - `MessageNavigator`
 - `ShareCardDialog`
+- 隐藏的远端 `<audio>`
 
 核心状态中心：
 
 - `useChatSession`
+- `useRealtimeVoiceSession`
 
 它负责：
 
@@ -385,6 +390,13 @@ flowchart TD
 - 管理候选切换
 - 管理向上分页
 - 处理 reply suggestions / reply card / TTS / growth SSE
+
+新增的 realtime 通话能力：
+
+- 通过 `RealtimeVoiceSessionClient` 发起 `/v1/realtime/session`
+- 在聊天页输入区内建立 inline WebRTC 会话状态机
+- 展示用户与角色的双向字幕，并刷新聊天线程
+- 管理挂断按钮、收音开关和 speaking 态按钮视觉
 
 ### 5.5 收藏
 
@@ -556,6 +568,21 @@ flowchart TD
 - `voice/stt-recorder.ts`
 - 录音后走 `/v1/voice/stt/transcriptions`
 
+### 8.1.1 Realtime 通话
+
+- `lib/realtime/realtime-voice-session-client.ts`
+- `hooks/useRealtimeVoiceSession.ts`
+- `components/ChatInput.tsx`
+- `app/(app)/chat/[id]/page.tsx`
+
+当前职责：
+
+- 建立浏览器 WebRTC 连接
+- 管理 DataChannel 控制事件
+- 订阅远端 bot 音频
+- 维护 realtime 字幕状态
+- 把会话状态投影到聊天页输入区，而不是独立弹窗
+
 ### 8.2 TTS
 
 - `voice/tts-playback-manager.ts`
@@ -600,3 +627,4 @@ flowchart TD
 - 当前 Next.js route handlers 只用于认证、日志、分享卡图片代理，不承载业务 CRUD。
 - `/pricing` 是公开页面，`/billing` 是受保护页面；两者都不在后端仓库。
 - 聊天主链路已经是“流式 + 聊天树 + 学习卡 + TTS + Growth 事件”的复合页面，不应再按简单消息列表理解。
+- realtime 通话当前依附 `/chat/[id]` 页面，不新增前端 route handler，也不引入独立通话页面模板。

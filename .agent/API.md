@@ -202,7 +202,15 @@
 | `PATCH` | `/v1/voices/{voice_id}` | 必需 | `EditVoiceModal` | 更新元信息和绑定角色 |
 | `DELETE` | `/v1/voices/{voice_id}` | 必需 | Profile 音色页 | 删除音色 |
 
-### 4.6 成长系统
+### 4.6 Realtime
+
+| 方法 | 路径 | 鉴权 | 当前消费者 | 说明 |
+| --- | --- | --- | --- | --- |
+| `GET` | `/v1/realtime/config` | 必需 | 聊天页 realtime 通话入口 | 获取浏览器 WebRTC 建连使用的 `ice_servers` |
+| `POST` | `/v1/realtime/session` | 必需 | 聊天页 realtime 通话入口 | 提交 WebRTC offer，返回 answer 与 `session_id` |
+| `DELETE` | `/v1/realtime/session/{session_id}` | 必需 | 聊天页 realtime 通话入口 | 主动结束 realtime 会话 |
+
+### 4.7 成长系统
 
 | 方法 | 路径 | 鉴权 | 当前消费者 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -215,7 +223,7 @@
 | `GET` | `/v1/growth/share-cards/pending?chat_id={id}&limit={limit}` | 必需 | `GrowthProvider` | 待消费分享卡 |
 | `POST` | `/v1/growth/share-cards/{trigger_id}/consume` | 必需 | 分享卡弹窗 | 消费分享卡，`204` |
 
-### 4.7 支付与权益
+### 4.8 支付与权益
 
 | 方法 | 路径 | 鉴权 | 当前消费者 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -224,7 +232,7 @@
 | `GET` | `/v1/payments/orders/{order_id}` | 必需 | 账单页 | 查看单笔一次性订单 |
 | `GET` | `/v1/payments/orders?channel={channel}&skip={skip}&limit={limit}` | 必需 | 账单页 | 当前用户订单列表 |
 
-### 4.8 Memory、模型目录、Webhook、基础设施
+### 4.9 Memory、模型目录、Webhook、基础设施
 
 | 方法 | 路径 | 鉴权 | 当前消费者 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -533,6 +541,58 @@
 - `duration_days`
 - `billing_currency`
 - `channel`
+
+### 5.16 Realtime ICE 配置
+
+`GET /v1/realtime/config`
+
+返回：
+
+```json
+{
+  "ice_servers": []
+}
+```
+
+语义：
+
+- 返回当前用户发起 WebRTC realtime 会话所需的 `ice_servers`。
+- 前端会在创建 `RTCPeerConnection` 之前先请求这个接口。
+
+### 5.17 Realtime 会话创建
+
+`POST /v1/realtime/session`
+
+```json
+{
+  "chat_id": "uuid",
+  "character_id": "uuid",
+  "sdp": {
+    "type": "offer",
+    "sdp": "..."
+  }
+}
+```
+
+返回：
+
+```json
+{
+  "session_id": "rt_xxx",
+  "chat_id": "uuid",
+  "character_id": "uuid",
+  "sdp": {
+    "type": "answer",
+    "sdp": "..."
+  },
+  "ice_servers": []
+}
+```
+
+语义：
+
+- 仅允许当前用户对自己可访问的 `chat + character` 发起会话。
+- 第一版 realtime 通话直接依附现有聊天树，不单独创建新 chat。
 
 ## 6. 关键响应契约
 
