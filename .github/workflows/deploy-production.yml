@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       image_sha:
-        description: "Optional image SHA to deploy (defaults to the latest published workflow SHA)"
+        description: "Required for manual dispatch; full 40-character image commit SHA"
         required: false
         type: string
 
@@ -51,17 +51,18 @@ jobs:
             printf '%s' "$1" | tr -d '\r\n' | sed $'1s/^\xEF\xBB\xBF//'
           }
 
+          normalized_sha="$(sanitize "${IMAGE_SHA}")"
+          normalized_sha="${normalized_sha#sha-}"
+
           {
             echo "DEPLOY_HOST=$(sanitize "${DEPLOY_HOST}")"
             echo "DEPLOY_USER=$(sanitize "${DEPLOY_USER}")"
             echo "DEPLOY_PASSWORD=$(sanitize "${DEPLOY_PASSWORD}")"
             echo "DEPLOY_ROOT=$(sanitize "${DEPLOY_ROOT}")"
             echo "DEPLOY_HOST_KEY_FINGERPRINT=$(sanitize "${DEPLOY_HOST_KEY_FINGERPRINT}")"
-            echo "IMAGE_SHA=$(sanitize "${IMAGE_SHA}")"
+            echo "IMAGE_SHA=${normalized_sha}"
           } >> "$GITHUB_ENV"
 
-          normalized_sha="$(sanitize "${IMAGE_SHA}")"
-          normalized_sha="${normalized_sha#sha-}"
           echo "IMAGE_TAG=sha-${normalized_sha:0:7}" >> "$GITHUB_ENV"
 
       - name: Validate deployment inputs
@@ -76,6 +77,11 @@ jobs:
 
           if [ -z "${IMAGE_SHA:-}" ]; then
             echo "::error::IMAGE_SHA is empty"
+            exit 1
+          fi
+
+          if ! printf '%s' "${IMAGE_SHA}" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::IMAGE_SHA must be a full 40-character commit SHA"
             exit 1
           fi
 
