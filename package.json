@@ -15,7 +15,7 @@
     "start": "next start -p 3001",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test \"src/**/*.test.ts\""
+    "test": "node scripts/run-node-tests.mjs"
   },
   "dependencies": {
     "@dodopayments/better-auth": "^1.5.0",
