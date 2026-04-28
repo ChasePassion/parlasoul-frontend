@@ -19,18 +19,6 @@ const inter = localFont({
   display: "swap",
 });
 
-const notoSansSC = localFont({
-  src: [
-    {
-      path: "./fonts/NotoSansSC-VariableFont_wght.ttf",
-      style: "normal",
-      weight: "100 900",
-    },
-  ],
-  variable: "--font-noto-sans-sc",
-  display: "swap",
-});
-
 export const metadata: Metadata = {
   title: "ParlaSoul",
   description: "与 AI 角色进行对话的虚拟角色扮演平台",
@@ -62,7 +50,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${notoSansSC.variable} antialiased`}>
+      <body className={`${inter.variable} antialiased`}>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
