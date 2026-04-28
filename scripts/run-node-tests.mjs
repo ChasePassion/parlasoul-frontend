@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 const srcDir = fileURLToPath(new URL("../src", import.meta.url));
+const testFilePattern = /\.(test|spec)\.(ts|tsx)$/;
 
 function collectTests(dir) {
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -16,7 +17,7 @@ function collectTests(dir) {
       continue;
     }
 
-    if (entry.isFile() && entry.name.endsWith(".test.ts")) {
+    if (entry.isFile() && testFilePattern.test(entry.name)) {
       tests.push(fullPath);
     }
   }
