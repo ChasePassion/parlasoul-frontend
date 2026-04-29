@@ -780,24 +780,38 @@ export default function ChatPage() {
     );
 
     const composerContent = character && !error ? (
-        <ChatInput
-            onSend={handleSendMessage}
-            isStreaming={isStreaming}
-            onInterrupt={interruptStream}
-            disabled={isConversationReadOnly}
-            disabledReason={readOnlyNotice}
-            roleName={character.name}
-            replySuggestions={realtimeSession.isConnected ? null : currentReplySuggestions}
-            onMicStart={handleMicStart}
-            onMicCancel={handleMicCancel}
-            voiceButtonState={voiceButtonState}
-            micCaptureState={micCaptureState}
-            onStartRealtimeVoice={handleStartRealtimeCall}
-            onCancelRealtimeVoiceStart={handleCancelRealtimeConnect}
-            onStopRealtimeVoice={handleEndRealtimeCall}
-            onToggleMicCapture={realtimeSession.toggleMicCapture}
-            getRealtimeMicAnalyserNode={realtimeSession.getMicAnalyserNode}
-        />
+        isConversationReadOnly && readOnlyNotice ? (
+            <div
+                className="text-base mx-auto [--thread-content-margin:--spacing(4)] @w-sm/main:[--thread-content-margin:--spacing(6)] @w-lg/main:[--thread-content-margin:--spacing(16)] px-(--thread-content-margin)"
+                style={{ backgroundColor: "var(--workspace-bg)" }}
+            >
+                <div
+                    className="[--thread-content-max-width:40rem] @w-lg/main:[--thread-content-max-width:48rem] mx-auto max-w-(--thread-content-max-width) flex-1 mb-4"
+                    style={{ maxWidth: "48rem", width: "100%" }}
+                >
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                        {readOnlyNotice}
+                    </div>
+                </div>
+            </div>
+        ) : (
+            <ChatInput
+                onSend={handleSendMessage}
+                isStreaming={isStreaming}
+                onInterrupt={interruptStream}
+                roleName={character.name}
+                replySuggestions={realtimeSession.isConnected ? null : currentReplySuggestions}
+                onMicStart={handleMicStart}
+                onMicCancel={handleMicCancel}
+                voiceButtonState={voiceButtonState}
+                micCaptureState={micCaptureState}
+                onStartRealtimeVoice={handleStartRealtimeCall}
+                onCancelRealtimeVoiceStart={handleCancelRealtimeConnect}
+                onStopRealtimeVoice={handleEndRealtimeCall}
+                onToggleMicCapture={realtimeSession.toggleMicCapture}
+                getRealtimeMicAnalyserNode={realtimeSession.getMicAnalyserNode}
+            />
+        )
     ) : (
         <div className="text-base mx-auto px-4 sm:px-6 lg:px-16">
             <div className="mx-auto mb-4 w-full max-w-[768px]">
