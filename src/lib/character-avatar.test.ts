@@ -43,6 +43,7 @@ test("prefers backend avatar_urls over derived image key", () => {
   assert.equal(
     resolveCharacterAvatarSrc(
       {
+        name: "Elon Musk",
         avatar_urls: {
           sm: "/media/from-response/96.avif",
           md: "/media/from-response/192.avif",
@@ -54,6 +55,29 @@ test("prefers backend avatar_urls over derived image key", () => {
       "md",
     ),
     "/media/from-response/192.avif",
+  );
+});
+
+test("resolves built-in character avatar assets when backend avatar fields are empty", () => {
+  assert.equal(
+    resolveCharacterAvatarSrc({
+      name: "Elon Musk",
+      avatar_image_key: null,
+      avatar_urls: null,
+    }),
+    "/Elon.png",
+  );
+  assert.equal(
+    resolveCharacterAvatarSrc({ name: "Gork" }),
+    "/Gork.png",
+  );
+  assert.equal(
+    resolveCharacterAvatarSrc({ name: "Xiao Bai" }),
+    "/Bai.png",
+  );
+  assert.equal(
+    resolveCharacterAvatarSrc({ name: "小白" }),
+    "/Bai.png",
   );
 });
 
