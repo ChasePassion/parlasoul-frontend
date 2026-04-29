@@ -26,6 +26,11 @@ const PRESERVED_SVG_ATTRIBUTES = [
   "fill-rule",
   "clip-rule",
 ];
+const DYNAMIC_PAINT_VALUES = new Set(["currentcolor", "none", "transparent"]);
+const PRESERVED_ICON_PAINTS = new Map([
+  ["translate", new Set(["#1b7afe"])],
+]);
+const SHAPE_TAG_PATTERN = /<(path|circle|rect|line|polyline|polygon|ellipse)\b([^>]*)>/g;
 
 const files = readdirSync(ICONS_DIR)
   .filter((f) => f.endsWith(".svg"))
@@ -39,6 +44,48 @@ function escapeAttribute(value) {
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function shouldPreservePaintValue(iconName, value) {
+  const normalized = value.trim().toLowerCase();
+
+  if (DYNAMIC_PAINT_VALUES.has(normalized) || normalized.startsWith("url(")) {
+    return true;
+  }
+
+  return PRESERVED_ICON_PAINTS.get(iconName)?.has(normalized) ?? false;
+}
+
+function normalizePaintAttributes(iconName, svg) {
+  return svg.replace(/\s(fill|stroke)="([^"]*)"/g, (match, attribute, value) => {
+    if (shouldPreservePaintValue(iconName, value)) {
+      return ` ${attribute}="${escapeAttribute(value.trim())}"`;
+    }
+
+    return ` ${attribute}="currentColor"`;
+  });
+}
+
+function hasPaintAttribute(attributes) {
+  return /\s(?:fill|stroke)="/.test(attributes);
+}
+
+function hasUnpaintedShape(content) {
+  for (const match of content.matchAll(SHAPE_TAG_PATTERN)) {
+    if (!hasPaintAttribute(match[2])) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function ensureInheritedPaint(attributes, content) {
+  if (attributes.some((attribute) => /^(?:fill|stroke)=/.test(attribute))) {
+    return attributes;
+  }
+
+  return hasUnpaintedShape(content) ? ['fill="currentColor"', ...attributes] : attributes;
 }
 
 function getOuterSvgAttributes(svg) {
@@ -59,6 +106,7 @@ for (const file of files) {
   // Remove XML declaration and DOCTYPE
   svg = svg.replace(/<\?xml[^?]*\?>\s*/g, "");
   svg = svg.replace(/<!DOCTYPE[^>]*>\s*/g, "");
+  svg = normalizePaintAttributes(name, svg);
 
   // Extract inner content between <svg> tags
   const content = svg.replace(/<svg[^>]*>/, "").replace(/<\/svg>/, "").trim();
@@ -66,7 +114,7 @@ for (const file of files) {
   // Extract viewBox from outer <svg>
   const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
   const viewBox = viewBoxMatch ? viewBoxMatch[1] : "0 0 24 24";
-  const attributes = getOuterSvgAttributes(svg);
+  const attributes = ensureInheritedPaint(getOuterSvgAttributes(svg), content);
 
   symbols.push(
     `  <symbol id="${name}" viewBox="${escapeAttribute(viewBox)}"${attributes.length ? ` ${attributes.join(" ")}` : ""}>${content}</symbol>`

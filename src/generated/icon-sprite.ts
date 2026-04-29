@@ -1,1 +1,1 @@
-export const ICON_SPRITE_HREF = "/icons/sprite-99a07b2d5462.svg";
+export const ICON_SPRITE_HREF = "/icons/sprite-2a6723a09f1c.svg";

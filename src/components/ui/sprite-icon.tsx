@@ -1,4 +1,5 @@
 import { ICON_SPRITE_HREF } from "@/generated/icon-sprite"
+import { cn } from "@/lib/utils"
 
 interface SpriteIconProps {
   name: string
@@ -12,7 +13,8 @@ export function SpriteIcon({ name, size = 20, className }: SpriteIconProps) {
       width={size}
       height={size}
       aria-hidden="true"
-      className={className}
+      fill="currentColor"
+      className={cn("text-current", className)}
     >
       <use href={`${ICON_SPRITE_HREF}#${name}`} />
     </svg>
