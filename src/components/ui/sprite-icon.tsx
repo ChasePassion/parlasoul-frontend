@@ -1,3 +1,5 @@
+import { ICON_SPRITE_HREF } from "@/generated/icon-sprite"
+
 interface SpriteIconProps {
   name: string
   size?: number
@@ -12,7 +14,7 @@ export function SpriteIcon({ name, size = 20, className }: SpriteIconProps) {
       aria-hidden="true"
       className={className}
     >
-      <use href={`/icons/sprite.svg#${name}`} />
+      <use href={`${ICON_SPRITE_HREF}#${name}`} />
     </svg>
   )
 }

@@ -59,6 +59,12 @@ const baseConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/icons/sprite-:hash.svg",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
         source: "/v1/:path*",
         headers: [
           // Avoid intermediaries buffering or transforming SSE streams.

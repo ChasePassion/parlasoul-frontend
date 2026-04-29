@@ -1,8 +1,19 @@
-import { readFileSync, readdirSync, writeFileSync, mkdirSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
+import { createHash } from "crypto";
 import { join, basename } from "path";
 
 const ICONS_DIR = join(import.meta.dirname, "..", "src", "assets", "icons");
-const OUTPUT = join(import.meta.dirname, "..", "public", "icons", "sprite.svg");
+const PUBLIC_ICONS_DIR = join(import.meta.dirname, "..", "public", "icons");
+const GENERATED_DIR = join(import.meta.dirname, "..", "src", "generated");
+const LEGACY_OUTPUT = join(PUBLIC_ICONS_DIR, "sprite.svg");
+const MANIFEST_OUTPUT = join(GENERATED_DIR, "icon-sprite.ts");
 const PRESERVED_SVG_ATTRIBUTES = [
   "fill",
   "stroke",
@@ -63,8 +74,25 @@ for (const file of files) {
 }
 
 const sprite = `<svg xmlns="http://www.w3.org/2000/svg">\n${symbols.join("\n")}\n</svg>`;
+const hash = createHash("sha256").update(sprite).digest("hex").slice(0, 12);
+const fileName = `sprite-${hash}.svg`;
+const output = join(PUBLIC_ICONS_DIR, fileName);
+const manifest = `export const ICON_SPRITE_HREF = "/icons/${fileName}";\n`;
 
-mkdirSync(join(import.meta.dirname, "..", "public", "icons"), { recursive: true });
-writeFileSync(OUTPUT, sprite, "utf-8");
+mkdirSync(PUBLIC_ICONS_DIR, { recursive: true });
+mkdirSync(GENERATED_DIR, { recursive: true });
 
-console.log(`Sprite generated: ${symbols.length} icons → ${OUTPUT}`);
+for (const file of readdirSync(PUBLIC_ICONS_DIR)) {
+  if (/^sprite-[a-f0-9]{12}\.svg$/.test(file) && file !== fileName) {
+    rmSync(join(PUBLIC_ICONS_DIR, file));
+  }
+}
+
+if (existsSync(LEGACY_OUTPUT)) {
+  rmSync(LEGACY_OUTPUT);
+}
+
+writeFileSync(output, sprite, "utf-8");
+writeFileSync(MANIFEST_OUTPUT, manifest, "utf-8");
+
+console.log(`Sprite generated: ${symbols.length} icons -> ${output}`);
