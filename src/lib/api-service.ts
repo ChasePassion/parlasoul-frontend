@@ -961,6 +961,10 @@ export class ApiService {
     return httpClient.put<User>("/v1/users/me", data, options);
   }
 
+  async getMyProfile(options: ApiRequestOptions = {}): Promise<User> {
+    return httpClient.get<User>("/v1/users/me", options);
+  }
+
   async getMySettings(
     options: ApiRequestOptions = {},
   ): Promise<UserSettingsResponse> {

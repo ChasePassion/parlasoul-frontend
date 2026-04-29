@@ -61,3 +61,21 @@ export function mapBetterAuthSessionToUser(
 ): User | null {
   return mapBetterAuthUserToUser(session?.user);
 }
+
+export function mergeSessionUserWithProfile(
+  sessionUser: User | null,
+  profileUser: User | null | undefined,
+): User | null {
+  if (!sessionUser) {
+    return null;
+  }
+
+  if (!profileUser || profileUser.id !== sessionUser.id) {
+    return sessionUser;
+  }
+
+  return {
+    ...sessionUser,
+    ...profileUser,
+  };
+}

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  mergeSessionUserWithProfile,
   mapBetterAuthSessionToUser,
   mapBetterAuthUserToUser,
 } from "./auth-user-mapper";
@@ -48,4 +49,29 @@ test("omits blank optional fields and normalizes invalid dates to epoch", () => 
 test("returns null when Better Auth has no active session user", () => {
   assert.equal(mapBetterAuthUserToUser(null), null);
   assert.equal(mapBetterAuthSessionToUser(null), null);
+});
+
+test("uses backend profile fields for setup completion data", () => {
+  const sessionUser = {
+    id: "user-1",
+    email: "chase@example.com",
+    username: "chase",
+    email_verified: true,
+    created_at: "2026-04-05T10:20:30.000Z",
+  };
+  const profileUser = {
+    ...sessionUser,
+    avatar_image_key: "images/avatars/users/user-1/avatar-1",
+    avatar_urls: {
+      sm: "/media/images/avatars/users/user-1/avatar-1/96.avif",
+      md: "/media/images/avatars/users/user-1/avatar-1/192.avif",
+      lg: "/media/images/avatars/users/user-1/avatar-1/512.avif",
+      xl: "/media/images/avatars/users/user-1/avatar-1/512.avif",
+    },
+  };
+
+  const merged = mergeSessionUserWithProfile(sessionUser, profileUser);
+
+  assert.equal(merged?.avatar_image_key, profileUser.avatar_image_key);
+  assert.equal(Boolean(merged?.username && merged.avatar_image_key), true);
 });

@@ -7,11 +7,14 @@ import {
     useMemo,
     type ReactNode,
 } from "react";
-import type { User, UserEntitlementsResponse } from "./api-service";
+import { apiService, type User, type UserEntitlementsResponse } from "./api-service";
 import { authClient } from "./auth-client";
-import { mapBetterAuthSessionToUser } from "./auth-user-mapper";
+import {
+    mapBetterAuthSessionToUser,
+    mergeSessionUserWithProfile,
+} from "./auth-user-mapper";
 import { clearBetterAuthJwt } from "./better-auth-token";
-import { useUserEntitlementsQuery } from "./query";
+import { queryKeys, useUserEntitlementsQuery, useUserProfileQuery } from "./query";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface AuthContextType {
@@ -36,8 +39,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refetch,
     } = authClient.useSession();
 
-    const user = useMemo(() => mapBetterAuthSessionToUser(session), [session]);
-    const userId = user?.id ?? null;
+    const sessionUser = useMemo(() => mapBetterAuthSessionToUser(session), [session]);
+    const sessionUserId = sessionUser?.id ?? null;
+    const {
+        data: profileUser,
+        isLoading: isProfileLoading,
+    } = useUserProfileQuery(sessionUserId);
+    const user = useMemo(
+        () => mergeSessionUserWithProfile(sessionUser, profileUser),
+        [profileUser, sessionUser],
+    );
+    const userId = user?.id ?? sessionUserId;
     const isAuthed = !!user;
     const {
         data: entitlementsData,
@@ -97,10 +109,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 throw new Error(result.error.message || "刷新用户信息失败");
             }
 
+            const refreshedSessionUser = mapBetterAuthSessionToUser(result.data);
             await refetch();
+            if (refreshedSessionUser) {
+                await queryClient.fetchQuery({
+                    queryKey: queryKeys.user.profile(refreshedSessionUser.id),
+                    queryFn: ({ signal }) => apiService.getMyProfile({ signal }),
+                });
+            }
             await refreshEntitlements();
         },
-        [refetch, refreshEntitlements],
+        [queryClient, refetch, refreshEntitlements],
     );
 
     const authContextValue = useMemo(
@@ -108,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             user,
             entitlements,
             isAuthed,
-            isLoading: isPending,
+            isLoading: isPending || Boolean(sessionUserId && isProfileLoading),
             isEntitlementsLoading,
             login,
             logout,
@@ -120,6 +139,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             entitlements,
             isAuthed,
             isPending,
+            sessionUserId,
+            isProfileLoading,
             isEntitlementsLoading,
             login,
             logout,

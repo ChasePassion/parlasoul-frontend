@@ -47,6 +47,8 @@ export const queryKeys = {
   user: {
     all: (userId: NullableId) =>
       [...queryKeys.all, "user", scopedId(userId)] as const,
+    profile: (userId: NullableId) =>
+      [...queryKeys.user.all(userId), "profile"] as const,
     settings: (userId: NullableId) =>
       [...queryKeys.user.all(userId), "settings"] as const,
   },

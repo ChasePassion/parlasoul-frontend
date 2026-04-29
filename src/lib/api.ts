@@ -105,7 +105,12 @@ export async function getCurrentUser() {
     throw new Error(response.error.message || "获取用户信息失败");
   }
 
-  return mapBetterAuthSessionToUser(response.data);
+  const sessionUser = mapBetterAuthSessionToUser(response.data);
+  if (!sessionUser) {
+    return null;
+  }
+
+  return apiService.getMyProfile();
 }
 
 export async function createDodoCheckoutSession(params: {
@@ -176,6 +181,7 @@ export const listWechatPaymentOrders = apiService.listWechatPaymentOrders.bind(a
 
 // 用户相关
 export const uploadFile = apiService.uploadFile.bind(apiService);
+export const getMyProfile = apiService.getMyProfile.bind(apiService);
 export const updateUserProfile = apiService.updateUserProfile.bind(apiService);
 export const getMySettings = apiService.getMySettings.bind(apiService);
 export const updateMySettings = apiService.updateMySettings.bind(apiService);
