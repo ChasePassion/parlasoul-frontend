@@ -91,10 +91,9 @@ export default function DiscoverPage() {
       avatar_urls: character.avatar_urls ?? null,
       system_prompt: character.system_prompt,
       greeting_message: character.greeting_message,
-      tags: character.tags,
       visibility: character.visibility,
       creator_id: character.creator_id,
-      creator_username: character.creator_id === user?.id ? user?.username : "Creator",
+      creator_username: character.creator_username,
       voice_provider: character.voice_provider,
       voice_model: character.voice_model,
       voice_provider_voice_id: character.voice_provider_voice_id,
@@ -107,7 +106,7 @@ export default function DiscoverPage() {
       effective_llm_model: character.effective_llm_model,
       distinct_user_count: character.distinct_user_count,
     }));
-  }, [discoverCharacters, user?.id, user?.username]);
+  }, [discoverCharacters]);
 
   // 加载状态
   if (isLoading) {

@@ -274,7 +274,6 @@ export interface CreateCharacterRequest {
   system_prompt: string;
   greeting_message?: string;
   avatar_image_key?: string | null;
-  tags?: string[];
   visibility?: CharacterVisibility;
   voice_provider: string;
   voice_model: string;
@@ -302,8 +301,8 @@ export interface CharacterResponse {
   uses_system_default_llm?: boolean;
   effective_llm_provider?: LLMProvider;
   effective_llm_model?: string;
-  tags?: string[];
-  creator_id: string;
+  creator_id: string | null;
+  creator_username?: string | null;
   status: CharacterStatus;
   unpublished_at?: string | null;
   visibility: CharacterVisibility;
@@ -324,11 +323,11 @@ export interface CharacterBrief {
   voice_provider_voice_id?: string;
   voice_source_type?: VoiceSourceType;
   voice?: VoiceSelectableItem | null;
-  tags?: string[];
   status: CharacterStatus;
   unpublished_at?: string | null;
   visibility: CharacterVisibility;
   creator_id?: string | null;
+  creator_username?: string | null;
   interaction_count: number;
 }
 
@@ -519,7 +518,6 @@ export interface UpdateCharacterRequest {
   voice_model?: string;
   voice_provider_voice_id?: string;
   voice_source_type?: VoiceSourceType;
-  tags?: string[];
   visibility?: CharacterVisibility;
   llm_provider?: LLMProvider | null;
   llm_model?: string | null;

@@ -65,9 +65,9 @@ export default function ProfilePage() {
     const characters = useMemo<Character[]>(
         () =>
             (charactersQuery.data ?? []).map((c) =>
-                mapCharacterToSidebar(c, { creatorUsername: user?.username }),
+                mapCharacterToSidebar(c),
             ),
-        [charactersQuery.data, user?.username],
+        [charactersQuery.data],
     );
     const voices = useMemo<VoiceCardDisplay[]>(
         () =>

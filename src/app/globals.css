@@ -770,19 +770,11 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   --cc-text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   --cc-text-shadow-light: 0 1px 3px rgba(0, 0, 0, 0.3);
 
-  /* 标签 */
-  --cc-tag-bg: rgba(0, 0, 0, 0.35);
-  --cc-tag-text: rgba(255, 255, 255, 0.9);
-  --cc-tag-border: rgba(255, 255, 255, 0.06);
-  --cc-tag-overflow-bg: rgba(10, 10, 15, 0.92);
-  --cc-tag-overflow-border: rgba(255, 255, 255, 0.12);
-  --cc-tag-overflow-hover: rgba(255, 255, 255, 0.16);
-
-  /* 菜单按钮 */
-  --cc-menu-btn-bg: rgba(255, 255, 255, 0.1);
-  --cc-menu-btn-border: rgba(255, 255, 255, 0.1);
-  --cc-menu-btn-text: rgba(255, 255, 255, 0.9);
-  --cc-menu-btn-bg-hover: rgba(255, 255, 255, 0.2);
+  /* 卡片菜单触发按钮 */
+  --cc-card-menu-trigger-bg: rgba(0, 0, 0, 0.35);
+  --cc-card-menu-trigger-text: rgba(255, 255, 255, 0.9);
+  --cc-card-menu-trigger-border: rgba(255, 255, 255, 0.12);
+  --cc-card-menu-trigger-hover-bg: rgba(255, 255, 255, 0.16);
 
   /* 下拉菜单 */
   --cc-dropdown-bg: #ffffff;

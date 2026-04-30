@@ -315,7 +315,6 @@
   "system_prompt": "...",
   "greeting_message": "...",
   "avatar_image_key": "images/avatars/characters/{user_id}/{image_id}",
-  "tags": ["陪练", "日常"],
   "visibility": "PUBLIC",
   "voice_provider": "dashscope",
   "voice_model": "qwen3-tts-instruct-flash-realtime",
@@ -330,7 +329,6 @@
 
 - `name`：`1-20`
 - `description`：`1-35`
-- `tags`：最多 `3` 个，每个 tag 最长 `24`
 - `avatar_image_key` 必须来自 `/v1/uploads/complete`，并且前缀归属当前用户的角色头像空间
 - `llm_provider` 与 `llm_model` 必须同时出现或同时为 `null`
 - `voice_source_type=clone` 时，后端会校验该音色是否属于当前用户且已就绪
@@ -670,9 +668,9 @@
   - `greeting_message`
   - `avatar_image_key`
   - `avatar_urls`
-  - `tags`
   - `visibility`
   - `creator_id`
+  - `creator_username`
   - `status`
   - `unpublished_at`
   - `interaction_count`

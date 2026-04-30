@@ -4,9 +4,7 @@ import Image from "next/image";
 import type { Character } from "./Sidebar";
 import { MoreHorizontal } from "lucide-react";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
-import { CHARACTER_CARD_VISIBLE_TAGS, normalizeCharacterTag } from "@/lib/character-tags";
 import { cn } from "@/lib/utils";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -27,11 +25,6 @@ export default function CharacterCard({
   onUnpublish,
   disableHoverFloat = false,
 }: CharacterCardProps) {
-  const tags = (character.tags ?? [])
-    .map((tag) => normalizeCharacterTag(tag))
-    .filter((tag) => tag.length > 0);
-  const visibleTags = tags.slice(0, CHARACTER_CARD_VISIBLE_TAGS);
-  const hiddenTags = tags.slice(CHARACTER_CARD_VISIBLE_TAGS);
   const isUnpublished = character.status === "UNPUBLISHED";
 
   return (
@@ -66,83 +59,36 @@ export default function CharacterCard({
           <Image src={character.avatar} alt={character.name} fill className="object-cover" unoptimized />
         </div>
 
-        <div className="flex-1 flex flex-col justify-center min-w-0">
-          <div className="flex justify-between items-center mb-1.5 gap-2">
-            <div className="min-w-0 flex items-center gap-2">
-              <h3 className="text-base font-bold text-white m-0 whitespace-nowrap overflow-hidden text-ellipsis drop-shadow-(--cc-text-shadow) tracking-wide">
-                {character.name}
-              </h3>
-              {isUnpublished ? (
-                <span className="shrink-0 rounded-md bg-amber-100/90 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-700">
-                  已下架
-                </span>
-              ) : null}
-            </div>
-            <span className="text-[13px] font-medium shrink-0 inline-flex items-center gap-1 leading-none text-(--cc-text-secondary)">
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="min-w-0 flex items-center gap-2 mb-0.5">
+            <h3 className="text-base font-bold text-white m-0 whitespace-nowrap overflow-hidden text-ellipsis drop-shadow-(--cc-text-shadow) tracking-wide">
+              {character.name}
+            </h3>
+            {isUnpublished ? (
+              <span className="shrink-0 rounded-md bg-amber-100/90 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-700">
+                已下架
+              </span>
+            ) : null}
+          </div>
+
+          <p className="min-h-3.5 text-[11px] text-white/50 m-0 mb-1 whitespace-nowrap overflow-hidden text-ellipsis drop-shadow-(--cc-text-shadow-light)">
+            {character.creator_username ? `作者：${character.creator_username}` : null}
+          </p>
+
+          <p className="text-xs text-(--cc-text-muted) leading-5 m-0 line-clamp-2 drop-shadow-(--cc-text-shadow-light)">
+            {character.description}
+          </p>
+
+          <div className="mt-auto flex items-center gap-1">
+            <SpriteIcon name="chat-bubble" size={14} className="text-(--cc-text-secondary)" />
+            <span className="text-[13px] font-medium leading-none text-(--cc-text-secondary)">
               {character.distinct_user_count != null
                 ? character.distinct_user_count >= 1000
                   ? `${(character.distinct_user_count / 1000).toFixed(1)}k`
                   : String(character.distinct_user_count)
                 : '-'}
-              <SpriteIcon name="chat-bubble" size={14} className="text-current" />
             </span>
           </div>
-
-          <p className="text-xs text-(--cc-text-muted) leading-5 m-0 mb-1.5 line-clamp-2 drop-shadow-(--cc-text-shadow-light)">
-            {character.description}
-          </p>
-
-          {tags.length > 0 && (
-            <div className={cn("flex gap-2 mt-auto min-w-0 items-center flex-nowrap", showMenu && "pr-10")}>
-              {visibleTags.map((tag) => (
-                <span
-                  key={tag}
-                  className="bg-(--cc-tag-bg) text-(--cc-tag-text) text-[11px] font-semibold py-1 px-[10px] rounded-md tracking-wide shadow-[inset_0_1px_0_var(--cc-tag-border)] inline-flex items-center min-w-0 max-w-[112px] shrink"
-                  title={tag}
-                >
-                  <span className="block overflow-hidden whitespace-nowrap text-ellipsis">{tag}</span>
-                </span>
-              ))}
-
-              {hiddenTags.length > 0 && (
-                <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="border border-(--cc-tag-overflow-border) cursor-pointer shrink-0 bg-(--cc-tag-bg) text-(--cc-tag-text) text-[11px] font-semibold py-1 px-[10px] rounded-md tracking-wide hover:bg-(--cc-tag-overflow-hover) transition-colors"
-                        aria-label={`查看全部标签，共 ${tags.length} 个`}
-                      >
-                        +{hiddenTags.length}
-                      </button>
-                    </PopoverTrigger>
-
-                    <PopoverContent
-                      side="top"
-                      align="start"
-                      sideOffset={10}
-                      className="min-w-[180px] max-w-[220px] p-[10px] rounded-[14px] bg-(--cc-tag-overflow-bg) border border-(--cc-tag-overflow-border) shadow-[0_14px_36px_rgba(0,0,0,0.28)] backdrop-blur-md z-100"
-                    >
-                      <p className="m-0 mb-2 text-[11px] font-bold text-(--cc-text-secondary) tracking-wider">
-                        全部标签
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {tags.map((tag) => (
-                          <span
-                            key={`overflow-${tag}`}
-                            className="bg-(--cc-tag-bg) text-(--cc-tag-text) text-[11px] font-semibold py-1 px-[10px] rounded-md tracking-wide shadow-[inset_0_1px_0_var(--cc-tag-border)] inline-flex items-center min-w-0 max-w-full shrink"
-                            title={tag}
-                          >
-                            <span className="block overflow-hidden whitespace-nowrap text-ellipsis">{tag}</span>
-                          </span>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </CardContent>
 
@@ -150,7 +96,7 @@ export default function CharacterCard({
         <div className="absolute bottom-3 right-3 z-40" onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="h-[24px] w-[32px] flex items-center justify-center rounded-md bg-(--cc-tag-bg) text-(--cc-tag-text) border border-(--cc-tag-overflow-border) cursor-pointer transition-colors hover:bg-(--cc-tag-overflow-hover)">
+              <button className="h-[24px] w-[32px] flex items-center justify-center rounded-md bg-(--cc-card-menu-trigger-bg) text-(--cc-card-menu-trigger-text) border border-(--cc-card-menu-trigger-border) cursor-pointer transition-colors hover:bg-(--cc-card-menu-trigger-hover-bg)">
                 <MoreHorizontal className="w-4 h-4" />
               </button>
             </DropdownMenuTrigger>

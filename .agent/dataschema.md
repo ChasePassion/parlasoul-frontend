@@ -2,7 +2,7 @@
 
 本文档由脚本直接连接 PostgreSQL 实例并基于实时元数据生成。
 
-- 生成时间: `2026-04-29 04:05:59 北京时间`
+- 生成时间: `2026-04-30 14:13:07 北京时间`
 - 目标数据库: `localhost:5432/role_play_mem`
 - Schema: `public`
 - 表数量: `22`
@@ -379,7 +379,6 @@ sequenceDiagram
 | `greeting_message` | 首次建 chat 时自动插入的开场白。 | `create_chat` 时创建第一条主动消息。 |
 | `avatar_image_key` | R2 中角色头像对象 key 前缀，可推导 `/media/*/*.avif` 变体 URL。 | 角色创建 / 编辑新上传后写入，市场、聊天、成长统计和分享卡读取。 |
 | `visibility` | 角色可见性，决定市场是否可见。 | 市场查询、详情页权限。 |
-| `tags` | 角色标签。 | 市场卡片和搜索辅助展示。 |
 | `interaction_count` | 角色互动计数，近似反映聊天生成完成次数。 | 聊天成功 finalize 后递增，用于市场热度。 |
 | `creator_id` | 角色创建者。 | 个人中心、权限控制、创作者主页。 |
 | `voice_provider` | 当前绑定音色的 provider。 | 聊天 TTS、角色详情展示。 |
@@ -990,7 +989,6 @@ sequenceDiagram
 | `description` | `text` | NOT NULL | - | - | - |
 | `greeting_message` | `text` | NULL | - | - | - |
 | `visibility` | `visibility_t` | NOT NULL | 'PUBLIC'::visibility_t | - | - |
-| `tags` | `text[]` | NOT NULL | ARRAY[]::text[] | - | - |
 | `interaction_count` | `bigint` | NOT NULL | 0 | - | - |
 | `creator_id` | `uuid` | NOT NULL | - | - | - |
 | `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
@@ -1018,8 +1016,6 @@ sequenceDiagram
   定义: `CHECK (status::text = ANY (ARRAY['ACTIVE'::character varying, 'UNPUBLISHED'::character varying]::text[]))`
 - `characters_voice_source_type_check` [CHECK]
   定义: `CHECK (voice_source_type::text = ANY (ARRAY['system'::character varying, 'clone'::character varying, 'designed'::character varying, 'imported'::character varying]::text[]))`
-- `chk_characters_tags_len` [CHECK]
-  定义: `CHECK (COALESCE(array_length(tags, 1), 0) <= 3)`
 
 ### 外键出站引用
 
@@ -1054,9 +1050,6 @@ sequenceDiagram
 - `idx_characters_creator`
   大小: `16 kB`
   定义: `CREATE INDEX idx_characters_creator ON public.characters USING btree (creator_id)`
-- `idx_characters_tags_gin`
-  大小: `24 kB`
-  定义: `CREATE INDEX idx_characters_tags_gin ON public.characters USING gin (tags)`
 - `idx_characters_visibility_interactions`
   大小: `16 kB`
   定义: `CREATE INDEX idx_characters_visibility_interactions ON public.characters USING btree (visibility, interaction_count DESC)`

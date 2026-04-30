@@ -28,12 +28,11 @@ export interface Character {
     avatar_urls?: AvatarUrls | null;
     system_prompt?: string;
     greeting_message?: string;
-    tags?: string[];
     status?: CharacterStatus;
     unpublished_at?: string | null;
     visibility?: CharacterVisibility;
-    creator_id?: string;
-    creator_username?: string;
+    creator_id?: string | null;
+    creator_username?: string | null;
     llm_provider?: LLMProvider | null;
     llm_model?: string | null;
     uses_system_default_llm?: boolean;

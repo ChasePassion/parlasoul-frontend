@@ -16,11 +16,11 @@ interface CharacterLike {
     greeting_message?: string;
     avatar_image_key?: string | null;
     avatar_urls?: AvatarUrls | null;
-    tags?: string[];
     status?: CharacterStatus;
     unpublished_at?: string | null;
     visibility?: CharacterVisibility;
     creator_id?: string | null;
+    creator_username?: string | null;
     llm_provider?: LLMProvider | null;
     llm_model?: string | null;
     uses_system_default_llm?: boolean;
@@ -34,13 +34,8 @@ interface CharacterLike {
     distinct_user_count?: number;
 }
 
-interface MapCharacterOptions {
-    creatorUsername?: string;
-}
-
 export function mapCharacterToSidebar(
     source: CharacterLike,
-    options: MapCharacterOptions = {}
 ): Character {
     return {
         id: source.id,
@@ -51,12 +46,11 @@ export function mapCharacterToSidebar(
         avatar_urls: source.avatar_urls ?? null,
         system_prompt: source.system_prompt,
         greeting_message: source.greeting_message,
-        tags: source.tags,
         status: source.status,
         unpublished_at: source.unpublished_at ?? null,
         visibility: source.visibility,
-        creator_id: source.creator_id ?? undefined,
-        creator_username: options.creatorUsername,
+        creator_id: source.creator_id ?? null,
+        creator_username: source.creator_username ?? null,
         llm_provider: source.llm_provider,
         llm_model: source.llm_model,
         uses_system_default_llm: source.uses_system_default_llm,

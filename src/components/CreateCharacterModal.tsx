@@ -22,19 +22,12 @@ import ModelSelector from "./ModelSelector";
 import { getErrorMessage } from "@/lib/error-map";
 import { logger, Module, CharacterEvent } from "@/lib/logger";
 import type { Character } from "./Sidebar";
-import {
-    CHARACTER_TAG_LIMIT,
-    CHARACTER_TAG_MAX_LENGTH,
-    hasCharacterTag,
-    normalizeCharacterTag,
-} from "@/lib/character-tags";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { X, Plus, Loader2, Users } from "lucide-react";
+import { Plus, Loader2, Users } from "lucide-react";
 import {
     useMyCharactersQuery,
     useVoiceDetailQuery,
@@ -48,15 +41,6 @@ interface CreateCharacterModalProps {
     character?: Character;
     mode?: 'create' | 'edit';
 }
-
-const TAG_COLORS = [
-    { name: "blue", bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-200" },
-    { name: "pink", bg: "bg-pink-50", text: "text-pink-600", border: "border-pink-200" },
-    { name: "purple", bg: "bg-purple-50", text: "text-purple-600", border: "border-purple-200" },
-    { name: "cyan", bg: "bg-cyan-50", text: "text-cyan-600", border: "border-cyan-200" },
-    { name: "amber", bg: "bg-amber-50", text: "text-amber-600", border: "border-amber-200" },
-    { name: "green", bg: "bg-green-50", text: "text-green-600", border: "border-green-200" },
-];
 
 const DEFAULT_SYSTEM_VOICE_MODEL = "qwen3-tts-instruct-flash-realtime";
 
@@ -97,8 +81,6 @@ export default function CreateCharacterModal({
     const [description, setDescription] = useState("");
     const [greetingMessage, setGreetingMessage] = useState("");
     const [systemPrompt, setSystemPrompt] = useState("");
-    const [tagInput, setTagInput] = useState("");
-    const [selectedTags, setSelectedTags] = useState<{ label: string; color: typeof TAG_COLORS[0] }[]>([]);
     const [visibility, setVisibility] = useState<CharacterVisibility>("PUBLIC");
     const [avatarImageKey, setAvatarImageKey] = useState<string | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -168,25 +150,12 @@ export default function CreateCharacterModal({
             setVoiceUsageCharacters([]);
             setVoiceUsageCharacterIds([]);
             setVoiceUsageVoiceId(null);
-            setTagInput("");
             setError(null);
-
-            if (character.tags && character.tags.length > 0) {
-                const mappedTags = character.tags.map((tag, index) => ({
-                    label: normalizeCharacterTag(tag),
-                    color: TAG_COLORS[index % TAG_COLORS.length]
-                }));
-                setSelectedTags(mappedTags);
-            } else {
-                setSelectedTags([]);
-            }
         } else if (isOpen && mode === 'create') {
             setName("");
             setDescription("");
             setGreetingMessage("");
             setSystemPrompt("");
-            setTagInput("");
-            setSelectedTags([]);
             setVisibility("PUBLIC");
             setAvatarImageKey(null);
             setAvatarPreview(null);
@@ -294,47 +263,6 @@ export default function CreateCharacterModal({
         }
     };
 
-    const handleAddTag = () => {
-        const normalizedTag = normalizeCharacterTag(tagInput);
-        const selectedLabels = selectedTags.map((tag) => tag.label);
-
-        if (!normalizedTag) {
-            setError("标签输入不能为空");
-            return;
-        }
-
-        if (normalizedTag.length > CHARACTER_TAG_MAX_LENGTH) {
-            setError(`标签长度必须在 1-${CHARACTER_TAG_MAX_LENGTH} 个字符之间`);
-            return;
-        }
-
-        if (selectedTags.length >= CHARACTER_TAG_LIMIT) {
-            setError(`最多只能设置 ${CHARACTER_TAG_LIMIT} 个标签`);
-            return;
-        }
-
-        if (hasCharacterTag(selectedLabels, normalizedTag)) {
-            setError("此标签已经添加过了");
-            return;
-        }
-
-        const colorIndex = selectedTags.length % TAG_COLORS.length;
-        setSelectedTags(prev => [...prev, { label: normalizedTag, color: TAG_COLORS[colorIndex] }]);
-        setTagInput("");
-        setError(null);
-    };
-
-    const handleRemoveTag = (tagLabel: string) => {
-        setSelectedTags(prev => prev.filter(tag => tag.label !== tagLabel));
-    };
-
-    const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            handleAddTag();
-        }
-    };
-
     const handleSubmit = async () => {
         if (!name.trim()) {
             setError("请填写角色名称");
@@ -399,7 +327,6 @@ export default function CreateCharacterModal({
                 system_prompt: systemPrompt.trim(),
                 greeting_message: greetingMessage.trim() || undefined,
                 avatar_image_key: avatarImageKey || undefined,
-                tags: selectedTags.length > 0 ? selectedTags.map(tag => tag.label) : undefined,
                 visibility: visibility,
                 voice_provider: voiceProvider,
                 voice_model: voiceModel,
@@ -440,7 +367,6 @@ export default function CreateCharacterModal({
                 setDescription("");
                 setGreetingMessage("");
                 setSystemPrompt("");
-                setSelectedTags([]);
                 setVisibility("PUBLIC");
                 setAvatarImageKey(null);
                 setAvatarPreview(null);
@@ -590,60 +516,6 @@ export default function CreateCharacterModal({
                             rows={4}
                             className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:border-gray-200! transition-all resize-none [&::selection]:bg-blue-500 [&::selection]:text-white"
                         />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium text-gray-700">
-                            添加标签（最多{CHARACTER_TAG_LIMIT}个）
-                        </Label>
-
-                        <div className="flex gap-2">
-                            <div className="flex-1 relative">
-                                <Input
-                                    type="text"
-                                    value={tagInput}
-                                    onChange={(e) => setTagInput(e.target.value)}
-                                    onKeyDown={handleTagInputKeyDown}
-                                    placeholder="输入标签名称..."
-                                    maxLength={CHARACTER_TAG_MAX_LENGTH}
-                                    disabled={selectedTags.length >= CHARACTER_TAG_LIMIT}
-                                    className="w-full px-4 py-2.5 pr-12 border border-gray-200 rounded-lg focus-visible:outline-none focus-visible:ring-0 focus-visible:border-gray-200! transition-all disabled:bg-gray-100 disabled:cursor-not-allowed [&::selection]:bg-blue-500 [&::selection]:text-white"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={handleAddTag}
-                                    disabled={selectedTags.length >= CHARACTER_TAG_LIMIT || !tagInput.trim()}
-                                    className="absolute right-[2px] top-1/2 -translate-y-1/2 w-9 h-9 rounded-lg bg-transparent hover:bg-gray-100 hover:text-gray-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center"
-                                >
-                                    <Plus className="w-5 h-5 text-gray-700" />
-                                </button>
-                            </div>
-                        </div>
-
-                        <p className="text-xs text-gray-500 mt-1">
-                            最长 {CHARACTER_TAG_MAX_LENGTH} 个字符。角色卡片里会自动截断过长标签，并把剩余标签折叠为 +N。
-                        </p>
-
-                        {selectedTags.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                                {selectedTags.map((tag, index) => (
-                                    <Badge
-                                        key={index}
-                                        variant="outline"
-                                        className={`${tag.color.bg} ${tag.color.text} ${tag.color.border} px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 border`}
-                                    >
-                                        <span>#{tag.label}</span>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveTag(tag.label)}
-                                            className="hover:opacity-70 transition-opacity"
-                                        >
-                                            <X className="w-3.5 h-3.5" />
-                                        </button>
-                                    </Badge>
-                                ))}
-                            </div>
-                        )}
                     </div>
 
                     <div className="py-2 space-y-2">
