@@ -382,9 +382,17 @@ export default function ChatThread({
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
 
+        const messageEl = range.startContainer instanceof HTMLElement
+            ? range.startContainer.closest('[data-message-id]')
+            : range.startContainer.parentElement?.closest('[data-message-id]');
+        const messageId = messageEl?.getAttribute('data-message-id');
+        const matchedMessage = messageId
+            ? messages.find(m => m.id === messageId)
+            : null;
+
         showSelectionButton({
             text: selectedText,
-            contextText: range.commonAncestorContainer.textContent?.trim() || null,
+            contextText: matchedMessage?.content ?? null,
             top: rect.bottom + 10,
             left: rect.left + rect.width / 2,
             anchorRect: {
@@ -396,7 +404,7 @@ export default function ChatThread({
                 height: rect.height,
             },
         });
-    }, [hideSelectionButton, showSelectionButton]);
+    }, [hideSelectionButton, showSelectionButton, messages]);
 
     const handleOpenWordCard = useCallback(async () => {
         const selectionButton = selectionButtonDataRef.current;
