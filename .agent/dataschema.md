@@ -2,7 +2,7 @@
 
 本文档由脚本直接连接 PostgreSQL 实例并基于实时元数据生成。
 
-- 生成时间: `2026-04-30 14:13:07 北京时间`
+- 生成时间: `2026-04-30 18:15:29 北京时间`
 - 目标数据库: `localhost:5432/role_play_mem`
 - Schema: `public`
 - 表数量: `22`
@@ -361,7 +361,7 @@ sequenceDiagram
 #### [characters](#table-characters)
 
 - 表职责
-  - 保存角色的人设、展示信息、语音绑定和 LLM 路由绑定。
+  - 保存角色的人设、展示信息、语音绑定、LLM 预设和对话风格。
 - 表协作
   - 由 `CharacterService` 创建与更新。
   - 与 [`voice_profiles`](#table-voice_profiles) 通过一组绑定键协作，而不是中间绑定表。
@@ -385,8 +385,8 @@ sequenceDiagram
 | `voice_model` | 当前绑定音色的运行时模型。 | TTS 调用时直接使用。 |
 | `voice_provider_voice_id` | 当前绑定音色在 provider 侧的 voice id。 | TTS 调用与角色绑定判断。 |
 | `voice_source_type` | 当前绑定音色来源类型。 | 区分 system / clone 等来源。 |
-| `llm_provider` | 角色专属 LLM provider；为空时走系统默认路由。 | 聊天生成路由解析。 |
-| `llm_model` | 角色专属 LLM model。 | 聊天生成路由解析。 |
+| `llm_preset_id` | 产品化 LLM 预设，当前为 `free/flagship`；`flagship` 需要付费权益。 | 角色创建 / 编辑写入，聊天生成时解析实际 provider/model。 |
+| `dialogue_style_id` | 对话风格预设，当前为 `true_nature/spring_breeze/free_spirit/clear_inquiry/poetic_reserve/proud_resolve`。 | 角色创建 / 编辑写入，聊天、regen/edit、实时回复构造 system prompt 时注入软风格约束。 |
 | `status` | 角色生命周期状态，当前重点是 `ACTIVE/UNPUBLISHED`。 | 下架后市场不可见，但历史聊天保留。 |
 | `unpublished_at` | 下架时间。 | 只读历史与运营审计。 |
 | `created_at` | 创建时间。 | 排序、审计。 |
@@ -998,11 +998,11 @@ sequenceDiagram
 | `voice_model` | `character varying(120)` | NOT NULL | 'qwen3-tts-instruct-flash-realtime'::character varying | - | - |
 | `voice_provider_voice_id` | `character varying(191)` | NOT NULL | 'Cherry'::character varying | - | - |
 | `voice_source_type` | `character varying(20)` | NOT NULL | 'system'::character varying | - | - |
-| `llm_provider` | `character varying(40)` | NULL | - | - | - |
-| `llm_model` | `character varying(120)` | NULL | - | - | - |
 | `status` | `character varying(20)` | NOT NULL | 'ACTIVE'::character varying | - | - |
 | `unpublished_at` | `timestamp with time zone` | NULL | - | - | - |
 | `avatar_image_key` | `text` | NULL | - | - | - |
+| `llm_preset_id` | `character varying(40)` | NOT NULL | 'free'::character varying | - | - |
+| `dialogue_style_id` | `character varying(40)` | NOT NULL | 'true_nature'::character varying | - | - |
 
 ### 约束
 
@@ -1010,8 +1010,10 @@ sequenceDiagram
   定义: `PRIMARY KEY (id)`
 - `characters_creator_id_fkey` [FOREIGN KEY]
   定义: `FOREIGN KEY (creator_id) REFERENCES users(id)`
-- `characters_llm_binding_pair_check` [CHECK]
-  定义: `CHECK (llm_provider IS NULL AND llm_model IS NULL OR llm_provider IS NOT NULL AND llm_model IS NOT NULL)`
+- `characters_dialogue_style_id_check` [CHECK]
+  定义: `CHECK (dialogue_style_id::text = ANY (ARRAY['clear_inquiry'::character varying, 'free_spirit'::character varying, 'poetic_reserve'::character varying, 'proud_resolve'::character varying, 'spring_breeze'::character varying, 'true_nature'::character varying]::text[]))`
+- `characters_llm_preset_id_check` [CHECK]
+  定义: `CHECK (llm_preset_id::text = ANY (ARRAY['free'::character varying, 'flagship'::character varying]::text[]))`
 - `characters_status_check` [CHECK]
   定义: `CHECK (status::text = ANY (ARRAY['ACTIVE'::character varying, 'UNPUBLISHED'::character varying]::text[]))`
 - `characters_voice_source_type_check` [CHECK]

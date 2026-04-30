@@ -7,7 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { CreditCard } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useGrowth } from "@/lib/growth-context";
-import type { AvatarUrls, CharacterStatus, CharacterVisibility, LLMProvider } from "@/lib/api";
+import type { AvatarUrls, CharacterStatus, CharacterVisibility } from "@/lib/api";
 
 import { SettingsModal } from "./SettingsModal";
 import {
@@ -33,11 +33,8 @@ export interface Character {
     visibility?: CharacterVisibility;
     creator_id?: string | null;
     creator_username?: string | null;
-    llm_provider?: LLMProvider | null;
-    llm_model?: string | null;
-    uses_system_default_llm?: boolean;
-    effective_llm_provider?: LLMProvider;
-    effective_llm_model?: string;
+    llm_preset_id?: string | null;
+    dialogue_style_id?: string | null;
     voice_provider?: string;
     voice_model?: string;
     voice_provider_voice_id?: string;

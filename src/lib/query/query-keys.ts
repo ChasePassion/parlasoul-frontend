@@ -152,12 +152,6 @@ export const queryKeys = {
       ] as const,
   },
 
-  llm: {
-    catalog: () => [...queryKeys.all, "llm", "catalog"] as const,
-    search: (modelId: string) =>
-      [...queryKeys.all, "llm", "search", modelId] as const,
-  },
-
   growth: {
     all: (userId: NullableId) =>
       [...queryKeys.all, "growth", scopedId(userId)] as const,

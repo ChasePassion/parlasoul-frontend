@@ -207,10 +207,6 @@ export const deleteVoiceById = apiService.deleteVoiceById.bind(apiService);
 export const getVoicePreviewAudioStream =
   apiService.getVoicePreviewAudioStream.bind(apiService);
 
-// Phase 4: LLM模型相关
-export const getLLMModelCatalog = apiService.getLLMModelCatalog.bind(apiService);
-export const searchLLMModels = apiService.searchLLMModels.bind(apiService);
-
 // Phase 3: Learning相关
 export const createWordCard = apiService.createWordCard.bind(apiService);
 export const createReplyCard = apiService.createReplyCard.bind(apiService);
@@ -290,11 +286,8 @@ export type {
   VoiceCatalogResponse,
   VoiceProfileUpdate,
   // Phase 4 types
-  LLMProvider,
-  CharacterLLMRoute,
-  LLMModelCatalogItem,
-  LLMModelCatalogResponse,
-  LLMModelSearchResponse,
+  LLMPresetId,
+  DialogueStyleId,
   // Phase 3 types
   LearningAssistantContextMessage,
   LearningAssistantStreamRequest,

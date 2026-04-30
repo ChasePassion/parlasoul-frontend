@@ -232,7 +232,7 @@
 | `GET` | `/v1/payments/orders/{order_id}` | 必需 | 账单页 | 查看单笔一次性订单 |
 | `GET` | `/v1/payments/orders?channel={channel}&skip={skip}&limit={limit}` | 必需 | 账单页 | 当前用户订单列表 |
 
-### 4.9 Memory、模型目录、Webhook、基础设施
+### 4.9 Memory、Webhook、基础设施
 
 | 方法 | 路径 | 鉴权 | 当前消费者 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -241,8 +241,6 @@
 | `DELETE` | `/v1/memories/reset` | 必需 | 当前正式页面未直接使用 | 重置角色 memory |
 | `POST` | `/v1/memories/consolidate` | 必需 | 当前正式页面未直接使用 | 触发 consolidation |
 | `DELETE` | `/v1/memories/{memory_id}?character_id={character_id}` | 必需 | 当前正式页面未直接使用 | 删除 memory |
-| `GET` | `/v1/llm-models/catalog` | 必需 | `ModelSelector` | 角色可选模型目录 |
-| `GET` | `/v1/llm-models/search?model_id={model_id}` | 必需 | 当前正式页面未直接使用 | 模型精确搜索 |
 | `POST` | `/v1/webhooks/dodo/subscriptions` | 无需 | Dodo webhook | 订阅 webhook |
 | `POST` | `/v1/webhooks/dodo/payments` | 无需 | Dodo webhook | 一次性支付 webhook |
 | `GET` | `/health` | 无需 | 基础设施 | 健康检查 |
@@ -319,8 +317,8 @@
   "voice_model": "qwen3-tts-instruct-flash-realtime",
   "voice_provider_voice_id": "Cherry",
   "voice_source_type": "system",
-  "llm_provider": "openrouter",
-  "llm_model": "openai/gpt-4.1-mini"
+  "llm_preset_id": "free",
+  "dialogue_style_id": "spring_breeze"
 }
 ```
 
@@ -329,7 +327,8 @@
 - `name`：`1-20`
 - `description`：`1-35`
 - `avatar_image_key` 必须来自 `/v1/uploads/complete`，并且前缀归属当前用户的角色头像空间
-- `llm_provider` 与 `llm_model` 必须同时出现或同时为 `null`
+- `llm_preset_id` 可选值：`free` / `flagship`，默认 `free`；`flagship` 需要付费权益
+- `dialogue_style_id` 可选值：`true_nature` / `spring_breeze` / `free_spirit` / `clear_inquiry` / `poetic_reserve` / `proud_resolve`，默认 `true_nature`
 - `voice_source_type=clone` 时，后端会校验该音色是否属于当前用户且已就绪
 
 ### 5.5 更新角色
@@ -340,7 +339,7 @@
 
 - 所有字段可选
 - `description` 仍受 `35` 字符上限约束
-- 清空角色级 LLM 绑定时，需要同时传 `llm_provider=null` 和 `llm_model=null`
+- `llm_preset_id` 和 `dialogue_style_id` 不支持置空；省略表示保持不变
 
 ### 5.6 创建聊天
 
@@ -674,12 +673,9 @@
   - `unpublished_at`
   - `interaction_count`
   - `distinct_user_count`
-- LLM 路由：
-  - `llm_provider`
-  - `llm_model`
-  - `uses_system_default_llm`
-  - `effective_llm_provider`
-  - `effective_llm_model`
+- 模型与风格：
+  - `llm_preset_id`
+  - `dialogue_style_id`
 - 音色绑定：
   - `voice_provider`
   - `voice_model`
@@ -868,7 +864,6 @@
   - `PATCH /v1/voices/{voice_id}`
   - `DELETE /v1/voices/{voice_id}`
   - `GET /v1/voices/{voice_id}/preview/audio`
-  - `GET /v1/llm-models/catalog`
 
 ### 8.6 定价与账单
 
@@ -904,7 +899,6 @@
 - `DELETE /v1/memories/reset`
 - `POST /v1/memories/consolidate`
 - `DELETE /v1/memories/{memory_id}`
-- `GET /v1/llm-models/search`
 
 ## 10. 当前实现约束
 
@@ -912,7 +906,7 @@
 - 前端进入角色聊天时，总是先 `GET /v1/chats/recent`，只有 recent 不存在时才 `POST /v1/chats`。
 - 收藏主链路以 `reply_card / word_card / feedback_card` 为准，不再使用旧的 `sentence_card / knowledge_card`。
 - `VoiceSelector` 当前使用 `GET /v1/voices/catalog` 全量目录，再在前端本地筛选。
-- `ModelSelector` 当前使用 `GET /v1/llm-models/catalog`，没有走 `search` 接口。
+- `PresetSelector` 与 `DialogueStyleSelector` 使用前端本地枚举，后端只接收 `llm_preset_id` 与 `dialogue_style_id`。
 - `CreateVoiceCloneModal` 当前只发送克隆主流程必需字段；后端仍保留 `provider / language_hint / idempotency_key` 扩展位。
 - `GET /v1/chats/{chat_id}/turns` 后端默认 `limit=20`，但聊天页当前主链路固定请求 `limit=50`。
 - 当前前端通过 `/api/share-card-image` 做远程图片代理和 Redis 缓存；分享卡页面不直接跨域取远程图片。

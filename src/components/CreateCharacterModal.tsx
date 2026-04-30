@@ -13,12 +13,18 @@ import {
     UpdateCharacterRequest,
     CharacterVisibility,
     VoiceSelectableItem,
-    LLMProvider,
 } from "@/lib/api";
 import AvatarCropper from "./AvatarCropper";
 import VoiceSelector from "./voice/VoiceSelector";
 import VoiceUsageManagerDialog from "./voice/VoiceUsageManagerDialog";
-import ModelSelector from "./ModelSelector";
+import PresetSelector from "./PresetSelector";
+import DialogueStyleSelector from "./DialogueStyleSelector";
+import {
+    DEFAULT_DIALOGUE_STYLE_ID,
+    DEFAULT_LLM_PRESET_ID,
+    type LLMPresetId,
+    type DialogueStyleId,
+} from "@/lib/presets";
 import { getErrorMessage } from "@/lib/error-map";
 import { logger, Module, CharacterEvent } from "@/lib/logger";
 import type { Character } from "./Sidebar";
@@ -75,7 +81,7 @@ export default function CreateCharacterModal({
     character,
     mode = 'create'
 }: CreateCharacterModalProps) {
-    const { user, isAuthed } = useAuth();
+    const { user, isAuthed, entitlements } = useAuth();
     const queryClient = useQueryClient();
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
@@ -89,8 +95,8 @@ export default function CreateCharacterModal({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [selectedVoice, setSelectedVoice] = useState<VoiceSelectableItem | null>(null);
-    const [selectedLLMProvider, setSelectedLLMProvider] = useState<LLMProvider | null | undefined>(undefined);
-    const [selectedLLMModel, setSelectedLLMModel] = useState<string | null | undefined>(undefined);
+    const [selectedPresetId, setSelectedPresetId] = useState<LLMPresetId>(DEFAULT_LLM_PRESET_ID);
+    const [selectedStyleId, setSelectedStyleId] = useState<DialogueStyleId>(DEFAULT_DIALOGUE_STYLE_ID);
     const [isVoiceUsageDialogOpen, setIsVoiceUsageDialogOpen] = useState(false);
     const [voiceUsageCharacters, setVoiceUsageCharacters] = useState<CharacterResponse[]>([]);
     const [voiceUsageCharacterIds, setVoiceUsageCharacterIds] = useState<string[]>([]);
@@ -144,8 +150,8 @@ export default function CreateCharacterModal({
             setAvatarImageKey(character.avatar_image_key ?? null);
             setAvatarPreview(character.avatar);
             setSelectedVoice(fallbackVoice);
-            setSelectedLLMProvider(character.llm_provider ?? null);
-            setSelectedLLMModel(character.llm_model ?? null);
+            setSelectedPresetId((character.llm_preset_id as LLMPresetId) ?? DEFAULT_LLM_PRESET_ID);
+            setSelectedStyleId((character.dialogue_style_id as DialogueStyleId) ?? DEFAULT_DIALOGUE_STYLE_ID);
             setIsVoiceUsageDialogOpen(false);
             setVoiceUsageCharacters([]);
             setVoiceUsageCharacterIds([]);
@@ -160,8 +166,8 @@ export default function CreateCharacterModal({
             setAvatarImageKey(null);
             setAvatarPreview(null);
             setSelectedVoice(null);
-            setSelectedLLMProvider(undefined);
-            setSelectedLLMModel(undefined);
+            setSelectedPresetId(DEFAULT_LLM_PRESET_ID);
+            setSelectedStyleId(DEFAULT_DIALOGUE_STYLE_ID);
             setIsVoiceUsageDialogOpen(false);
             setVoiceUsageCharacters([]);
             setVoiceUsageCharacterIds([]);
@@ -332,14 +338,14 @@ export default function CreateCharacterModal({
                 voice_model: voiceModel,
                 voice_provider_voice_id: voiceProviderVoiceId,
                 voice_source_type: voiceSourceType,
-                llm_provider: selectedLLMProvider,
-                llm_model: selectedLLMModel,
+                llm_preset_id: selectedPresetId,
+                dialogue_style_id: selectedStyleId,
             };
 
             let savedCharacter: CharacterResponse;
             logger.info(Module.CHARACTER, CharacterEvent.API_CALLED, `Calling ${mode === "edit" ? "updateCharacter" : "createCharacter"} API`, {
-              llm_provider: selectedLLMProvider,
-              llm_model: selectedLLMModel,
+              llm_preset_id: selectedPresetId,
+              dialogue_style_id: selectedStyleId,
             });
 
             if (mode === 'edit' && character) {
@@ -371,8 +377,8 @@ export default function CreateCharacterModal({
                 setAvatarImageKey(null);
                 setAvatarPreview(null);
                 setSelectedVoice(null);
-                setSelectedLLMProvider(undefined);
-                setSelectedLLMModel(undefined);
+                setSelectedPresetId(DEFAULT_LLM_PRESET_ID);
+                setSelectedStyleId(DEFAULT_DIALOGUE_STYLE_ID);
                 setVoiceUsageCharacters([]);
                 setVoiceUsageCharacterIds([]);
                 setVoiceUsageVoiceId(null);
@@ -559,26 +565,28 @@ export default function CreateCharacterModal({
                         </p>
                     </div>
 
+                    {/* 对话风格 */}
                     <div className="py-2 space-y-3">
-                        <div className="flex items-center justify-between">
-                            <Label className="text-sm font-medium text-gray-700">模型选择</Label>
-                        </div>
-                        <ModelSelector
-                            selectedProvider={selectedLLMProvider}
-                            selectedModel={selectedLLMModel}
-                            onSelectModel={(provider, model) => {
-                                setSelectedLLMProvider(provider);
-                                setSelectedLLMModel(model);
-                            }}
-                            onSelectSystemDefault={() => {
-                                setSelectedLLMProvider(null);
-                                setSelectedLLMModel(null);
-                            }}
+                        <Label className="text-sm font-medium text-gray-700">对话风格</Label>
+                        <DialogueStyleSelector
+                            selectedStyleId={selectedStyleId}
+                            onSelectStyle={setSelectedStyleId}
                             disabled={isSubmitting}
                         />
                         <p className="text-xs text-gray-500">
-                            选择角色使用的AI模型，默认使用系统配置
+                            选择角色与你互动时的气质倾向，不会改变角色本身设定
                         </p>
+                    </div>
+
+                    {/* 模型层级 */}
+                    <div className="py-2 space-y-3">
+                        <Label className="text-sm font-medium text-gray-700">模型选择</Label>
+                        <PresetSelector
+                            selectedPresetId={selectedPresetId}
+                            onSelectPreset={setSelectedPresetId}
+                            userTier={entitlements?.tier ?? "free"}
+                            disabled={isSubmitting}
+                        />
                     </div>
 
                     <div className="py-2 space-y-3">

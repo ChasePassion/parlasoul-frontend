@@ -217,8 +217,8 @@ logger.info(Module.CHARACTER, CharacterEvent.VOICE_RESOLVED, "Voice profile reso
 
 // 外部调用之前
 logger.info(Module.CHARACTER, CharacterEvent.API_CALLED, "Calling createCharacter API", {
-  llm_provider: selectedLLMProvider,
-  llm_model: selectedLLMModel,
+  llm_preset_id: selectedPresetId,
+  dialogue_style_id: selectedStyleId,
 });
 
 // 成功时

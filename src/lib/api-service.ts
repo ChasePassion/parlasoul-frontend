@@ -188,30 +188,14 @@ export type TurnState = "OK" | "FILTERED" | "DELETED" | "ERROR";
 export type VoiceSourceType = "system" | "clone" | "designed" | "imported";
 export type VoiceStatus = "creating" | "processing" | "ready" | "failed" | "deleting" | "deleted";
 
-// Phase 4: LLM Model types
-export type LLMProvider = "deepseek" | "openrouter" | "xiaomi" | "glm";
-
-export interface CharacterLLMRoute {
-  provider: LLMProvider;
-  model: string;
-}
-
-export interface LLMModelCatalogItem {
-  provider: LLMProvider;
-  model: string;
-  label: string;
-  description: string | null;
-  is_default: boolean;
-}
-
-export interface LLMModelCatalogResponse {
-  default_route: CharacterLLMRoute;
-  items: LLMModelCatalogItem[];
-}
-
-export interface LLMModelSearchResponse {
-  items: LLMModelCatalogItem[];
-}
+export type LLMPresetId = "free" | "flagship";
+export type DialogueStyleId =
+  | "true_nature"
+  | "spring_breeze"
+  | "free_spirit"
+  | "clear_inquiry"
+  | "poetic_reserve"
+  | "proud_resolve";
 
 export interface VoiceSelectableItem {
   id: string;
@@ -279,10 +263,9 @@ export interface CreateCharacterRequest {
   voice_model: string;
   voice_provider_voice_id: string;
   voice_source_type: VoiceSourceType;
-  llm_provider?: LLMProvider | null;
-  llm_model?: string | null;
+  llm_preset_id?: LLMPresetId | null;
+  dialogue_style_id?: DialogueStyleId | null;
 }
-
 export interface CharacterResponse {
   id: string;
   name: string;
@@ -296,11 +279,8 @@ export interface CharacterResponse {
   voice_provider_voice_id: string;
   voice_source_type: VoiceSourceType;
   voice?: VoiceSelectableItem | null;
-  llm_provider?: LLMProvider | null;
-  llm_model?: string | null;
-  uses_system_default_llm?: boolean;
-  effective_llm_provider?: LLMProvider;
-  effective_llm_model?: string;
+  llm_preset_id?: LLMPresetId | null;
+  dialogue_style_id?: DialogueStyleId | null;
   creator_id: string | null;
   creator_username?: string | null;
   status: CharacterStatus;
@@ -519,10 +499,9 @@ export interface UpdateCharacterRequest {
   voice_provider_voice_id?: string;
   voice_source_type?: VoiceSourceType;
   visibility?: CharacterVisibility;
-  llm_provider?: LLMProvider | null;
-  llm_model?: string | null;
+  llm_preset_id?: LLMPresetId | null;
+  dialogue_style_id?: DialogueStyleId | null;
 }
-
 interface StreamChunkEvent {
   type: "chunk";
   content: string;
@@ -2128,20 +2107,6 @@ export class ApiService {
     );
   }
 
-  async getLLMModelCatalog(
-    options: ApiRequestOptions = {},
-  ): Promise<LLMModelCatalogResponse> {
-    return httpClient.get<LLMModelCatalogResponse>(
-      "/v1/llm-models/catalog",
-      options,
-    );
-  }
-
-  async searchLLMModels(modelId: string): Promise<LLMModelSearchResponse> {
-    return httpClient.get<LLMModelSearchResponse>(
-      `/v1/llm-models/search?model_id=${encodeURIComponent(modelId)}`
-    );
-  }
 }
 
 export const apiService = new ApiService();

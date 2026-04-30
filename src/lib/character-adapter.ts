@@ -3,7 +3,6 @@ import type {
     CharacterStatus,
     CharacterVisibility,
     AvatarUrls,
-    LLMProvider,
     VoiceSelectableItem,
 } from "./api-service";
 import { resolveCharacterAvatarSrc } from "./character-avatar";
@@ -21,11 +20,8 @@ interface CharacterLike {
     visibility?: CharacterVisibility;
     creator_id?: string | null;
     creator_username?: string | null;
-    llm_provider?: LLMProvider | null;
-    llm_model?: string | null;
-    uses_system_default_llm?: boolean;
-    effective_llm_provider?: LLMProvider;
-    effective_llm_model?: string;
+    llm_preset_id?: string | null;
+    dialogue_style_id?: string | null;
     voice_provider?: string;
     voice_model?: string;
     voice_provider_voice_id?: string;
@@ -51,11 +47,8 @@ export function mapCharacterToSidebar(
         visibility: source.visibility,
         creator_id: source.creator_id ?? null,
         creator_username: source.creator_username ?? null,
-        llm_provider: source.llm_provider,
-        llm_model: source.llm_model,
-        uses_system_default_llm: source.uses_system_default_llm,
-        effective_llm_provider: source.effective_llm_provider,
-        effective_llm_model: source.effective_llm_model,
+        llm_preset_id: source.llm_preset_id,
+        dialogue_style_id: source.dialogue_style_id,
         voice_provider: source.voice_provider,
         voice_model: source.voice_model,
         voice_provider_voice_id: source.voice_provider_voice_id,

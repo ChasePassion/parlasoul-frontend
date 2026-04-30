@@ -99,11 +99,8 @@ export default function DiscoverPage() {
       voice_provider_voice_id: character.voice_provider_voice_id,
       voice_source_type: character.voice_source_type,
       voice: character.voice ?? undefined,
-      llm_provider: character.llm_provider,
-      llm_model: character.llm_model,
-      uses_system_default_llm: character.uses_system_default_llm,
-      effective_llm_provider: character.effective_llm_provider,
-      effective_llm_model: character.effective_llm_model,
+      llm_preset_id: character.llm_preset_id,
+      dialogue_style_id: character.dialogue_style_id,
       distinct_user_count: character.distinct_user_count,
     }));
   }, [discoverCharacters]);

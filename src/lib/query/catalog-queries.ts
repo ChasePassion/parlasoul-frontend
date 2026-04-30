@@ -1,6 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
-  getLLMModelCatalog,
   getVoiceById,
   listMyVoices,
   listSelectableVoices,
@@ -13,16 +12,6 @@ import {
 } from "./query-keys";
 
 const FIVE_MINUTES = 5 * 60 * 1000;
-const THIRTY_MINUTES = 30 * 60 * 1000;
-
-export function useLLMModelCatalogQuery(enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.llm.catalog(),
-    queryFn: ({ signal }) => getLLMModelCatalog({ signal }),
-    enabled,
-    staleTime: THIRTY_MINUTES,
-  });
-}
 
 export function useSelectableVoicesQuery(
   userId: string | null | undefined,
