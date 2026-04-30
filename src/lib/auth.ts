@@ -254,7 +254,7 @@ function createAuth() {
       },
     },
     emailAndPassword: {
-      enabled: true,
+      enabled: false,
     },
     socialProviders: buildGoogleProvider(),
     databaseHooks: {
@@ -293,18 +293,14 @@ function createAuth() {
           getPurelymailTransporter();
 
           const subject =
-            type === "forget-password"
-              ? "ParlaSoul 密码重置验证码"
-              : type === "email-verification"
-                ? "ParlaSoul 邮箱验证验证码"
-                : "ParlaSoul 登录验证码";
+            type === "email-verification"
+              ? "ParlaSoul 邮箱验证验证码"
+              : "ParlaSoul 登录验证码";
 
           const title =
-            type === "forget-password"
-              ? "密码重置验证码"
-              : type === "email-verification"
-                ? "邮箱验证验证码"
-                : "登录验证码";
+            type === "email-verification"
+              ? "邮箱验证验证码"
+              : "登录验证码";
 
           const html = `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827; line-height: 1.6;">

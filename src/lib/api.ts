@@ -54,40 +54,6 @@ export async function loginWithCode(
   clearBetterAuthJwt();
 }
 
-export async function loginWithPassword(
-  email: string,
-  password: string,
-): Promise<void> {
-  const response = await authClient.signIn.email({
-    email,
-    password,
-  });
-
-  if (response.error) {
-    throw new Error(response.error.message || "密码登录失败");
-  }
-
-  clearBetterAuthJwt();
-}
-
-export async function registerWithPassword(
-  email: string,
-  password: string,
-  name?: string,
-): Promise<void> {
-  const response = await authClient.signUp.email({
-    email,
-    password,
-    name: name || email.split("@")[0],
-  });
-
-  if (response.error) {
-    throw new Error(response.error.message || "密码注册失败");
-  }
-
-  clearBetterAuthJwt();
-}
-
 export async function signInWithGoogle(callbackURL = "/"): Promise<void> {
   const response = await authClient.signIn.social({
     provider: "google",

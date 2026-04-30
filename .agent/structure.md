@@ -314,7 +314,6 @@ flowchart TD
 当前能力：
 
 - 邮箱 OTP 登录
-- 邮箱密码注册/登录
 - Google 登录
 - OTP 投递日志落盘（服务端发送钩子写 `logs/auth.email-otp.log`）
 
