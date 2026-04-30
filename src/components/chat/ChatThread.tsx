@@ -629,12 +629,11 @@ export default function ChatThread({
         currentUsers.forEach((message) => {
             const previous = previousVersions.get(message.id);
             const currentKey = getMessageVersionKey(message);
-            const shouldPrefetch =
-                !previous ||
-                (previous.key !== currentKey &&
-                    (message.candidateCount ?? 1) > previous.candidateCount);
-
-            if (shouldPrefetch) {
+            if (
+                !!previous &&
+                previous.key !== currentKey &&
+                (message.candidateCount ?? 1) > previous.candidateCount
+            ) {
                 void ensureFeedbackCard(message);
             }
         });
