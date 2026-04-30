@@ -16,6 +16,11 @@ import AppFrame from "@/components/layout/AppFrame";
 import { useSidebarShell } from "@/hooks/useSidebarShell";
 import { mapCharacterToSidebar } from "@/lib/character-adapter";
 import { isSetupBypassPath } from "@/lib/billing-plans";
+import {
+    canContinueProfileSetup,
+    clearProfileSetupState,
+    markProfileSetupPending,
+} from "@/lib/profile-setup-session";
 import { UserSettingsProvider } from "@/lib/user-settings-context";
 import { GrowthProvider } from "@/lib/growth-context";
 import CheckInCalendarDialog from "@/components/growth/CheckInCalendarDialog";
@@ -51,17 +56,19 @@ export default function AppLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const { user, isLoading: isAuthLoading } = useAuth();
+    const { user, logout, isLoading: isAuthLoading } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
+    const isProfileReady = isProfileComplete(user);
+    const appUserId = isProfileReady ? user?.id : undefined;
 
     const { isSidebarOpen, isOverlay, toggle: toggleSidebar, close: closeSidebar } = useSidebarShell();
     const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
     const {
         data: sidebarApiCharacters,
         refetch: refetchSidebarCharacters,
-    } = useSidebarCharactersQuery(user?.id);
-    const openChatMutation = useGetOrCreateChatMutation(user?.id);
+    } = useSidebarCharactersQuery(appUserId);
+    const openChatMutation = useGetOrCreateChatMutation(appUserId);
     const sidebarCharacters = useMemo<Character[]>(
         () =>
             (sidebarApiCharacters ?? []).map((character) =>
@@ -70,16 +77,37 @@ export default function AppLayout({
         [sidebarApiCharacters],
     );
 
+    const shouldBlockForRedirect =
+        !user || (!isProfileReady && !isSetupBypassPath(pathname));
+
     // Redirect if not authenticated or profile incomplete
     useEffect(() => {
-        if (!isAuthLoading) {
-            if (!user) {
-                router.push("/login");
-            } else if (!isProfileComplete(user) && !isSetupBypassPath(pathname)) {
-                router.push("/setup");
-            }
+        if (isAuthLoading) {
+            return;
         }
-    }, [user, isAuthLoading, pathname, router]);
+
+        if (!user) {
+            clearProfileSetupState();
+            router.replace("/login");
+            return;
+        }
+
+        if (isProfileComplete(user) || isSetupBypassPath(pathname)) {
+            clearProfileSetupState();
+            return;
+        }
+
+        if (canContinueProfileSetup(user.id)) {
+            markProfileSetupPending(user.id);
+            router.replace("/setup");
+            return;
+        }
+
+        void logout().finally(() => {
+            clearProfileSetupState();
+            router.replace("/login");
+        });
+    }, [user, isAuthLoading, pathname, router, logout]);
 
     const refreshSidebarCharacters = useCallback(async () => {
         if (!user) return;
@@ -118,7 +146,7 @@ export default function AppLayout({
     );
 
     // Show loading state while checking auth
-    if (isAuthLoading || !user) {
+    if (isAuthLoading || shouldBlockForRedirect) {
         return (
             <div className="flex h-screen items-center justify-center bg-white">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-600" />

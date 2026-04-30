@@ -6,10 +6,14 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAuth, isProfileComplete } from "@/lib/auth-context";
 import { uploadFile, updateUserProfile } from "@/lib/api";
+import {
+    canContinueProfileSetup,
+    clearProfileSetupState,
+} from "@/lib/profile-setup-session";
 import AvatarCropper from "@/components/AvatarCropper";
 
 export default function SetupPage() {
-    const { user, isAuthed, isLoading: isAuthLoading, refreshUser } = useAuth();
+    const { user, isAuthed, isLoading: isAuthLoading, logout, refreshUser } = useAuth();
     const router = useRouter();
 
     const [username, setUsername] = useState("");
@@ -19,18 +23,35 @@ export default function SetupPage() {
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const isSetupAllowed =
+        !!user && !isProfileComplete(user) && canContinueProfileSetup(user.id);
 
-    // Redirect if not authenticated
+    // Redirect if not authenticated, or if an incomplete session is no longer
+    // part of the active setup flow in this tab.
     useEffect(() => {
-        if (!isAuthLoading && !isAuthed) {
-            router.push("/login");
+        if (isAuthLoading) {
+            return;
         }
-    }, [isAuthed, isAuthLoading, router]);
+
+        if (!isAuthed || !user) {
+            clearProfileSetupState();
+            router.replace("/login");
+            return;
+        }
+
+        if (!isProfileComplete(user) && !canContinueProfileSetup(user.id)) {
+            void logout().finally(() => {
+                clearProfileSetupState();
+                router.replace("/login");
+            });
+        }
+    }, [isAuthed, isAuthLoading, user, logout, router]);
 
     // Redirect if profile already complete
     useEffect(() => {
         if (!isAuthLoading && user && isProfileComplete(user)) {
-            router.push("/");
+            clearProfileSetupState();
+            router.replace("/");
         }
     }, [user, isAuthLoading, router]);
 
@@ -127,7 +148,8 @@ export default function SetupPage() {
 
         try {
             if (!isAuthed) {
-                router.push("/login");
+                clearProfileSetupState();
+                router.replace("/login");
                 return;
             }
 
@@ -151,7 +173,8 @@ export default function SetupPage() {
                 console.error("Failed to refresh user after profile update:", err);
             }
 
-            router.push("/");
+            clearProfileSetupState();
+            router.replace("/");
         } catch (err) {
             const message = err instanceof Error ? err.message : "设置失败，请重试";
             setError(message);
@@ -160,7 +183,7 @@ export default function SetupPage() {
         }
     };
 
-    if (isAuthLoading || !user) {
+    if (isAuthLoading || !isSetupAllowed) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-600" />

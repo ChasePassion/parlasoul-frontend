@@ -9,7 +9,12 @@ import {
   sendVerificationCode,
   signInWithGoogle,
 } from "@/lib/api";
-import { isSetupBypassPath } from "@/lib/billing-plans";
+import {
+  beginProfileSetupLoginIntent,
+  canContinueProfileSetup,
+  clearProfileSetupState,
+  markProfileSetupPending,
+} from "@/lib/profile-setup-session";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,7 +54,7 @@ function resolvePostAuthDestination(
   nextPath: string | null,
   currentUser: Awaited<ReturnType<typeof getCurrentUser>>,
 ) {
-  if (nextPath && (isProfileComplete(currentUser) || isSetupBypassPath(nextPath))) {
+  if (nextPath && isProfileComplete(currentUser)) {
     return nextPath;
   }
   return isProfileComplete(currentUser) ? "/" : "/setup";
@@ -136,7 +141,7 @@ function LoginPageContent() {
   const [isLoading, setIsLoading] = useState(false);
 
   const countdown = useCountdown(60);
-  const { login, refreshUser, user, isLoading: isAuthLoading } = useAuth();
+  const { login, logout, refreshUser, user, isLoading: isAuthLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = normalizeNextPath(searchParams.get("next"));
@@ -144,15 +149,38 @@ function LoginPageContent() {
   /* redirect if already logged in */
   useEffect(() => {
     if (isAuthLoading || !user) return;
+
+    if (!isProfileComplete(user)) {
+      if (canContinueProfileSetup(user.id)) {
+        markProfileSetupPending(user.id);
+        router.replace("/setup");
+        return;
+      }
+
+      void logout().finally(() => {
+        clearProfileSetupState();
+        router.replace("/login");
+      });
+      return;
+    }
+
+    clearProfileSetupState();
     router.replace(resolvePostAuthDestination(nextPath, user));
-  }, [user, isAuthLoading, nextPath, router]);
+  }, [user, isAuthLoading, nextPath, router, logout]);
 
   /* post-login redirect */
   const handlePostLoginRedirect = async () => {
     let currentUser = user;
     try { await refreshUser(); } catch (e) { console.error(e); }
     try { currentUser = (await getCurrentUser()) || currentUser; } catch (e) { console.error(e); }
-    router.push(resolvePostAuthDestination(nextPath, currentUser));
+    if (!currentUser) {
+      beginProfileSetupLoginIntent();
+    } else if (!isProfileComplete(currentUser)) {
+      markProfileSetupPending(currentUser.id);
+    } else {
+      clearProfileSetupState();
+    }
+    router.replace(resolvePostAuthDestination(nextPath, currentUser));
   };
 
   /* send verification code */
@@ -177,10 +205,12 @@ function LoginPageContent() {
     setError("");
     setInfo("");
     setIsLoading(true);
+    beginProfileSetupLoginIntent();
     try {
       await login(email, code);
       await handlePostLoginRedirect();
     } catch (err) {
+      clearProfileSetupState();
       setError(getAuthActionErrorMessage(err, "验证码错误或已过期"));
     } finally {
       setIsLoading(false);
@@ -192,9 +222,11 @@ function LoginPageContent() {
     setError("");
     setInfo("");
     setIsLoading(true);
+    beginProfileSetupLoginIntent();
     try {
       await signInWithGoogle(nextPath || "/");
     } catch (err) {
+      clearProfileSetupState();
       setError(getAuthActionErrorMessage(err, "Google 登录发起失败"));
       setIsLoading(false);
     }
