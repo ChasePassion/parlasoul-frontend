@@ -131,7 +131,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
                                 <div className="pb-5 pt-0">
                                     <div className="flex items-center justify-between gap-4">
                                         <div>
-                                            <h4 className="font-medium text-gray-900 text-[15px]">聊天消息字号</h4>
+                                            <h4 className="text-gray-900 text-[15px]" style={{ fontWeight: 475 }}>聊天消息字号</h4>
                                             <p className="mt-1 text-[13px] text-gray-500 leading-relaxed">调整消息正文显示大小，让阅读更贴合你的习惯</p>
                                         </div>
                                         <div className="flex h-8 min-w-12 px-2 items-center justify-center rounded-md bg-gray-50 border border-gray-100 text-sm font-medium text-gray-700 shadow-sm">
@@ -164,7 +164,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
                                 <div className="py-5">
                                     <div className="flex items-center justify-between gap-4">
                                         <div className="space-y-0.5 pr-6">
-                                            <h4 className="font-medium text-gray-900 text-[15px]">角色记忆</h4>
+                                            <h4 className="text-gray-900 text-[15px]" style={{ fontWeight: 475 }}>角色记忆</h4>
                                             <p className="text-[13px] text-gray-500 leading-relaxed">开启后，系统会记录并在后续对话中检索与你相关的长期记忆。</p>
                                         </div>
                                         <Switch
@@ -207,7 +207,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
                             <div className="flex flex-col">
                                 <div className="flex items-center justify-between pb-5 pt-0">
                                     <div className="space-y-0.5 pr-6">
-                                        <h4 className="font-medium text-gray-900 text-[15px]">详细模式</h4>
+                                        <h4 className="text-gray-900 text-[15px]" style={{ fontWeight: 475 }}>详细模式</h4>
                                         <p className="text-[13px] text-gray-500 leading-relaxed">开启后，助手消息下方显示中文翻译</p>
                                     </div>
                                     <Switch
@@ -219,7 +219,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
 
                                 <div className="flex items-center justify-between py-5">
                                     <div className="space-y-0.5 pr-6">
-                                        <h4 className="font-medium text-gray-900 text-[15px]">回复卡</h4>
+                                        <h4 className="text-gray-900 text-[15px]" style={{ fontWeight: 475 }}>回复卡</h4>
                                         <p className="text-[13px] text-gray-500 leading-relaxed">开启后，可在每条助手消息旁查看整条回复的翻译与词组解析</p>
                                     </div>
                                     <Switch
@@ -231,7 +231,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
 
                                 <div className="flex items-center justify-between py-5">
                                     <div className="space-y-0.5 pr-6">
-                                        <h4 className="font-medium text-gray-900 text-[15px]">混输自动转英文</h4>
+                                        <h4 className="text-gray-900 text-[15px]" style={{ fontWeight: 475 }}>混输自动转英文</h4>
                                         <p className="text-[13px] text-gray-500 leading-relaxed">发送含中文的消息时，自动翻译为英文发送给角色</p>
                                     </div>
                                     <Switch
@@ -243,7 +243,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
 
                                 <div className="flex items-center justify-between py-5">
                                     <div className="space-y-0.5 pr-6">
-                                        <h4 className="font-medium text-gray-900 text-[15px]">自动朗读</h4>
+                                        <h4 className="text-gray-900 text-[15px]" style={{ fontWeight: 475 }}>自动朗读</h4>
                                         <p className="text-[13px] text-gray-500 leading-relaxed">开启后，AI 回复时会实时语音朗读</p>
                                     </div>
                                     <Switch
@@ -255,7 +255,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
 
                                 <div className="flex items-center justify-between py-5">
                                     <div className="space-y-0.5 pr-6">
-                                        <h4 className="font-medium text-gray-900 text-[15px]">收藏复用</h4>
+                                        <h4 className="text-gray-900 text-[15px]" style={{ fontWeight: 475 }}>收藏复用</h4>
                                         <p className="text-[13px] text-gray-500 leading-relaxed">开启后，AI 会自然优先使用你收藏过的单词和句子。</p>
                                     </div>
                                     <Switch
