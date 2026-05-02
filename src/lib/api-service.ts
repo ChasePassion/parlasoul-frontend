@@ -176,7 +176,7 @@ export interface PaymentOrderResponse {
   settlement_currency: string | null;
 }
 
-export type CharacterVisibility = "PUBLIC" | "PRIVATE" | "UNLISTED";
+export type CharacterVisibility = "PUBLIC" | "PRIVATE";
 export type CharacterStatus = "ACTIVE" | "UNPUBLISHED";
 export type ChatVisibility = CharacterVisibility;
 export type ChatState = "ACTIVE" | "ARCHIVED";

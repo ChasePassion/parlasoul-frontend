@@ -13,6 +13,7 @@ interface CharacterCardProps {
   onClick: (character: Character) => void;
   showMenu?: boolean;
   onEdit?: (character: Character) => void;
+  onShare?: (character: Character) => void;
   onUnpublish?: (character: Character) => void;
   disableHoverFloat?: boolean;
 }
@@ -22,6 +23,7 @@ export default function CharacterCard({
   onClick,
   showMenu = false,
   onEdit,
+  onShare,
   onUnpublish,
   disableHoverFloat = false,
 }: CharacterCardProps) {
@@ -106,6 +108,15 @@ export default function CharacterCard({
               sideOffset={8}
               className="w-[128px] bg-(--cc-dropdown-bg) rounded-xl shadow-(--cc-dropdown-shadow) border border-(--cc-dropdown-border) p-1.5 flex-col gap-0.5 z-100"
             >
+              {onShare && (
+                <DropdownMenuItem
+                  onSelect={() => onShare(character)}
+                  className="w-full py-2 px-[10px] flex items-center gap-2 rounded-lg bg-transparent border-none cursor-pointer transition-colors duration-150 hover:bg-(--cc-dropdown-item-hover) focus:bg-(--cc-dropdown-item-hover) focus:outline-none"
+                >
+                  <SpriteIcon name="share" size={16} className="text-black" />
+                  <span className="text-sm text-gray-700">分享</span>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onSelect={() => onEdit?.(character)}
                 className="w-full py-2 px-[10px] flex items-center gap-2 rounded-lg bg-transparent border-none cursor-pointer transition-colors duration-150 hover:bg-(--cc-dropdown-item-hover) focus:bg-(--cc-dropdown-item-hover) focus:outline-none"

@@ -539,16 +539,6 @@ export default function CreateCharacterModal({
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setVisibility("UNLISTED")}
-                                className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${visibility === "UNLISTED"
-                                    ? "bg-blue-600 text-white border-blue-600"
-                                    : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
-                                    }`}
-                            >
-                                链接可见
-                            </button>
-                            <button
-                                type="button"
                                 onClick={() => setVisibility("PRIVATE")}
                                 className={`flex-1 px-3 py-2 text-sm rounded-lg border transition-colors ${visibility === "PRIVATE"
                                     ? "bg-blue-600 text-white border-blue-600"
@@ -560,8 +550,7 @@ export default function CreateCharacterModal({
                         </div>
                         <p className="text-xs text-gray-500 mt-1.5">
                             {visibility === "PUBLIC" && "将显示在市场中，任何人可访问"}
-                            {visibility === "UNLISTED" && "不在市场中显示，但可通过链接访问"}
-                            {visibility === "PRIVATE" && "仅自己可见，用于编辑草稿"}
+                            {visibility === "PRIVATE" && "不在市场中显示，可通过分享链接邀请他人访问"}
                         </p>
                     </div>
 

@@ -152,7 +152,7 @@
 | `POST` | `/v1/characters` | 必需 | `CreateCharacterModal` | 创建角色 |
 | `GET` | `/v1/characters` | 必需 | Profile 页 | 取当前用户角色列表 |
 | `GET` | `/v1/characters/market` | 无需 | Discover 页 | 公开角色市场 |
-| `GET` | `/v1/characters/{character_id}` | 可选 | 编辑/详情辅助 | 支持公开、Unlisted、创建者访问私有 |
+| `GET` | `/v1/characters/{character_id}` | 可选 | 编辑/详情辅助 | 支持公开、私有直链访问；下架角色仅创建者可见 |
 | `PUT` | `/v1/characters/{character_id}` | 必需 | `CreateCharacterModal` 编辑态 | 更新角色 |
 | `POST` | `/v1/characters/{character_id}/unpublish` | 必需 | Profile 页 | 下架角色，已有关联聊天保留为只读历史 |
 

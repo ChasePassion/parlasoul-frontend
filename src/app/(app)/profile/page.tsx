@@ -17,6 +17,7 @@ import {
     unpublishCharacter,
     deleteVoiceById,
 } from "@/lib/api";
+import { buildShareUrl } from "@/lib/share-link";
 import { useAuth } from "@/lib/auth-context";
 import WorkspaceFrame from "@/components/layout/WorkspaceFrame";
 import { useSidebar } from "../layout";
@@ -145,6 +146,15 @@ export default function ProfilePage() {
         setIsUnpublishDialogOpen(true);
     };
 
+    const handleShare = async (character: Character) => {
+        const url = buildShareUrl(character.name, character.id);
+        try {
+            await navigator.clipboard.writeText(url);
+        } catch {
+            // clipboard unavailable
+        }
+    };
+
     const handleConfirmUnpublish = async () => {
         if (!characterToUnpublish || !isAuthed) return;
 
@@ -252,6 +262,7 @@ export default function ProfilePage() {
                                     onClick={() => handleEdit(character)}
                                     showMenu={true}
                                     onEdit={handleEdit}
+                                    onShare={character.status === "ACTIVE" ? handleShare : undefined}
                                     onUnpublish={handleUnpublishClick}
                                 />
                             ))}
