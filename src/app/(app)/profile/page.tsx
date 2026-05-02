@@ -210,7 +210,7 @@ export default function ProfilePage() {
             <div className="flex-1 overflow-y-auto custom-scrollbar pt-4 pb-8 px-8 pl-12">
                 <div className="max-w-7xl mx-auto">
                     <div className="mb-6 ml-2 mt-4 flex items-center gap-6">
-                        <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl">
+                        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl">
                             <Image
                                 src={user?.avatar_urls?.md || "/default-avatar.svg"}
                                 alt={user?.username || "User"}
