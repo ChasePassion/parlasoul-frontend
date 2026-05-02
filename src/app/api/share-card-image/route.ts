@@ -32,10 +32,39 @@ function encodeBodyBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
 }
 
+const ALLOWED_IMAGE_HOSTS = new Set(["picsum.photos"]);
+
+function isPrivateHostname(hostname: string): boolean {
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]"
+  ) {
+    return true;
+  }
+
+  const match = hostname.match(
+    /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/,
+  );
+  if (match) {
+    const a = Number(match[1]);
+    const b = Number(match[2]);
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 127) return true;
+  }
+
+  return false;
+}
+
 function isAllowedRemoteSource(sourceUrl: string): boolean {
   try {
     const url = new URL(sourceUrl);
-    return url.protocol === "http:" || url.protocol === "https:";
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    if (isPrivateHostname(url.hostname)) return false;
+    return ALLOWED_IMAGE_HOSTS.has(url.hostname);
   } catch {
     return false;
   }
