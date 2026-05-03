@@ -58,6 +58,19 @@ class HttpClient {
         this.baseURL = baseURL;
     }
 
+    private async handleResponse<T>(response: Response): Promise<T> {
+        if (!response.ok) {
+            return throwApiErrorResponse(response);
+        }
+
+        if (response.status === 204) {
+            return undefined as T;
+        }
+
+        const payload = await parseJsonResponse(response);
+        return unwrapEnvelopePayload<T>(payload);
+    }
+
     private async request<T>(
         endpoint: string,
         options: RequestInit = {}
@@ -73,16 +86,7 @@ class HttpClient {
             headers,
         });
 
-        if (!response.ok) {
-            return throwApiErrorResponse(response);
-        }
-
-        if (response.status === 204) {
-            return undefined as T;
-        }
-
-        const payload = await parseJsonResponse(response);
-        return unwrapEnvelopePayload<T>(payload);
+        return this.handleResponse<T>(response);
     }
 
     async get<T>(endpoint: string, options: HttpRequestOptions = {}): Promise<T> {
@@ -143,16 +147,7 @@ class HttpClient {
             body: formData,
         });
 
-        if (!response.ok) {
-            return throwApiErrorResponse(response);
-        }
-
-        if (response.status === 204) {
-            return undefined as T;
-        }
-
-        const payload = await parseJsonResponse(response);
-        return unwrapEnvelopePayload<T>(payload);
+        return this.handleResponse<T>(response);
     }
 }
 
