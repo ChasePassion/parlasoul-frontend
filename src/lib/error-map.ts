@@ -328,9 +328,9 @@ export function mapApiError(error: unknown): MappedError {
     }
 
     if (
-      error.message.includes("fetch") ||
-      error.message.includes("network") ||
-      error.message.includes("Failed to fetch")
+      error.message === "Failed to fetch" ||
+      /^(typeerror|networkerror|referenceerror)\s*:\s*failed to fetch$/i.test(error.message) ||
+      /^(typeerror|networkerror)\s*:\s*network error$/i.test(error.message)
     ) {
       return {
         code: "NETWORK_ERROR",
