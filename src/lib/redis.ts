@@ -51,6 +51,9 @@ export async function getRedisClient(): Promise<ReturnType<typeof createClient>>
 
   try {
     return await state.connectPromise;
+  } catch (error) {
+    state.client = undefined;
+    throw error;
   } finally {
     state.connectPromise = undefined;
   }
