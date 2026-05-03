@@ -31,6 +31,7 @@ import { getErrorMessage } from "@/lib/error-map";
 import type { ChatHistoryItem, ChatResponse } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useChatHistoryInfiniteQuery } from "@/lib/query";
+import { toast } from "sonner";
 
 interface ChatHistorySidebarProps {
   isOpen: boolean;
@@ -105,24 +106,19 @@ export default function ChatHistorySidebar({
 
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [renameError, setRenameError] = useState<string | null>(null);
   const [isSavingRename, setIsSavingRename] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<ChatHistoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const error = actionError ?? (historyQuery.isError ? getErrorMessage(historyQuery.error) : null);
 
   useEffect(() => {
     if (!isOpen || !character) return;
-    setActionError(null);
   }, [character, isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
       setRenamingChatId(null);
       setRenameValue("");
-      setRenameError(null);
       setDeleteTarget(null);
     }
   }, [isOpen]);
@@ -146,32 +142,28 @@ export default function ChatHistorySidebar({
   const beginRename = useCallback((item: ChatHistoryItem) => {
     setRenamingChatId(item.chat.id);
     setRenameValue(item.chat.title ?? "");
-    setRenameError(null);
   }, []);
 
   const cancelRename = useCallback(() => {
     setRenamingChatId(null);
     setRenameValue("");
-    setRenameError(null);
   }, []);
 
   const submitRename = useCallback(
     async (chatId: string) => {
       const trimmedTitle = renameValue.trim();
       if (!trimmedTitle) {
-        setRenameError("标题不能为空");
+        toast.error("标题不能为空");
         return;
       }
 
       setIsSavingRename(true);
-      setRenameError(null);
       try {
         const updated = await onRenameChat(chatId, trimmedTitle);
         void updated;
-        setActionError(null);
         cancelRename();
       } catch (err) {
-        setRenameError(getErrorMessage(err));
+        toast.error(getErrorMessage(err));
       } finally {
         setIsSavingRename(false);
       }
@@ -183,7 +175,6 @@ export default function ChatHistorySidebar({
     if (!deleteTarget) return;
 
     setIsDeleting(true);
-    setActionError(null);
     try {
       await onDeleteChat(deleteTarget.chat.id);
       if (renamingChatId === deleteTarget.chat.id) {
@@ -191,7 +182,7 @@ export default function ChatHistorySidebar({
       }
       setDeleteTarget(null);
     } catch (err) {
-      setActionError(getErrorMessage(err));
+      toast.error(getErrorMessage(err));
     } finally {
       setIsDeleting(false);
     }
@@ -223,13 +214,13 @@ export default function ChatHistorySidebar({
               <ChatHistorySkeleton />
             ) : null}
 
-            {!isLoading && error ? (
+            {!isLoading && historyQuery.isError ? (
               <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-sm text-red-600">
-                {error}
+                {getErrorMessage(historyQuery.error)}
               </div>
             ) : null}
 
-            {!isLoading && !error && displayItems.length === 0 ? (
+            {!isLoading && !historyQuery.isError && displayItems.length === 0 ? (
               <div className="px-2 py-8 text-center text-sm text-gray-500">
                 还没有历史记录
               </div>
@@ -255,7 +246,6 @@ export default function ChatHistorySidebar({
                           value={renameValue}
                           onChange={(event) => {
                             setRenameValue(event.target.value);
-                            if (renameError) setRenameError(null);
                           }}
                           onKeyDown={(event) => {
                             if (event.key === "Enter") {
@@ -271,9 +261,6 @@ export default function ChatHistorySidebar({
                           maxLength={120}
                           placeholder="输入聊天标题"
                         />
-                        {renameError ? (
-                          <p className="text-xs text-red-600">{renameError}</p>
-                        ) : null}
                         <div className="flex items-center justify-end gap-2">
                           <Button
                             type="button"

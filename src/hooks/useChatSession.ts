@@ -25,6 +25,7 @@ import { snapshotContainsTurnIds } from "@/lib/chat-turn-snapshot";
 import { getErrorMessage } from "@/lib/error-map";
 import { chatTurnsQueryOptions, queryKeys } from "@/lib/query";
 import type { TtsPlaybackManager } from "@/lib/voice/tts-playback-manager";
+import { toast } from "sonner";
 
 interface UseChatSessionArgs {
   chatId: string;
@@ -328,8 +329,6 @@ export function useChatSession({
   }) => {
     if (!chatId || !isAuthed) return;
 
-    setError(null);
-
     const data: TurnsPageResponse = await queryClient.fetchQuery(
       chatTurnsQueryOptions(user?.id, chatId, { limit: 50 }),
     );
@@ -418,7 +417,9 @@ export function useChatSession({
         await reloadChatTurns();
       } catch (err) {
         console.error("Failed to load chat:", err);
-        setError(getErrorMessage(err));
+        const errorMessage = getErrorMessage(err);
+        setError(errorMessage);
+        toast.error(errorMessage);
       } finally {
         setIsLoading(false);
       }

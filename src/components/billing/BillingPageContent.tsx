@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   WalletCards,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import type { PaymentItems, SubscriptionItems } from "@dodopayments/better-auth";
 
@@ -132,7 +133,6 @@ export default function BillingPageContent() {
   const searchParams = useSearchParams();
 
   const [isPortalLoading, setIsPortalLoading] = useState(false);
-  const [error, setError] = useState("");
 
   const checkoutStatus = searchParams.get("checkout");
   const checkoutQueryStatus = searchParams.get("status");
@@ -187,7 +187,7 @@ export default function BillingPageContent() {
     }
 
     void refreshEntitlements().catch((refreshError) => {
-      setError(getErrorMessage(refreshError));
+      toast.error(getErrorMessage(refreshError));
     });
   }, [checkoutStatus, refreshEntitlements]);
 
@@ -198,7 +198,7 @@ export default function BillingPageContent() {
       subscriptionsQuery.error ||
       paymentsQuery.error;
     if (queryError) {
-      setError(getErrorMessage(queryError));
+      toast.error(getErrorMessage(queryError));
     }
   }, [
     checkoutOrderQuery.error,
@@ -208,7 +208,6 @@ export default function BillingPageContent() {
   ]);
 
   async function handleRefreshBillingData() {
-    setError("");
     await Promise.all([
       queryClient.invalidateQueries({
         queryKey: queryKeys.billing.wechatOrders(user?.id, {
@@ -228,7 +227,7 @@ export default function BillingPageContent() {
       }),
       refreshEntitlements(),
     ]).catch((refreshError) => {
-      setError(getErrorMessage(refreshError));
+      toast.error(getErrorMessage(refreshError));
     });
   }
 
@@ -238,13 +237,12 @@ export default function BillingPageContent() {
     }
 
     setIsPortalLoading(true);
-    setError("");
 
     try {
       const portal = await createDodoCustomerPortal();
       window.location.assign(portal.url);
     } catch (portalError) {
-      setError(getErrorMessage(portalError));
+      toast.error(getErrorMessage(portalError));
     } finally {
       setIsPortalLoading(false);
     }
@@ -392,12 +390,6 @@ export default function BillingPageContent() {
             {!canManageBilling ? (
               <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
                 当前账号邮箱尚未验证，暂时无法打开 Dodo 的订阅管理与远端账单查询，但微信一次性订单和本地权益仍可正常查看。
-              </div>
-            ) : null}
-
-            {error ? (
-              <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
-                {error}
               </div>
             ) : null}
           </div>

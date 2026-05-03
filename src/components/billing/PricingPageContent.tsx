@@ -9,6 +9,7 @@ import {
   Settings,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -113,13 +114,8 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [checkoutError, setCheckoutError] = useState("");
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [isPortalLoading, setIsPortalLoading] = useState(false);
-  const [checkoutBanner, setCheckoutBanner] = useState<{
-    type: "success" | "pending" | "failed" | "loading";
-    message: string;
-  } | null>(null);
   const handledAutoCheckoutRef = useRef<Set<string>>(new Set());
 
   const checkoutStatus = searchParams.get("checkout");
@@ -158,7 +154,6 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
   /* ── callbacks ── */
 
   const beginSubscriptionCheckout = useCallback(async (slug: string) => {
-    setCheckoutError("");
     setPendingKey(`subscription:${slug}`);
     try {
       const session = await createDodoCheckoutSession({
@@ -167,20 +162,19 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
       });
       window.location.assign(session.url);
     } catch (error) {
-      setCheckoutError(getErrorMessage(error));
+      toast.error(getErrorMessage(error));
     } finally {
       setPendingKey(null);
     }
   }, []);
 
   const beginWechatCheckout = useCallback(async (productId: string) => {
-    setCheckoutError("");
     setPendingKey(`wechat:${productId}`);
     try {
       const session = await createWechatCheckoutSession({ product_id: productId });
       window.location.assign(session.checkout_url);
     } catch (error) {
-      setCheckoutError(getErrorMessage(error));
+      toast.error(getErrorMessage(error));
     } finally {
       setPendingKey(null);
     }
@@ -188,12 +182,11 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
 
   async function handleManageSubscription() {
     setIsPortalLoading(true);
-    setCheckoutError("");
     try {
       const portal = await createDodoCustomerPortal();
       window.location.assign(portal.url);
     } catch (err) {
-      setCheckoutError(getErrorMessage(err));
+      toast.error(getErrorMessage(err));
     } finally {
       setIsPortalLoading(false);
     }
@@ -201,7 +194,7 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
 
   useEffect(() => {
     if (wechatProductsQuery.isError) {
-      setCheckoutError(getErrorMessage(wechatProductsQuery.error));
+      toast.error(getErrorMessage(wechatProductsQuery.error));
     }
   }, [wechatProductsQuery.error, wechatProductsQuery.isError]);
 
@@ -211,52 +204,78 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
     if (checkoutStatus !== "success" || !user) return;
 
     let cancelled = false;
+    let loadingToast: string | number | undefined;
+    let toastSettled = false;
+
+    const settleCheckoutToast = (
+      type: "success" | "info" | "error",
+      message: string,
+    ) => {
+      if (loadingToast === undefined) return;
+      toastSettled = true;
+      if (type === "success") {
+        toast.success(message, { id: loadingToast });
+      } else if (type === "info") {
+        toast.info(message, { id: loadingToast });
+      } else {
+        toast.error(message, { id: loadingToast });
+      }
+    };
 
     async function processCheckout() {
       if (cancelled) return;
-      setCheckoutBanner({ type: "loading", message: "正在同步支付结果，请稍候…" });
+
+      if (checkoutChannel === "wechat" && checkoutOrderId && !checkoutOrderQuery.data) {
+        return;
+      }
+
+      loadingToast = toast.loading("正在同步支付结果，请稍候…");
 
       try {
         if (checkoutChannel === "wechat" && checkoutOrderId) {
           const order = checkoutOrderQuery.data;
           if (!order) return;
-          if (cancelled) return;
+          if (cancelled) {
+            return;
+          }
 
           if (order.status === "succeeded") {
-            setCheckoutBanner({ type: "success", message: "微信支付已完成，权益已刷新。" });
+            settleCheckoutToast("success", "微信支付已完成，权益已刷新。");
             await refreshEntitlements();
           } else if (order.status === "created" || order.status === "checkout_created" || order.status === "pending") {
-            setCheckoutBanner({ type: "pending", message: "订单已创建，正在等待支付最终确认。" });
+            settleCheckoutToast("info", "订单已创建，正在等待支付最终确认。");
           } else {
-            setCheckoutBanner({ type: "failed", message: "微信支付未完成，请确认后重试。" });
+            settleCheckoutToast("error", "微信支付未完成，请确认后重试。");
           }
         } else {
           // recurring checkout — refresh entitlements and infer status
-          const prevTier = entitlements?.tier ?? "free";
           try {
             await refreshEntitlements();
           } catch { /* best-effort */ }
-          if (cancelled) return;
-
-          // After refresh, if entitlements are still loading we just show a generic success
-          setCheckoutBanner({ type: "success", message: "订阅支付已完成，权益已同步。" });
-          void prevTier; // used above for comparison if needed
+          if (cancelled) {
+            return;
+          }
+          settleCheckoutToast("success", "订阅支付已完成，权益已同步。");
         }
       } catch {
         if (!cancelled) {
-          setCheckoutBanner({ type: "failed", message: "同步支付结果失败，请刷新页面重试。" });
+          settleCheckoutToast("error", "同步支付结果失败，请刷新页面重试。");
         }
       }
     }
 
     void processCheckout();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (loadingToast !== undefined && !toastSettled) {
+        toast.dismiss(loadingToast);
+      }
+    };
   }, [
     checkoutStatus,
     checkoutChannel,
     checkoutOrderId,
     checkoutOrderQuery.data,
-    entitlements?.tier,
     refreshEntitlements,
     user,
   ]);
@@ -292,11 +311,14 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
   function handleSubscriptionPurchase(slug: string) {
     const plan = getPricingPlanBySlug(slug);
     if (!plan) {
-      setCheckoutError("当前套餐暂时不可购买，请稍后重试");
+      toast.error("当前套餐暂时不可购买，请稍后重试");
       return;
     }
     if (isTierBlocked(currentTier, plan.tier)) {
-      setCheckoutError(getTierBlockMessage(currentTier, plan.tier) ?? "");
+      const blockMessage = getTierBlockMessage(currentTier, plan.tier);
+      if (blockMessage) {
+        toast.error(blockMessage);
+      }
       return;
     }
     const nextPath = buildPricingPath({ period: plan.period, checkout: plan.slug });
@@ -309,7 +331,10 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
 
   function handleWechatPurchase(productId: string, tier: "plus" | "pro") {
     if (isTierBlocked(currentTier, tier)) {
-      setCheckoutError(getTierBlockMessage(currentTier, tier) ?? "");
+      const blockMessage = getTierBlockMessage(currentTier, tier);
+      if (blockMessage) {
+        toast.error(blockMessage);
+      }
       return;
     }
     const nextPath = buildPricingPath({ period: selectedPeriod, mode: "wechat", productId });
@@ -544,30 +569,10 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
             </div>
           )}
 
-          {/* ── Error / Warning ── */}
-          {checkoutError && (
-            <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm text-rose-600">
-              {checkoutError}
-            </div>
-          )}
+          {/* ── Email unverified warning ── */}
           {user && !user.email_verified && (
             <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-700">
               当前账号邮箱尚未验证。你仍可发起支付，但订阅管理入口仍要求邮箱已验证。
-            </div>
-          )}
-
-          {/* ── Checkout callback banner ── */}
-          {checkoutBanner && (
-            <div
-              className={cn("mb-6 rounded-xl border px-4 py-3 text-center text-sm", {
-                "border-sky-200 bg-sky-50 text-sky-700": checkoutBanner.type === "loading",
-                "border-emerald-200 bg-emerald-50 text-emerald-700": checkoutBanner.type === "success",
-                "border-amber-200 bg-amber-50 text-amber-700": checkoutBanner.type === "pending",
-                "border-rose-200 bg-rose-50 text-rose-600": checkoutBanner.type === "failed",
-              })}
-            >
-              {checkoutBanner.type === "loading" && <Loader2 className="mr-2 inline h-4 w-4 animate-spin align-text-bottom" />}
-              {checkoutBanner.message}
             </div>
           )}
 

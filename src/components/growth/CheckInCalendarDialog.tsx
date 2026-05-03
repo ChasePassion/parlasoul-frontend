@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { useGrowth } from "@/lib/growth-context";
 import { getErrorMessage } from "@/lib/error-map";
+import { toast } from "sonner";
 import {
   useApplyGrowthMakeUpMutation,
   useGrowthCalendarQuery,
@@ -174,7 +175,6 @@ export default function CheckInCalendarDialog() {
   const [calendarAnimationDirection, setCalendarAnimationDirection] =
     useState<"forward" | "backward" | "jump">("jump");
   const [calendarAnimationKey, setCalendarAnimationKey] = useState(0);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const calendar = displayedCalendar ?? calendarMonth;
   const currentMonth = calendar?.month;
@@ -195,7 +195,6 @@ export default function CheckInCalendarDialog() {
     ) => {
       if (isNavigating) return;
       setIsNavigating(true);
-      setActionMessage(null);
       setCalendarAnimationDirection(direction);
       setCalendarAnimationKey((prev) => prev + 1);
       setRequestedMonth(targetMonth);
@@ -218,7 +217,7 @@ export default function CheckInCalendarDialog() {
     }
 
     setIsNavigating(false);
-    setActionMessage("加载月份失败，请稍后重试");
+    toast.error("加载月份失败，请稍后重试");
   }, [calendarQuery.isError]);
 
   const navigateMonth = useCallback(
@@ -242,7 +241,7 @@ export default function CheckInCalendarDialog() {
       parsedYear < 2000 ||
       parsedYear > 2100
     ) {
-      setActionMessage("请选择有效的年月");
+      toast.error("请选择有效的年月");
       return;
     }
 
@@ -259,15 +258,14 @@ export default function CheckInCalendarDialog() {
   const handleMakeUp = useCallback(
     async (targetDay: GrowthCalendarDay) => {
       if (makingUpDate) return;
-      setActionMessage(null);
 
       if (balance <= 0) {
-        setActionMessage("暂无补签卡");
+        toast.error("暂无补签卡");
         return;
       }
 
       if (!targetDay.can_make_up) {
-        setActionMessage("这个日期当前不可补签");
+        toast.error("这个日期当前不可补签");
         return;
       }
 
@@ -288,10 +286,10 @@ export default function CheckInCalendarDialog() {
             };
           });
         }
-        setActionMessage(null);
+        toast.success("补签成功");
       } catch (err) {
         console.error("Make-up failed:", err);
-        setActionMessage(getErrorMessage(err));
+        toast.error(getErrorMessage(err));
       } finally {
         setMakingUpDate(null);
       }
@@ -310,7 +308,6 @@ export default function CheckInCalendarDialog() {
     setDisplayedCalendar(null);
     setRequestedMonth(null);
     setMonthPickerOpen(false);
-    setActionMessage(null);
     closeEntryPopup();
   }, [closeEntryPopup]);
 
@@ -318,7 +315,6 @@ export default function CheckInCalendarDialog() {
     setDisplayedCalendar(null);
     setRequestedMonth(null);
     setMonthPickerOpen(false);
-    setActionMessage(null);
     dismissEntryPopupForToday();
   }, [dismissEntryPopupForToday]);
 
@@ -517,10 +513,6 @@ export default function CheckInCalendarDialog() {
                 ),
               )}
             </div>
-          </div>
-
-          <div className="mb-3 h-5 text-center text-xs font-medium text-orange-600">
-            {actionMessage ?? ""}
           </div>
 
           <div className="mt-4 flex gap-3">

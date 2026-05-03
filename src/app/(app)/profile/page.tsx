@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import CharacterCard from "@/components/CharacterCard";
 import CreateCharacterModal from "@/components/CreateCharacterModal";
@@ -165,7 +166,7 @@ export default function ProfilePage() {
             setCharacterToUnpublish(null);
         } catch (err) {
             console.error("Unpublish failed:", err);
-            alert("下架失败，请稍后重试");
+            toast.error("下架失败，请稍后重试");
         } finally {
             setIsUnpublishing(false);
         }
@@ -201,7 +202,7 @@ export default function ProfilePage() {
             setVoiceToDelete(null);
         } catch (err) {
             console.error("Delete voice failed:", err);
-            alert("删除音色失败，请稍后重试");
+            toast.error("删除音色失败，请稍后重试");
         }
     };
 

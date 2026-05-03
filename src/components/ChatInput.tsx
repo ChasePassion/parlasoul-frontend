@@ -6,6 +6,7 @@ import { SpriteIcon } from "@/components/ui/sprite-icon";
 import ReplySuggestionsBar from "./ReplySuggestionsBar";
 import { SttRecorder } from "@/lib/voice/stt-recorder";
 import type { ReplySuggestion } from "@/lib/api";
+import { toast } from "sonner";
 
 // Canvas waveform configuration (from example/app VoiceInput)
 const WAVEFORM_CONFIG = {
@@ -65,7 +66,6 @@ export default function ChatInput({
     const editorRef = useRef<HTMLDivElement>(null);
     const savedSelectionRef = useRef<Range | null>(null);
     const [message, setMessage] = useState("");
-    const [notice, setNotice] = useState<string | null>(null);
     const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
 
     // Phase 2: recording state
@@ -143,10 +143,6 @@ export default function ChatInput({
         savedSelectionRef.current = range.cloneRange();
     }, []);
 
-    const showNotice = (text: string) => {
-        setNotice(text);
-    };
-
     const handleSend = () => {
         const content = getEditorText().trim();
         if (!content || disabled) return;
@@ -168,12 +164,6 @@ export default function ChatInput({
         document.addEventListener("selectionchange", handleSelectionChange);
         return () => document.removeEventListener("selectionchange", handleSelectionChange);
     }, [captureEditorSelection, inputAreaState]);
-
-    useEffect(() => {
-        if (!notice) return;
-        const timer = setTimeout(() => setNotice(null), 1600);
-        return () => clearTimeout(timer);
-    }, [notice]);
 
     const handleEditorInput = () => {
         const root = editorRef.current;
@@ -375,9 +365,9 @@ export default function ChatInput({
                 // it is a persistent deny (needs settings) or a regular prompt deny.
                 const permissionState = await SttRecorder.getMicPermissionState();
                 if (permissionState === "denied") {
-                    showNotice("请在浏览器或系统设置中允许使用麦克风");
+                    toast("请在浏览器或系统设置中允许使用麦克风");
                 } else {
-                    showNotice("请允许麦克风权限以开始录音");
+                    toast("请允许麦克风权限以开始录音");
                 }
                 return;
             }
@@ -385,16 +375,16 @@ export default function ChatInput({
             switch (errorCode) {
                 case "MIC_INSECURE_CONTEXT":
                 case "MIC_API_UNAVAILABLE":
-                    showNotice("请在 https 或 localhost 环境下使用麦克风");
+                    toast("请在 https 或 localhost 环境下使用麦克风");
                     break;
                 case "MIC_DEVICE_NOT_FOUND":
-                    showNotice("未检测到可用麦克风");
+                    toast("未检测到可用麦克风");
                     break;
                 case "MIC_DEVICE_BUSY":
-                    showNotice("麦克风正被其他应用占用");
+                    toast("麦克风正被其他应用占用");
                     break;
                 default:
-                    showNotice("无法启动录音");
+                    toast("无法启动录音");
             }
         }
     };
@@ -412,9 +402,9 @@ export default function ChatInput({
             onMicCancel?.(); // notify parent recording ended
         } catch (err) {
             if (err instanceof Error && err.message === "NO_SPEECH") {
-                showNotice("似乎没有听到声音哦");
+                toast("似乎没有听到声音哦");
             } else {
-                showNotice("转写失败，请重试");
+                toast("转写失败，请重试");
             }
             setInputAreaState("default");
             onMicCancel?.();
@@ -519,9 +509,6 @@ export default function ChatInput({
                 style={{ maxWidth: "48rem", width: "100%" }}
             >
                 <div className="flex justify-center empty:hidden">
-                    {notice ? (
-                        <div className="rounded-full bg-black/80 px-3 py-1 text-xs text-white">{notice}</div>
-                    ) : null}
                 </div>
                 {disabledReason ? (
                     <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -656,7 +643,7 @@ export default function ChatInput({
                                                 aria-haspopup="menu"
                                                 aria-expanded="false"
                                                 data-state="closed"
-                                                onClick={() => showNotice("功能开发中")}
+                                                onClick={() => toast("功能开发中")}
                                             >
                                                 <SpriteIcon name="desktop" size={20} />
                                             </button>
