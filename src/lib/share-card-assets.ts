@@ -98,7 +98,12 @@ function preloadImage(src: string): Promise<void> {
     };
 
     image.onload = finish;
-    image.onerror = finish;
+    image.onerror = () => {
+      image.onload = null;
+      image.onerror = null;
+      imageLoadCache.delete(src);
+      resolve();
+    };
     image.src = src;
 
     if (image.complete) {
