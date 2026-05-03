@@ -175,10 +175,11 @@ export async function getPricingCatalog() {
 
   const client = getDodoPaymentsClient();
 
-  const products: Product[] = [];
-  for (const { productId } of DODO_CHECKOUT_PRODUCTS) {
-    products.push(await retrieveProductWithRetry(client, productId));
-  }
+  const products = await Promise.all(
+    DODO_CHECKOUT_PRODUCTS.map(({ productId }) =>
+      retrieveProductWithRetry(client, productId),
+    ),
+  );
 
   const catalogPlans = products.map(mapProductToCatalogPlan);
   const monthlyPriceMinorByTier = new Map<BillingTier, number>();
