@@ -110,9 +110,9 @@ export default function SetupPage() {
         if (!file) return;
 
         // Validate file type
-        const validTypes = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+        const validTypes = ["image/jpeg", "image/png", "image/webp"];
         if (!validTypes.includes(file.type)) {
-            setError("请选择 JPEG、PNG、WEBP 或 AVIF 格式的图片！");
+            setError("请选择 JPEG、PNG 或 WEBP 格式的图片！");
             return;
         }
 
@@ -150,9 +150,9 @@ export default function SetupPage() {
         if (file) {
             if (fileInputRef.current) {
                 // Manually trigger check logic instead of modifying input directly
-                const validTypes = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+                const validTypes = ["image/jpeg", "image/png", "image/webp"];
                 if (!validTypes.includes(file.type)) {
-                    setError("请选择 JPEG、PNG、WEBP 或 AVIF 格式的图片");
+                    setError("请选择 JPEG、PNG 或 WEBP 格式的图片");
                     return;
                 }
                 if (file.size > 5 * 1024 * 1024) {
@@ -295,12 +295,12 @@ export default function SetupPage() {
                             <input
                                 ref={fileInputRef}
                                 type="file"
-                                accept="image/jpeg,image/png,image/gif,image/webp"
+                                accept="image/jpeg,image/png,image/webp"
                                 onChange={handleFileSelect}
                                 className="hidden"
                             />
                             <p className="text-xs text-gray-400 text-center mt-2">
-                                支持 JPEG, PNG, GIF, WEBP，最大 5MB
+                                支持 JPEG, PNG, WEBP，最大 5MB
                             </p>
                         </div>
 
