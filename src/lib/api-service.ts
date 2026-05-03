@@ -1,6 +1,5 @@
 import { httpClient } from "./http-client";
-import { ApiError, UnauthorizedError } from "./token-store";
-import { getErrorMessage } from "./error-map";
+import { ApiError } from "./token-store";
 import type { GrowthTodaySummary, GrowthShareCard } from "./growth-types";
 import { fetchWithBetterAuth } from "./better-auth-token";
 import {
@@ -8,6 +7,7 @@ import {
   throwApiErrorResponse,
   unwrapEnvelopePayload,
 } from "./http-client";
+import { consumeSseStream, handleStreamError } from "./sse-stream";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -1213,126 +1213,82 @@ export class ApiService {
     },
   ): Promise<void> {
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-      };
-
-      const response = await fetchWithBetterAuth(`/v1/turns/${turnId}/regen/stream`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({}),
-        signal: handlers.signal,
-      });
+      const response = await fetchWithBetterAuth(
+        `/v1/turns/${turnId}/regen/stream`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({}),
+          signal: handlers.signal,
+        },
+      );
 
       if (!response.ok) {
         return throwApiErrorResponse(response);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      const decoder = new TextDecoder();
-      let pending = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        pending += decoder.decode(value, { stream: true });
-        const lines = pending.split("\n");
-        pending = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-
-          const payload = trimmed.slice(5).trim();
-          if (!payload) continue;
-
-          try {
-            const data = JSON.parse(payload) as TurnStreamEvent;
-            if (data.type === "meta") {
-              handlers.onMeta?.(data);
-            } else if (data.type === "chunk") {
-              handlers.onChunk(data.content);
-            } else if (data.type === "done") {
-              handlers.onDone(
-                data.full_content,
-                data.assistant_turn_id,
-                data.assistant_candidate_id,
-              );
-            } else if (data.type === "reply_suggestions") {
-              handlers.onReplySuggestions?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                suggestions: data.suggestions,
-              });
-            } else if (data.type === "reply_card_started") {
-              handlers.onReplyCardStarted?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-              });
-            } else if (data.type === "reply_card") {
-              handlers.onReplyCard?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                reply_card: data.reply_card,
-              });
-            } else if (data.type === "reply_card_error") {
-              handlers.onReplyCardError?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                code: data.code,
-                message: data.message,
-              });
-            } else if (data.type === "tts_audio_delta") {
-              handlers.onTtsAudioDelta?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                seq: data.seq,
-                audio_b64: data.audio_b64,
-                mime_type: data.mime_type,
-              });
-            } else if (data.type === "tts_audio_done") {
-              handlers.onTtsAudioDone?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-              });
-            } else if (data.type === "tts_error") {
-              handlers.onTtsError?.({
-                code: data.code,
-                message: data.message,
-              });
-            } else if (data.type === "error") {
-              if (data.code && data.message) {
-                handlers.onError(new Error(`${data.code}: ${data.message}`));
-              } else {
-                handlers.onError(new Error(data.message || "Unknown error"));
-              }
-            }
-          } catch {
-            // Ignore malformed stream rows.
+      await consumeSseStream<TurnStreamEvent>(response, (data) => {
+        if (data.type === "meta") {
+          handlers.onMeta?.(data);
+        } else if (data.type === "chunk") {
+          handlers.onChunk(data.content);
+        } else if (data.type === "done") {
+          handlers.onDone(
+            data.full_content,
+            data.assistant_turn_id,
+            data.assistant_candidate_id,
+          );
+        } else if (data.type === "reply_suggestions") {
+          handlers.onReplySuggestions?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            suggestions: data.suggestions,
+          });
+        } else if (data.type === "reply_card_started") {
+          handlers.onReplyCardStarted?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+          });
+        } else if (data.type === "reply_card") {
+          handlers.onReplyCard?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            reply_card: data.reply_card,
+          });
+        } else if (data.type === "reply_card_error") {
+          handlers.onReplyCardError?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            code: data.code,
+            message: data.message,
+          });
+        } else if (data.type === "tts_audio_delta") {
+          handlers.onTtsAudioDelta?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            seq: data.seq,
+            audio_b64: data.audio_b64,
+            mime_type: data.mime_type,
+          });
+        } else if (data.type === "tts_audio_done") {
+          handlers.onTtsAudioDone?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+          });
+        } else if (data.type === "tts_error") {
+          handlers.onTtsError?.({
+            code: data.code,
+            message: data.message,
+          });
+        } else if (data.type === "error") {
+          if (data.code && data.message) {
+            handlers.onError(new Error(`${data.code}: ${data.message}`));
+          } else {
+            handlers.onError(new Error(data.message || "Unknown error"));
           }
         }
-      }
+      });
     } catch (error) {
-      if (
-        (error instanceof DOMException && error.name === "AbortError") ||
-        (error instanceof Error && error.name === "AbortError")
-      ) {
-        return;
-      }
-
-      if (error instanceof UnauthorizedError) {
-        handlers.onError(new Error(getErrorMessage(error)));
-        return;
-      }
-
-      if (error instanceof ApiError) {
-        handlers.onError(new Error(error.detail || `API error: ${error.status}`));
-        return;
-      }
-
-      handlers.onError(
-        error instanceof Error ? error : new Error("Unknown error"),
-      );
+      handleStreamError(error, handlers.onError, {
+        apiErrorMode: "detail-error",
+      });
     }
   }
 
@@ -1379,132 +1335,88 @@ export class ApiService {
     },
   ): Promise<void> {
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-      };
-
-      const response = await fetchWithBetterAuth(`/v1/turns/${turnId}/edit/stream`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(request),
-        signal: handlers.signal,
-      });
+      const response = await fetchWithBetterAuth(
+        `/v1/turns/${turnId}/edit/stream`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify(request),
+          signal: handlers.signal,
+        },
+      );
 
       if (!response.ok) {
         return throwApiErrorResponse(response);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      const decoder = new TextDecoder();
-      let pending = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        pending += decoder.decode(value, { stream: true });
-        const lines = pending.split("\n");
-        pending = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-
-          const payload = trimmed.slice(5).trim();
-          if (!payload) continue;
-
-          try {
-            const data = JSON.parse(payload) as TurnStreamEvent;
-            if (data.type === "meta") {
-              handlers.onMeta?.(data);
-            } else if (data.type === "chunk") {
-              handlers.onChunk(data.content);
-            } else if (data.type === "transform_done") {
-              handlers.onTransformDone?.({
-                original_content: data.original_content,
-                transformed_content: data.transformed_content,
-                applied: data.applied,
-              });
-            } else if (data.type === "done") {
-              handlers.onDone(
-                data.full_content,
-                data.assistant_turn_id,
-                data.assistant_candidate_id,
-              );
-            } else if (data.type === "reply_suggestions") {
-              handlers.onReplySuggestions?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                suggestions: data.suggestions,
-              });
-            } else if (data.type === "reply_card_started") {
-              handlers.onReplyCardStarted?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-              });
-            } else if (data.type === "reply_card") {
-              handlers.onReplyCard?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                reply_card: data.reply_card,
-              });
-            } else if (data.type === "reply_card_error") {
-              handlers.onReplyCardError?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                code: data.code,
-                message: data.message,
-              });
-            } else if (data.type === "tts_audio_delta") {
-              handlers.onTtsAudioDelta?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                seq: data.seq,
-                audio_b64: data.audio_b64,
-                mime_type: data.mime_type,
-              });
-            } else if (data.type === "tts_audio_done") {
-              handlers.onTtsAudioDone?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-              });
-            } else if (data.type === "tts_error") {
-              handlers.onTtsError?.({
-                code: data.code,
-                message: data.message,
-              });
-            } else if (data.type === "error") {
-              if (data.code && data.message) {
-                handlers.onError(new Error(`${data.code}: ${data.message}`));
-              } else {
-                handlers.onError(new Error(data.message || "Unknown error"));
-              }
-            }
-          } catch {
-            // Ignore malformed stream rows.
+      await consumeSseStream<TurnStreamEvent>(response, (data) => {
+        if (data.type === "meta") {
+          handlers.onMeta?.(data);
+        } else if (data.type === "chunk") {
+          handlers.onChunk(data.content);
+        } else if (data.type === "transform_done") {
+          handlers.onTransformDone?.({
+            original_content: data.original_content,
+            transformed_content: data.transformed_content,
+            applied: data.applied,
+          });
+        } else if (data.type === "done") {
+          handlers.onDone(
+            data.full_content,
+            data.assistant_turn_id,
+            data.assistant_candidate_id,
+          );
+        } else if (data.type === "reply_suggestions") {
+          handlers.onReplySuggestions?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            suggestions: data.suggestions,
+          });
+        } else if (data.type === "reply_card_started") {
+          handlers.onReplyCardStarted?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+          });
+        } else if (data.type === "reply_card") {
+          handlers.onReplyCard?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            reply_card: data.reply_card,
+          });
+        } else if (data.type === "reply_card_error") {
+          handlers.onReplyCardError?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            code: data.code,
+            message: data.message,
+          });
+        } else if (data.type === "tts_audio_delta") {
+          handlers.onTtsAudioDelta?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            seq: data.seq,
+            audio_b64: data.audio_b64,
+            mime_type: data.mime_type,
+          });
+        } else if (data.type === "tts_audio_done") {
+          handlers.onTtsAudioDone?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+          });
+        } else if (data.type === "tts_error") {
+          handlers.onTtsError?.({
+            code: data.code,
+            message: data.message,
+          });
+        } else if (data.type === "error") {
+          if (data.code && data.message) {
+            handlers.onError(new Error(`${data.code}: ${data.message}`));
+          } else {
+            handlers.onError(new Error(data.message || "Unknown error"));
           }
         }
-      }
+      });
     } catch (error) {
-      if (
-        (error instanceof DOMException && error.name === "AbortError") ||
-        (error instanceof Error && error.name === "AbortError")
-      ) {
-        return;
-      }
-
-      if (error instanceof UnauthorizedError) {
-        handlers.onError(new Error(getErrorMessage(error)));
-        return;
-      }
-
-      if (error instanceof ApiError) {
-        handlers.onError(new Error(error.detail || `API error: ${error.status}`));
-        return;
-      }
-
-      handlers.onError(
-        error instanceof Error ? error : new Error("Unknown error"),
-      );
+      handleStreamError(error, handlers.onError, {
+        apiErrorMode: "detail-error",
+      });
     }
   }
 
@@ -1559,144 +1471,100 @@ export class ApiService {
     },
   ): Promise<void> {
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-      };
-
-      const response = await fetchWithBetterAuth(`/v1/chats/${chatId}/stream`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(request),
-        signal: handlers.signal,
-      });
+      const response = await fetchWithBetterAuth(
+        `/v1/chats/${chatId}/stream`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify(request),
+          signal: handlers.signal,
+        },
+      );
 
       if (!response.ok) {
         return throwApiErrorResponse(response);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      const decoder = new TextDecoder();
-      let pending = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        pending += decoder.decode(value, { stream: true });
-        const lines = pending.split("\n");
-        pending = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-
-          const payload = trimmed.slice(5).trim();
-          if (!payload) continue;
-
-          try {
-            const data = JSON.parse(payload) as ChatStreamEvent;
-            if (data.type === "meta") {
-              handlers.onMeta?.(data);
-            } else if (data.type === "chat_title_updated") {
-              handlers.onChatTitleUpdated?.({
-                chat_id: data.chat_id,
-                title: data.title,
-              });
-            } else if (data.type === "transform_chunk") {
-              handlers.onTransformChunk?.(data.content);
-            } else if (data.type === "transform_done") {
-              handlers.onTransformDone?.({
-                original_content: data.original_content,
-                transformed_content: data.transformed_content,
-                applied: data.applied,
-              });
-            } else if (data.type === "chunk") {
-              handlers.onChunk(data.content);
-            } else if (data.type === "done") {
-              handlers.onDone(
-                data.full_content,
-                data.assistant_turn_id,
-                data.assistant_candidate_id,
-              );
-            } else if (data.type === "reply_suggestions") {
-              handlers.onReplySuggestions?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                suggestions: data.suggestions,
-              });
-            } else if (data.type === "reply_card_started") {
-              handlers.onReplyCardStarted?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-              });
-            } else if (data.type === "reply_card") {
-              handlers.onReplyCard?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                reply_card: data.reply_card,
-              });
-            } else if (data.type === "reply_card_error") {
-              handlers.onReplyCardError?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                code: data.code,
-                message: data.message,
-              });
-            } else if (data.type === "error") {
-              if (data.code && data.message) {
-                handlers.onError(new Error(`${data.code}: ${data.message}`));
-              } else {
-                handlers.onError(new Error(data.message || "Unknown error"));
-              }
-            } else if (data.type === "tts_audio_delta") {
-              handlers.onTtsAudioDelta?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-                seq: data.seq,
-                audio_b64: data.audio_b64,
-                mime_type: data.mime_type,
-              });
-            } else if (data.type === "tts_audio_done") {
-              handlers.onTtsAudioDone?.({
-                assistant_candidate_id: data.assistant_candidate_id,
-              });
-            } else if (data.type === "tts_error") {
-              handlers.onTtsError?.({
-                code: data.code,
-                message: data.message,
-              });
-            } else if (data.type === "growth_daily_updated") {
-              handlers.onGrowthDailyUpdated?.({ today: data.today });
-            } else if (data.type === "growth_share_card_ready") {
-              handlers.onGrowthShareCardReady?.({ share_card: data.share_card });
-            }
-            // memory_queued is silently ignored (background operation)
-          } catch {
-            // Ignore malformed stream rows.
+      await consumeSseStream<ChatStreamEvent>(response, (data) => {
+        if (data.type === "meta") {
+          handlers.onMeta?.(data);
+        } else if (data.type === "chat_title_updated") {
+          handlers.onChatTitleUpdated?.({
+            chat_id: data.chat_id,
+            title: data.title,
+          });
+        } else if (data.type === "transform_chunk") {
+          handlers.onTransformChunk?.(data.content);
+        } else if (data.type === "transform_done") {
+          handlers.onTransformDone?.({
+            original_content: data.original_content,
+            transformed_content: data.transformed_content,
+            applied: data.applied,
+          });
+        } else if (data.type === "chunk") {
+          handlers.onChunk(data.content);
+        } else if (data.type === "done") {
+          handlers.onDone(
+            data.full_content,
+            data.assistant_turn_id,
+            data.assistant_candidate_id,
+          );
+        } else if (data.type === "reply_suggestions") {
+          handlers.onReplySuggestions?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            suggestions: data.suggestions,
+          });
+        } else if (data.type === "reply_card_started") {
+          handlers.onReplyCardStarted?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+          });
+        } else if (data.type === "reply_card") {
+          handlers.onReplyCard?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            reply_card: data.reply_card,
+          });
+        } else if (data.type === "reply_card_error") {
+          handlers.onReplyCardError?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            code: data.code,
+            message: data.message,
+          });
+        } else if (data.type === "error") {
+          if (data.code && data.message) {
+            handlers.onError(new Error(`${data.code}: ${data.message}`));
+          } else {
+            handlers.onError(new Error(data.message || "Unknown error"));
           }
+        } else if (data.type === "tts_audio_delta") {
+          handlers.onTtsAudioDelta?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            seq: data.seq,
+            audio_b64: data.audio_b64,
+            mime_type: data.mime_type,
+          });
+        } else if (data.type === "tts_audio_done") {
+          handlers.onTtsAudioDone?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+          });
+        } else if (data.type === "tts_error") {
+          handlers.onTtsError?.({
+            code: data.code,
+            message: data.message,
+          });
+        } else if (data.type === "growth_daily_updated") {
+          handlers.onGrowthDailyUpdated?.({ today: data.today });
+        } else if (data.type === "growth_share_card_ready") {
+          handlers.onGrowthShareCardReady?.({ share_card: data.share_card });
         }
-      }
+        // memory_queued is silently ignored (background operation)
+      });
     } catch (error) {
-      if (
-        (error instanceof DOMException && error.name === "AbortError") ||
-        (error instanceof Error && error.name === "AbortError")
-      ) {
-        return;
-      }
-
-      if (error instanceof UnauthorizedError) {
-        handlers.onError(new Error(getErrorMessage(error)));
-        return;
-      }
-
-      if (error instanceof ApiError) {
-        handlers.onError(new Error(error.detail || `API error: ${error.status}`));
-        return;
-      }
-
-      handlers.onError(
-        error instanceof Error ? error : new Error("Unknown error"),
-      );
+      handleStreamError(error, handlers.onError, {
+        apiErrorMode: "detail-error",
+      });
     }
   }
 
@@ -1990,70 +1858,23 @@ export class ApiService {
         return throwApiErrorResponse(response);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      const decoder = new TextDecoder();
-      let pending = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        pending += decoder.decode(value, { stream: true });
-        const lines = pending.split("\n");
-        pending = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-
-          const payload = trimmed.slice(5).trim();
-          if (!payload) continue;
-
-          try {
-            const data = JSON.parse(payload) as LearningAssistantStreamEvent;
-            if (data.type === "chunk") {
-              handlers.onChunk(data.content);
-            } else if (data.type === "done") {
-              handlers.onDone(data.full_content);
-            } else if (data.type === "error") {
-              handlers.onError(
-                new ApiError(
-                  500,
-                  data.code ?? "llm_service_error",
-                  data.message ?? "Unknown error",
-                ),
-              );
-            }
-          } catch {
-            // Ignore malformed stream rows.
-          }
+      await consumeSseStream<LearningAssistantStreamEvent>(response, (data) => {
+        if (data.type === "chunk") {
+          handlers.onChunk(data.content);
+        } else if (data.type === "done") {
+          handlers.onDone(data.full_content);
+        } else if (data.type === "error") {
+          handlers.onError(
+            new ApiError(
+              500,
+              data.code ?? "llm_service_error",
+              data.message ?? "Unknown error",
+            ),
+          );
         }
-      }
+      });
     } catch (error) {
-      if (
-        (error instanceof DOMException && error.name === "AbortError") ||
-        (error instanceof Error && error.name === "AbortError")
-      ) {
-        return;
-      }
-
-      if (error instanceof UnauthorizedError) {
-        handlers.onError(new Error(getErrorMessage(error)));
-        return;
-      }
-
-      if (error instanceof ApiError) {
-        handlers.onError(error);
-        return;
-      }
-
-      handlers.onError(
-        error instanceof Error ? error : new Error("Unknown error"),
-      );
+      handleStreamError(error, handlers.onError);
     }
   }
 
