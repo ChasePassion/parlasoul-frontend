@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import type { InputTransform, ReplyCard, ReplySuggestion, DisplayMode } from "@/lib/api";
+import { copyToClipboard } from "@/lib/clipboard";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
 
 export type MessageActionStatus = "idle" | "loading" | "ready" | "error";
@@ -148,53 +149,6 @@ export default function ChatMessage({
         fontWeight: 350,
     };
 
-    const copyTextToClipboard = async (text: string): Promise<boolean> => {
-        if (!text) return false;
-        if (typeof window === "undefined") return false;
-
-        if (navigator.clipboard?.writeText) {
-            try {
-                await navigator.clipboard.writeText(text);
-                return true;
-            } catch {
-                // Fallback below for blocked clipboard permissions/runtime failures.
-            }
-        }
-
-        try {
-            const textarea = document.createElement("textarea");
-            textarea.value = text;
-            textarea.setAttribute("readonly", "");
-            textarea.style.position = "fixed";
-            textarea.style.left = "-9999px";
-            textarea.style.opacity = "0";
-            document.body.appendChild(textarea);
-
-            const selection = document.getSelection();
-            const selectedRange =
-                selection && selection.rangeCount > 0
-                    ? selection.getRangeAt(0)
-                    : null;
-
-            textarea.focus();
-            textarea.select();
-            textarea.setSelectionRange(0, textarea.value.length);
-            const copied = document.execCommand("copy");
-            document.body.removeChild(textarea);
-
-            if (selection) {
-                selection.removeAllRanges();
-                if (selectedRange) {
-                    selection.addRange(selectedRange);
-                }
-            }
-
-            return copied;
-        } catch {
-            return false;
-        }
-    };
-
     useEffect(() => {
         if (!isEditing) setDraft(message.content);
     }, [message.content, isEditing]);
@@ -293,7 +247,7 @@ export default function ChatMessage({
     const handleCopy = async () => {
         if (actionsDisabled) return;
         if (!message.content) return;
-        const copied = await copyTextToClipboard(message.content);
+        const copied = await copyToClipboard(message.content);
         if (copied) {
             setIsCopySuccess(true);
             if (copyResetTimerRef.current) {

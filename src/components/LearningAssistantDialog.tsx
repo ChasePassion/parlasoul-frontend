@@ -7,6 +7,7 @@ import { SpriteIcon } from "@/components/ui/sprite-icon";
 import Markdown from "@/components/Markdown";
 import { Textarea } from "@/components/ui/textarea";
 import type { LearningAssistantContextMessage } from "@/lib/api";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useLearningAssistant } from "@/hooks/useLearningAssistant";
 
 interface LearningAssistantDialogProps {
@@ -167,37 +168,6 @@ function readStoredRect(): DialogRect | null {
 function persistRect(rect: DialogRect) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rect));
-}
-
-async function copyText(value: string): Promise<boolean> {
-  if (!value || typeof window === "undefined") return false;
-
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(value);
-      return true;
-    } catch {
-      // Fall through to execCommand fallback.
-    }
-  }
-
-  try {
-    const textarea = document.createElement("textarea");
-    textarea.value = value;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-    textarea.setSelectionRange(0, textarea.value.length);
-    const copied = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return copied;
-  } catch {
-    return false;
-  }
 }
 
 export default function LearningAssistantDialog({
@@ -393,7 +363,7 @@ export default function LearningAssistantDialog({
   }, [ask, chatContext, chatId, question]);
 
   const handleCopyAnswer = useCallback(async (messageId: string, content: string) => {
-    const copied = await copyText(content);
+    const copied = await copyToClipboard(content);
     if (!copied) return;
     setCopiedMessageId(messageId);
     if (copyTimerRef.current) {
