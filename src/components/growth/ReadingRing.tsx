@@ -23,6 +23,7 @@ export default function ReadingRing({ chatId }: ReadingRingProps) {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [animateLoop, setAnimateLoop] = useState(false);
   const prevLoopsRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -34,11 +35,20 @@ export default function ReadingRing({ chatId }: ReadingRingProps) {
       prevLoopsRef.current !== null &&
       data.completed_loops > prevLoopsRef.current
     ) {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
       setAnimateLoop(true);
-      setTimeout(() => setAnimateLoop(false), 1200);
+      timerRef.current = setTimeout(() => setAnimateLoop(false), 1200);
     }
 
     prevLoopsRef.current = data.completed_loops;
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
   }, [data]);
 
   // Provide a way for SSE updates to refresh ring data
