@@ -45,7 +45,8 @@ export default function ReadingRingPopover({
   onOpenChange,
   children,
 }: ReadingRingPopoverProps) {
-  const cs = data.character_summary;
+  const cs = data.chat_summary;
+  const characterName = data.character_summary.character_name;
   const re = cs.total_reading_equivalent;
 
   return (
@@ -59,7 +60,7 @@ export default function ReadingRingPopover({
         {/* Header */}
         <div className="border-b px-4 py-3">
           <p className="text-sm font-semibold text-[var(--text-primary)]">
-            {cs.character_name}
+            {characterName}
           </p>
           <p className="mt-0.5 text-xs text-[var(--text-tertiary)]">
             当前这一轮 {data.current_loop_progress_words}/{data.ring_unit_words} 词

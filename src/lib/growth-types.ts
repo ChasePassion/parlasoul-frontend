@@ -107,6 +107,14 @@ export interface GrowthCharacterSummary {
   last_chat_at: string | null;
 }
 
+export interface GrowthChatSummary {
+  total_message_count: number;
+  total_word_count: number;
+  total_reading_equivalent: GrowthReadingEquivalent;
+  total_exchange_count: number;
+  chatted_days_count: number;
+}
+
 export interface GrowthChatHeaderResponse {
   chat_id: string;
   character_id: string;
@@ -117,6 +125,7 @@ export interface GrowthChatHeaderResponse {
   current_loop_progress_ratio: number;
   next_loop_remaining_words: number;
   character_summary: GrowthCharacterSummary;
+  chat_summary: GrowthChatSummary;
 }
 
 // ── Overview ──
