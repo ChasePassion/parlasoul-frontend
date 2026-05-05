@@ -91,7 +91,7 @@ export class TtsPlaybackManager {
         const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
 
         // PCM 16-bit signed LE → Float32
-        const int16 = new Int16Array(bytes.buffer);
+        const int16 = new Int16Array(bytes.buffer, 0, bytes.length >> 1);
         const float32 = new Float32Array(int16.length);
         for (let i = 0; i < int16.length; i++) {
           float32[i] = int16[i] / 32768;
