@@ -29,11 +29,13 @@ export async function consumeSseStream<T>(
     const payload = trimmed.slice(5).trim();
     if (!payload) return;
 
+    let parsed: T;
     try {
-      onEvent(JSON.parse(payload) as T);
+      parsed = JSON.parse(payload) as T;
     } catch {
-      // Keep the stream resilient to malformed rows and handler exceptions.
+      return; // malformed JSON, skip this event
     }
+    onEvent(parsed); // handler exceptions propagate to caller
   };
 
   while (true) {

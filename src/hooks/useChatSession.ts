@@ -759,17 +759,20 @@ export function useChatSession({
       ttsPlaybackManager?.interruptAll();
       void ttsPlaybackManager?.ensureResumed().catch(() => {});
 
-      const idx = messages.findIndex((message) => message.id === turnId);
-      if (idx < 0) return;
-
       const tempAssistantId = `assistant-edit-${crypto.randomUUID()}`;
       let resolvedAssistantMessageId = tempAssistantId;
       let resolvedAssistantCandidateId: string | undefined;
-
-      const userMessage = messages[idx];
-      const nextCandidateNo = Math.min(10, (userMessage.candidateCount ?? 1) + 1);
+      let editAborted = false;
 
       setMessages((prev) => {
+        const idx = prev.findIndex((message) => message.id === turnId);
+        if (idx < 0) {
+          editAborted = true;
+          return prev;
+        }
+        const userMessage = prev[idx];
+        const nextCandidateNo = Math.min(10, (userMessage.candidateCount ?? 1) + 1);
+
         const next = prev.slice(0, idx + 1).map((message) => {
           if (message.id !== turnId) return message;
           return {
@@ -794,6 +797,8 @@ export function useChatSession({
         });
         return next;
       });
+
+      if (editAborted) return;
       clearReplySuggestions();
 
       const { controller, requestRunId } = beginStream();
@@ -1017,7 +1022,6 @@ export function useChatSession({
       clearTrackedController,
       detachControllerToTail,
       isStreaming,
-      messages,
       reloadChatTurns,
       shouldReloadForRequest,
       ttsPlaybackManager,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 
-const protectedMatchers = ["/", "/chat", "/favorites", "/profile", "/setup"];
+const protectedMatchers = ["/", "/chat", "/favorites", "/profile", "/setup", "/stats", "/billing"];
 
 function isProtectedPath(pathname: string): boolean {
   return protectedMatchers.some((path) =>
@@ -26,5 +26,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/chat/:path*", "/favorites", "/profile", "/setup"],
+  matcher: ["/", "/chat/:path*", "/favorites", "/profile", "/setup", "/stats", "/billing"],
 };
