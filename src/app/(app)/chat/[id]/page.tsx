@@ -291,7 +291,6 @@ export default function ChatPage() {
                 return;
             }
 
-            shouldAutoScrollRef.current = true;
             if (event.type === "conversation.turn.created") {
                 scheduleRealtimeChatTurnsReload({
                     requiredTurnIds: [event.user_turn_id],
