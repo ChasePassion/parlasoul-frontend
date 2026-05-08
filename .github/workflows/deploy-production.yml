@@ -38,7 +38,7 @@ jobs:
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-      DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_ROOT: ${{ secrets.DEPLOY_ROOT }}
       DEPLOY_HOST_KEY_FINGERPRINT: ${{ secrets.DEPLOY_HOST_KEY_FINGERPRINT }}
       IMAGE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.event.inputs.image_sha }}
@@ -48,7 +48,7 @@ jobs:
           set -euo pipefail
 
           sanitize() {
-            printf '%s' "$1" | tr -d '\r\n' | sed $'1s/^\xEF\xBB\xBF//'
+            printf '%s' "$1" | tr -d '\r' | sed $'1s/^\xEF\xBB\xBF//'
           }
 
           normalized_sha="$(sanitize "${IMAGE_SHA}")"
@@ -57,7 +57,6 @@ jobs:
           {
             echo "DEPLOY_HOST=$(sanitize "${DEPLOY_HOST}")"
             echo "DEPLOY_USER=$(sanitize "${DEPLOY_USER}")"
-            echo "DEPLOY_PASSWORD=$(sanitize "${DEPLOY_PASSWORD}")"
             echo "DEPLOY_ROOT=$(sanitize "${DEPLOY_ROOT}")"
             echo "DEPLOY_HOST_KEY_FINGERPRINT=$(sanitize "${DEPLOY_HOST_KEY_FINGERPRINT}")"
             echo "IMAGE_SHA=${normalized_sha}"
@@ -68,7 +67,7 @@ jobs:
       - name: Validate deployment inputs
         run: |
           set -euo pipefail
-          for key in DEPLOY_HOST DEPLOY_USER DEPLOY_PASSWORD DEPLOY_ROOT DEPLOY_HOST_KEY_FINGERPRINT; do
+          for key in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_ROOT DEPLOY_HOST_KEY_FINGERPRINT; do
             if [ -z "${!key:-}" ]; then
               echo "::error::Missing required production secret: ${key}"
               exit 1
@@ -88,7 +87,16 @@ jobs:
       - name: Install SSH client
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openssh-client sshpass
+          sudo apt-get install -y --no-install-recommends openssh-client
+
+      - name: Configure SSH key
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          ssh-keygen -l -f "$HOME/.ssh/deploy_key" > /dev/null && echo "SSH key valid"
 
       - name: Pin production host key
         run: |
@@ -104,7 +112,7 @@ jobs:
           set -euo pipefail
           export FRONTEND_IMAGE="ghcr.io/chasepassion/parlasoul-frontend:${IMAGE_TAG}"
 
-          sshpass -p "$DEPLOY_PASSWORD" ssh \
+          ssh -i "$HOME/.ssh/deploy_key" \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             "$DEPLOY_USER@$DEPLOY_HOST" /bin/bash <<EOF
