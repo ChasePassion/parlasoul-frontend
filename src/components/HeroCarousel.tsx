@@ -246,7 +246,6 @@ export default function HeroCarousel({
                   alt={item.character.name}
                   fill
                   className="object-contain object-center"
-                  unoptimized
                   priority
                   sizes={`(max-width: 768px) 84vw, ${HERO_SLIDE_MAX_WIDTH}px`}
                 />
