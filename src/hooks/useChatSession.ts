@@ -543,7 +543,7 @@ export function useChatSession({
       let resolvedAssistantCandidateId: string | undefined;
 
       ttsPlaybackManager?.interruptAll();
-      void ttsPlaybackManager?.ensureResumed().catch(() => {});
+      await ttsPlaybackManager?.ensureResumedForRealtime();
 
       setMessages((prev) =>
         prev.map((message) => {
@@ -757,7 +757,7 @@ export function useChatSession({
       let hasStreamError = false;
 
       ttsPlaybackManager?.interruptAll();
-      void ttsPlaybackManager?.ensureResumed().catch(() => {});
+      await ttsPlaybackManager?.ensureResumedForRealtime();
 
       const tempAssistantId = `assistant-edit-${crypto.randomUUID()}`;
       let resolvedAssistantMessageId = tempAssistantId;
@@ -1041,14 +1041,13 @@ export function useChatSession({
       }
 
       ttsPlaybackManager?.interruptAll();
-      void ttsPlaybackManager?.ensureResumed().catch(() => {});
+      await ttsPlaybackManager?.ensureResumedForRealtime();
 
       const tempUserId = `user-${crypto.randomUUID()}`;
       const tempAssistantId = `assistant-${crypto.randomUUID()}`;
       let resolvedUserMessageId = tempUserId;
       let resolvedAssistantMessageId = tempAssistantId;
       let resolvedAssistantCandidateId: string | undefined;
-      let hasStreamError = false;
 
       const userMessage: Message = {
         id: tempUserId,
@@ -1325,7 +1324,6 @@ export function useChatSession({
             },
             onError: async (err) => {
               if (controller.signal.aborted) return;
-              hasStreamError = true;
               const errorMessage = getErrorMessage(err);
               console.error("Chat error:", err);
               setMessages((prev) =>

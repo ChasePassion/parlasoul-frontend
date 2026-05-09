@@ -1,4 +1,5 @@
 import { getTtsAudioStream } from "@/lib/api";
+import { logger, Module, TtsEvent } from "@/lib/logger";
 
 type PlayStateCallback = (candidateId: string | null) => void;
 type AudioReadyCallback = (candidateId: string) => void;
@@ -23,8 +24,9 @@ export class TtsPlaybackManager {
   private realtimeCandidateId: string | null = null;
   private realtimeFinished = false;
   private realtimeStarted = false;
-  private readonly realtimeStartBufferSec = 1.0;
-  private readonly realtimeMinPlayAheadSec = 0.35;
+  private realtimeSeqCounter = 0;
+  private readonly realtimeStartBufferSec = 0.35;
+  private readonly realtimeMinPlayAheadSec = 0.05;
 
   // Single-message playback state
   private singleSource: AudioBufferSourceNode | null = null;
@@ -58,13 +60,20 @@ export class TtsPlaybackManager {
     }
   }
 
+  async ensureResumedForRealtime(): Promise<void> {
+    try {
+      await this.ensureResumed();
+    } catch (err) {
+      logger.fromError(Module.VOICE, err, TtsEvent.RESUME_FAILED);
+    }
+  }
+
   // ── Realtime streaming playback (auto read-aloud) ──
 
   feedRealtimeChunk(
     candidateId: string,
     audioB64: string,
     mimeType: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     seq: number,
   ): void {
     // If a different candidate starts, clear previous
@@ -74,9 +83,15 @@ export class TtsPlaybackManager {
 
     this.realtimeCandidateId = candidateId;
     this.realtimeFinished = false;
+    this.realtimeSeqCounter++;
 
     try {
       const ctx = this.getOrCreateAudioContext();
+      if (ctx.state === "suspended") {
+        void ctx.resume().catch((err) => {
+          logger.fromError(Module.VOICE, err, TtsEvent.RESUME_FAILED, { seq });
+        });
+      }
       const raw = atob(audioB64);
       const bytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i++) {
@@ -100,11 +115,9 @@ export class TtsPlaybackManager {
         audioBuffer = ctx.createBuffer(1, float32.length, sampleRate);
         audioBuffer.getChannelData(0).set(float32);
       } else {
-        // For opus/mp3 — cannot decode synchronously; skip for realtime
-        // Realtime stream should always be PCM from backend
-        console.warn(
-          `[TTS] Unexpected mime type for realtime: ${mimeType}, skipping`,
-        );
+        logger.warn(Module.VOICE, TtsEvent.MIME_SKIP, "Unexpected mime type for realtime", {
+          mime_type: mimeType,
+        });
         return;
       }
 
@@ -112,7 +125,7 @@ export class TtsPlaybackManager {
       this.realtimeQueuedDurationSec += audioBuffer.duration;
       this.scheduleRealtimePlayback(ctx);
     } catch (err) {
-      console.warn("[TTS] Failed to decode realtime chunk:", err);
+      logger.fromError(Module.VOICE, err, TtsEvent.DECODE_FAILED, { seq });
     }
   }
 
@@ -120,14 +133,21 @@ export class TtsPlaybackManager {
     // Don't schedule if no queue
     if (this.realtimeQueue.length === 0) return;
 
+    // Snapshot once — ctx.currentTime is stable during synchronous JS execution
+    const now = ctx.currentTime;
+
     if (!this.realtimeStarted) {
       if (!this.realtimeFinished && this.realtimeQueuedDurationSec < this.realtimeStartBufferSec) {
         return;
       }
       this.realtimeStarted = true;
-      if (this.realtimeNextStartTime <= 0) {
-        this.realtimeNextStartTime = ctx.currentTime + 0.05;
-      }
+      this.realtimeNextStartTime = now + this.realtimeMinPlayAheadSec;
+      logger.info(Module.VOICE, TtsEvent.SCHEDULE_STARTED, "TTS realtime scheduling started", {
+        now: now.toFixed(3),
+        next_start: this.realtimeNextStartTime.toFixed(3),
+        queue_len: this.realtimeQueue.length,
+        buffer_ms: Math.round(this.realtimeQueuedDurationSec * 1000),
+      });
     }
 
     // Update playing state
@@ -135,7 +155,18 @@ export class TtsPlaybackManager {
       this.setPlayingId(this.realtimeCandidateId);
     }
 
-    // Schedule all queued buffers
+    // Underrun detection: if the timeline fell behind, re-anchor from now
+    if (this.realtimeNextStartTime < now + 0.01) {
+      logger.warn(Module.VOICE, TtsEvent.UNDERRUN, "TTS underrun detected, re-anchoring timeline", {
+        next_start: this.realtimeNextStartTime.toFixed(3),
+        now: now.toFixed(3),
+      });
+      this.realtimeNextStartTime = now + this.realtimeMinPlayAheadSec;
+    }
+
+    // Schedule all queued buffers on the continuous timeline
+    let scheduled = 0;
+    const seqBefore = this.realtimeSeqCounter;
     while (this.realtimeQueue.length > 0) {
       const buffer = this.realtimeQueue.shift()!;
       this.realtimeQueuedDurationSec = Math.max(
@@ -146,12 +177,10 @@ export class TtsPlaybackManager {
       source.buffer = buffer;
       source.connect(ctx.destination);
 
-      const startTime = Math.max(
-        this.realtimeNextStartTime,
-        ctx.currentTime + this.realtimeMinPlayAheadSec,
-      );
+      const startTime = this.realtimeNextStartTime;
       source.start(startTime);
       this.realtimeNextStartTime = startTime + buffer.duration;
+      scheduled++;
 
       this.realtimeActiveSources.push(source);
 
@@ -166,17 +195,35 @@ export class TtsPlaybackManager {
           this.realtimeQueue.length === 0
         ) {
           this.realtimeCandidateId = null;
+          this.realtimeStarted = false;
+          this.realtimeNextStartTime = 0;
           if (this.playingCandidateId && !this.singleSource) {
             this.setPlayingId(null);
           }
         }
       };
     }
+
+    logger.info(Module.VOICE, TtsEvent.SCHEDULE_DONE, "TTS scheduling pass complete", {
+      scheduled,
+      seq_from: seqBefore > 0 ? seqBefore - scheduled + 1 : 0,
+      seq_to: seqBefore,
+      buffered_ms: Math.round(this.realtimeQueuedDurationSec * 1000),
+      queue_remain: this.realtimeQueue.length,
+      active_sources: this.realtimeActiveSources.length,
+      next_start: this.realtimeNextStartTime.toFixed(3),
+    });
   }
 
   finishRealtime(candidateId: string): void {
     if (this.realtimeCandidateId !== candidateId) return;
     this.realtimeFinished = true;
+    logger.info(Module.VOICE, TtsEvent.FINISH, "TTS realtime stream finished", {
+      active_sources: this.realtimeActiveSources.length,
+      queue_len: this.realtimeQueue.length,
+      started: this.realtimeStarted,
+      next_start: this.realtimeNextStartTime.toFixed(3),
+    });
     this.scheduleRealtimePlayback(this.getOrCreateAudioContext());
 
     // If nothing is playing and queue is empty, clear immediately
@@ -192,8 +239,10 @@ export class TtsPlaybackManager {
   }
 
   handleTtsError(code: string, message: string): void {
-    console.warn(`[TTS] Stream error: ${code} — ${message}`);
-    // Don't break text chat; just stop realtime playback gracefully
+    logger.warn(Module.VOICE, TtsEvent.STREAM_ERROR, "TTS stream error", {
+      code,
+      error_message: message,
+    });
     this.stopRealtime();
   }
 
@@ -211,6 +260,7 @@ export class TtsPlaybackManager {
     this.realtimeNextStartTime = 0;
     this.realtimeFinished = false;
     this.realtimeStarted = false;
+    this.realtimeSeqCounter = 0;
 
     const wasCandidateId = this.realtimeCandidateId;
     this.realtimeCandidateId = null;
@@ -266,7 +316,9 @@ export class TtsPlaybackManager {
       if (err instanceof DOMException && err.name === "AbortError") {
         return;
       }
-      console.error("[TTS] Single playback failed:", err);
+      logger.fromError(Module.VOICE, err, "tts.single_playback_failed", {
+        candidate_id: candidateId,
+      });
       this.singleSource = null;
       this.singleAbort = null;
       if (this.playingCandidateId === candidateId) {

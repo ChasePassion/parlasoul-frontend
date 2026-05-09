@@ -1650,7 +1650,7 @@ export class ApiService {
     assistantCandidateId: string,
     options?: { audio_format?: "opus" | "mp3"; signal?: AbortSignal },
   ): Promise<ArrayBuffer> {
-    const format = options?.audio_format ?? "opus";
+    const format = options?.audio_format ?? "mp3";
     const response = await fetchWithBetterAuth(
       `/v1/voice/tts/messages/${assistantCandidateId}/audio?audio_format=${format}`,
       {

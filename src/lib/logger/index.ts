@@ -3,7 +3,7 @@ import type { LogEntry } from "./format";
 import type { ModuleType } from "./events";
 import { ApiError } from "@/lib/token-store";
 
-export { CharacterEvent, Module, RealtimeEvent, AuthEvent } from "./events";
+export { CharacterEvent, Module, RealtimeEvent, AuthEvent, TtsEvent, ScrollEvent } from "./events";
 export type { ModuleType } from "./events";
 
 // ─── Transports ────────────────────────────────────────────────────────────────
@@ -20,20 +20,39 @@ function consoleTransport(entry: LogEntry): void {
 }
 
 const LOG_API = "/api/logs";
+const LOG_BATCH_SIZE = 20;
+const LOG_FLUSH_MS = 500;
 
-function fetchTransport(entry: LogEntry): void {
-  if (entry.level === "ERROR" || process.env.NODE_ENV === "development") {
-    fetch(LOG_API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(entry),
-    }).catch(() => {});
+const batchBuffer: LogEntry[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushBatch(): void {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  if (batchBuffer.length === 0) return;
+  const batch = batchBuffer.splice(0);
+  fetch(LOG_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(batch),
+  }).catch(() => {});
+}
+
+function batchFetchTransport(entry: LogEntry): void {
+  if (entry.level !== "ERROR" && process.env.NODE_ENV !== "development") return;
+  batchBuffer.push(entry);
+  if (batchBuffer.length >= LOG_BATCH_SIZE) {
+    flushBatch();
+  } else if (!flushTimer) {
+    flushTimer = setTimeout(flushBatch, LOG_FLUSH_MS);
   }
 }
 
 const transports: Array<(entry: LogEntry) => void> = [
   consoleTransport,
-  fetchTransport,
+  batchFetchTransport,
 ];
 
 // ─── Emit ────────────────────────────────────────────────────────────────────

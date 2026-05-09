@@ -15,6 +15,15 @@ export const SUMMARY_FIELDS = [
   "elapsed_ms",
   "user_id",
   "mode",
+  "scheduled",
+  "seq_from",
+  "seq_to",
+  "buffered_ms",
+  "queue_remain",
+  "active_sources",
+  "next_start",
+  "started",
+  "finished",
 ] as const;
 
 export function formatEntry(
