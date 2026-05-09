@@ -396,6 +396,8 @@ export interface CandidateExtra {
   input_transform?: InputTransform | null;
   reply_card?: ReplyCard | null;
   interrupted?: boolean;
+  error_code?: string;
+  error_message?: string;
 }
 
 export interface CandidateResponse {

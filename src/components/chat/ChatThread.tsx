@@ -865,7 +865,8 @@ export default function ChatThread({
             !(
                 message.role === "assistant" &&
                 message.isTemp &&
-                message.content.trim().length === 0
+                message.content.trim().length === 0 &&
+                message.messageStreamStatus !== "error"
             )
     );
     const floatingCardMiddleware = [

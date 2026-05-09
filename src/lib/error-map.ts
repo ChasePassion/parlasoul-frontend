@@ -17,6 +17,7 @@ interface ErrorMapping {
 export const ERROR_MESSAGE_MAP: Record<string, ErrorMapping> = {
   DEFAULT: { message: "操作失败，请稍后重试", severity: "error" },
   NETWORK_ERROR: { message: "网络连接失败，请检查网络", severity: "error" },
+  STREAM_TIMEOUT: { message: "AI 响应超时，请检查网络后重试", severity: "error" },
 
   "400": { message: "请求参数有误，请检查输入", severity: "error" },
   "401": { message: "登录已过期，请重新登录", severity: "error" },

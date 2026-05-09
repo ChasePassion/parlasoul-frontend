@@ -9,6 +9,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import type { InputTransform, ReplyCard, ReplySuggestion, DisplayMode } from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
+import { AlertCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 export type MessageActionStatus = "idle" | "loading" | "ready" | "error";
@@ -31,6 +32,7 @@ export interface Message {
     assistantTurnId?: string;
     assistantCandidateId?: string;
     messageStreamStatus?: MessageStreamStatus;
+    errorMessage?: string;
     replyCardStatus?: MessageActionStatus;
     replyCardErrorCode?: string | null;
 }
@@ -349,6 +351,24 @@ export default function ChatMessage({
                         isUser && !isTouchLikeDevice ? handleUserMessageMouseLeave : undefined
                     }
                 >
+                    {!isUser && message.messageStreamStatus === "error" ? (
+                        <div className="w-full max-w-[70%]">
+                            <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
+                                <AlertCircle className="h-4 w-4 shrink-0" />
+                                <span>{message.errorMessage ?? "操作失败，请稍后重试"}</span>
+                                {message.assistantTurnId && onRegenAssistant && (
+                                    <button
+                                        type="button"
+                                        className="ml-auto text-red-600 hover:text-red-800 underline underline-offset-2 text-sm font-medium whitespace-nowrap disabled:opacity-50"
+                                        onClick={() => void onRegenAssistant(message.assistantTurnId!)}
+                                        disabled={regenDisabled}
+                                    >
+                                        重新生成
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
                     <div
                         ref={isUser ? feedbackAnchorRef : undefined}
                         data-feedback-anchor={isUser ? "true" : undefined}
@@ -402,6 +422,7 @@ export default function ChatMessage({
                             </div>
                         )}
                     </div>
+                    )}
 
                     {/* Phase 1: Detailed mode extras (zh + ipa) under assistant bubble */}
                     {showDetailedExtras && message.replyCard && (

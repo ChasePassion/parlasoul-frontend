@@ -98,12 +98,13 @@ const deriveCurrentReplySuggestions = (
 
 const mapTurnsPageMessage = (turn: TurnsPageResponse["turns"][number]): Message => {
   const isAssistant = turn.author_type === "CHARACTER";
+  const isTurnError = isAssistant && turn.state === "ERROR";
   const replyCard = turn.primary_candidate.extra?.reply_card ?? null;
 
   return {
     id: turn.id,
     role: turn.author_type === "USER" ? "user" : "assistant",
-    content: turn.primary_candidate.content,
+    content: isTurnError ? "" : turn.primary_candidate.content,
     isGreeting:
       turn.author_type === "CHARACTER" &&
       turn.is_proactive &&
@@ -115,9 +116,14 @@ const mapTurnsPageMessage = (turn: TurnsPageResponse["turns"][number]): Message 
     assistantTurnId: isAssistant ? turn.id : undefined,
     assistantCandidateId: isAssistant ? turn.primary_candidate.id : undefined,
     messageStreamStatus: isAssistant
-      ? turn.primary_candidate.is_final
-        ? "done"
-        : "streaming"
+      ? isTurnError
+        ? "error"
+        : turn.primary_candidate.is_final
+          ? "done"
+          : "streaming"
+      : undefined,
+    errorMessage: isTurnError
+      ? turn.primary_candidate.extra?.error_message ?? "操作失败，请稍后重试"
       : undefined,
     replyCardStatus: isAssistant ? (replyCard ? "ready" : "idle") : undefined,
     replyCardErrorCode: null,
@@ -536,6 +542,37 @@ export function useChatSession({
     [isStreaming],
   );
 
+  const finalizeStreamError = useCallback(
+    (
+      err: unknown,
+      controller: AbortController,
+      metaTimeoutId: ReturnType<typeof setTimeout> | null,
+      setMetaTimeoutId: (id: ReturnType<typeof setTimeout> | null) => void,
+      targetMessageIds: string[],
+    ) => {
+      const errorMessage = getErrorMessage(err);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          targetMessageIds.includes(msg.id)
+            ? {
+                ...msg,
+                content: "",
+                messageStreamStatus: "error" as const,
+                errorMessage,
+              }
+            : msg,
+        ),
+      );
+      setIsStreaming(false);
+      clearTrackedController(controller);
+      if (metaTimeoutId) {
+        clearTimeout(metaTimeoutId);
+        setMetaTimeoutId(null);
+      }
+    },
+    [setMessages, setIsStreaming, clearTrackedController],
+  );
+
   const handleRegenAssistant = useCallback(
     async (turnId: string) => {
       if (isStreaming || character?.status === "UNPUBLISHED") return;
@@ -567,11 +604,23 @@ export function useChatSession({
       const { controller, requestRunId } = beginStream();
       setIsStreaming(true);
 
+      let regenMetaTimeoutId: ReturnType<typeof setTimeout> | null = null;
+      let regenTimedOut = false;
+
       try {
+        regenMetaTimeoutId = setTimeout(() => {
+          regenTimedOut = true;
+          controller.abort();
+        }, 30_000);
+
         await regenAssistantTurn(turnId, {
           signal: controller.signal,
           onMeta: (meta) => {
             if (controller.signal.aborted) return;
+            if (regenMetaTimeoutId) {
+              clearTimeout(regenMetaTimeoutId);
+              regenMetaTimeoutId = null;
+            }
             resolvedAssistantCandidateId = meta.assistant_turn.candidate_id;
             setMessages((prev) =>
               prev.map((message) =>
@@ -703,6 +752,10 @@ export function useChatSession({
           },
           onError: async (err) => {
             if (controller.signal.aborted) return;
+            if (regenMetaTimeoutId) {
+              clearTimeout(regenMetaTimeoutId);
+              regenMetaTimeoutId = null;
+            }
             hasStreamError = true;
             const errorMessage = getErrorMessage(err);
             setMessages((prev) =>
@@ -710,8 +763,9 @@ export function useChatSession({
                 message.id === turnId
                   ? {
                       ...message,
-                      content: `Error: ${errorMessage}`,
+                      content: "",
                       messageStreamStatus: "error",
+                      errorMessage,
                       replyCardStatus:
                         deriveReplyCardStatus(message) === "loading"
                           ? "idle"
@@ -733,8 +787,30 @@ export function useChatSession({
             requiredTurnIds: [turnId],
           });
         }
+      } catch (err) {
+        if (regenTimedOut) {
+          finalizeStreamError(
+            new Error("STREAM_TIMEOUT"),
+            controller,
+            regenMetaTimeoutId,
+            (id) => { regenMetaTimeoutId = id; },
+            [turnId],
+          );
+        } else if (!controller.signal.aborted) {
+          finalizeStreamError(
+            err,
+            controller,
+            regenMetaTimeoutId,
+            (id) => { regenMetaTimeoutId = id; },
+            [turnId],
+          );
+        }
       } finally {
         clearTrackedController(controller);
+        if (regenMetaTimeoutId) {
+          clearTimeout(regenMetaTimeoutId);
+          regenMetaTimeoutId = null;
+        }
       }
     },
     [
@@ -744,6 +820,7 @@ export function useChatSession({
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
+      finalizeStreamError,
       isStreaming,
       reloadChatTurns,
       shouldReloadForRequest,
@@ -804,7 +881,15 @@ export function useChatSession({
       const { controller, requestRunId } = beginStream();
       setIsStreaming(true);
 
+      let editMetaTimeoutId: ReturnType<typeof setTimeout> | null = null;
+      let editTimedOut = false;
+
       try {
+        editMetaTimeoutId = setTimeout(() => {
+          editTimedOut = true;
+          controller.abort();
+        }, 30_000);
+
         await editUserTurnAndStreamReply(
           turnId,
           { content: newContent },
@@ -812,6 +897,10 @@ export function useChatSession({
             signal: controller.signal,
             onMeta: (meta) => {
               if (controller.signal.aborted) return;
+              if (editMetaTimeoutId) {
+                clearTimeout(editMetaTimeoutId);
+                editMetaTimeoutId = null;
+              }
               resolvedAssistantMessageId = meta.assistant_turn.id;
               resolvedAssistantCandidateId = meta.assistant_turn.candidate_id;
               setMessages((prev) =>
@@ -977,6 +1066,10 @@ export function useChatSession({
           },
           onError: async (err) => {
             if (controller.signal.aborted) return;
+            if (editMetaTimeoutId) {
+              clearTimeout(editMetaTimeoutId);
+              editMetaTimeoutId = null;
+            }
             hasStreamError = true;
             const errorMessage = getErrorMessage(err);
               setMessages((prev) =>
@@ -986,8 +1079,9 @@ export function useChatSession({
                     ? {
                         ...message,
                         id: resolvedAssistantMessageId,
-                        content: `Error: ${errorMessage}`,
+                        content: "",
                         messageStreamStatus: "error",
+                        errorMessage,
                         replyCardStatus:
                           deriveReplyCardStatus(message) === "loading"
                             ? "idle"
@@ -1010,8 +1104,30 @@ export function useChatSession({
             requiredTurnIds: [turnId, resolvedAssistantMessageId],
           });
         }
+      } catch (err) {
+        if (editTimedOut) {
+          finalizeStreamError(
+            new Error("STREAM_TIMEOUT"),
+            controller,
+            editMetaTimeoutId,
+            (id) => { editMetaTimeoutId = id; },
+            [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
+          );
+        } else if (!controller.signal.aborted) {
+          finalizeStreamError(
+            err,
+            controller,
+            editMetaTimeoutId,
+            (id) => { editMetaTimeoutId = id; },
+            [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
+          );
+        }
       } finally {
         clearTrackedController(controller);
+        if (editMetaTimeoutId) {
+          clearTimeout(editMetaTimeoutId);
+          editMetaTimeoutId = null;
+        }
       }
     },
     [
@@ -1021,6 +1137,7 @@ export function useChatSession({
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
+      finalizeStreamError,
       isStreaming,
       reloadChatTurns,
       shouldReloadForRequest,
@@ -1075,7 +1192,15 @@ export function useChatSession({
       const { controller, requestRunId } = beginStream();
       setIsStreaming(true);
 
+      let sendMetaTimeoutId: ReturnType<typeof setTimeout> | null = null;
+      let sendTimedOut = false;
+
       try {
+        sendMetaTimeoutId = setTimeout(() => {
+          sendTimedOut = true;
+          controller.abort();
+        }, 30_000);
+
         await streamChatMessage(
           chatId,
           { content },
@@ -1083,6 +1208,10 @@ export function useChatSession({
             signal: controller.signal,
             onMeta: (meta) => {
               if (controller.signal.aborted) return;
+              if (sendMetaTimeoutId) {
+                clearTimeout(sendMetaTimeoutId);
+                sendMetaTimeoutId = null;
+              }
               resolvedUserMessageId = meta.user_turn.id;
               resolvedAssistantMessageId = meta.assistant_turn.id;
               resolvedAssistantCandidateId = meta.assistant_turn.candidate_id;
@@ -1324,16 +1453,20 @@ export function useChatSession({
             },
             onError: async (err) => {
               if (controller.signal.aborted) return;
+              if (sendMetaTimeoutId) {
+                clearTimeout(sendMetaTimeoutId);
+                sendMetaTimeoutId = null;
+              }
               const errorMessage = getErrorMessage(err);
-              console.error("Chat error:", err);
               setMessages((prev) =>
                 prev.map((message) =>
                   message.id === tempAssistantId ||
                   message.id === resolvedAssistantMessageId
                     ? {
                         ...message,
-                        content: `Error: ${errorMessage}`,
+                        content: "",
                         messageStreamStatus: "error",
+                        errorMessage,
                         replyCardStatus:
                           deriveReplyCardStatus(message) === "loading"
                             ? "idle"
@@ -1356,8 +1489,30 @@ export function useChatSession({
           },
         );
 
+      } catch (err) {
+        if (sendTimedOut) {
+          finalizeStreamError(
+            new Error("STREAM_TIMEOUT"),
+            controller,
+            sendMetaTimeoutId,
+            (id) => { sendMetaTimeoutId = id; },
+            [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
+          );
+        } else if (!controller.signal.aborted) {
+          finalizeStreamError(
+            err,
+            controller,
+            sendMetaTimeoutId,
+            (id) => { sendMetaTimeoutId = id; },
+            [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
+          );
+        }
       } finally {
         clearTrackedController(controller);
+        if (sendMetaTimeoutId) {
+          clearTimeout(sendMetaTimeoutId);
+          sendMetaTimeoutId = null;
+        }
       }
     },
     [
@@ -1370,6 +1525,7 @@ export function useChatSession({
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
+      finalizeStreamError,
       isStreaming,
       reloadChatTurns,
       setCurrentChatTitle,
