@@ -1026,7 +1026,7 @@ export default function ChatThread({
                         className={
                             isUserTurn
                                 ? "text-token-text-primary w-full focus:outline-none [--shadow-height:45px] scroll-mt-(--header-height)"
-                                : "text-token-text-primary w-full focus:outline-none [--shadow-height:45px] [content-visibility:auto] supports-[content-visibility:auto]:[contain-intrinsic-size:auto_100lvh] scroll-mt-[calc(var(--header-height)+min(200px,max(70px,20svh)))]"
+                                : "text-token-text-primary w-full focus:outline-none [--shadow-height:45px] scroll-mt-[calc(var(--header-height)+min(200px,max(70px,20svh)))]"
                         }
                         tabIndex={-1}
                         dir="auto"
