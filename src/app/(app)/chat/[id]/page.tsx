@@ -493,6 +493,9 @@ export default function ChatPage() {
     const lastScrollTopRef = useRef(0);
     /** Last touch Y position — used to detect touch scroll direction */
     const lastTouchYRef = useRef<number | null>(null);
+    /** Timestamp of last user-initiated scroll-down (wheel/touch), used to distinguish
+     *  from browser-initiated scrolls like contentEditable "reveal caret". */
+    const userScrollDownAtRef = useRef(0);
     const isLoadingOlderRef = useRef(false);
     const olderMessagesRestoreRef = useRef<OlderMessagesRestoreSnapshot | null>(null);
     const [olderRestoreRevision, setOlderRestoreRevision] = useState(0);
@@ -616,6 +619,20 @@ export default function ChatPage() {
                 return;
             }
 
+            if (!shouldAutoScrollRef.current) {
+                const delta = currentScrollTop - lastScrollTopRef.current;
+
+                // Revert browser-initiated scroll-down (e.g. contentEditable "reveal caret"
+                // which doesn't account for position:sticky).  Allow scroll-down only when
+                // the user explicitly scrolled down via wheel or touch within the last 100ms.
+                if (delta > 0 && Date.now() - userScrollDownAtRef.current > 100) {
+                    isProgrammaticScrollRef.current = true;
+                    root.scrollTop = lastScrollTopRef.current;
+                    isProgrammaticScrollRef.current = false;
+                    return;
+                }
+            }
+
             if (currentScrollTop < lastScrollTopRef.current) {
                 // User scrolled up → stop following immediately
                 shouldAutoScrollRef.current = false;
@@ -627,24 +644,26 @@ export default function ChatPage() {
             lastScrollTopRef.current = currentScrollTop;
         };
 
-        // Directly detect user scroll-up intent from input events.
-        // This is more reliable than inferring direction from scrollTop comparisons,
-        // because the rAF loop modifies scrollTop in the same frame.
+        // Directly detect user scroll intent from input events.
         const onWheel = (e: WheelEvent) => {
             if (e.deltaY < 0) {
                 shouldAutoScrollRef.current = false;
+            } else if (e.deltaY > 0) {
+                // Track user scroll-down intent to distinguish from browser-initiated scrolls
+                userScrollDownAtRef.current = Date.now();
             }
         };
 
         const onTouchMove = (e: TouchEvent) => {
-            // Touch scrolling upward: fingers move downward on screen
-            // We detect direction by comparing touch positions across events
             const touch = e.touches[0];
             if (touch && lastTouchYRef.current !== null) {
                 const delta = touch.clientY - lastTouchYRef.current;
                 if (delta > 0) {
                     // Fingers moved down → content scrolls up
                     shouldAutoScrollRef.current = false;
+                } else if (delta < 0) {
+                    // Fingers moved up → content scrolls down
+                    userScrollDownAtRef.current = Date.now();
                 }
             }
             if (touch) {
@@ -723,12 +742,12 @@ export default function ChatPage() {
 
         const observer = new ResizeObserver(() => {
             if (!shouldAutoScrollRef.current) return;
-            const root = scrollRootRef.current;
-            if (!root) return;
+            const r = scrollRootRef.current;
+            if (!r) return;
 
             isProgrammaticScrollRef.current = true;
-            root.scrollTop = root.scrollHeight;
-            lastScrollTopRef.current = root.scrollTop;
+            r.scrollTop = r.scrollHeight;
+            lastScrollTopRef.current = r.scrollTop;
             isProgrammaticScrollRef.current = false;
         });
 
