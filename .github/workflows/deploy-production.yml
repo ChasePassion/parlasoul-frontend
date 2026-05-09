@@ -128,6 +128,8 @@ jobs:
           deployed_revision="\$(docker inspect parlasoul-frontend-1 --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
           test "\${deployed_revision}" = "${IMAGE_SHA}"
 
+          sed -i "s|^FRONTEND_IMAGE=.*|FRONTEND_IMAGE=${FRONTEND_IMAGE}|" "${DEPLOY_ROOT}/.env"
+
           for attempt in \$(seq 1 30); do
             if curl -fsS https://parlasoul.com/login >/dev/null 2>&1; then
               echo "Frontend health check passed on attempt \${attempt}"
