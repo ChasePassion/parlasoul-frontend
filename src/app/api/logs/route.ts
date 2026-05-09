@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 const LOG_DIR = path.join(process.cwd(), "logs");
 const RESOLVED_LOG_DIR = path.resolve(LOG_DIR);
 
-const ALLOWED_MODULES = new Set(["character", "realtime", "voice", "scroll"]);
+const ALLOWED_MODULES = new Set(["character", "realtime", "voice"]);
 const ALLOWED_LEVELS = new Set(["DEBUG", "INFO", "WARN", "ERROR"]);
 
 const MAX_BODY_BYTES = 16 * 1024;

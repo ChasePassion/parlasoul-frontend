@@ -3,7 +3,6 @@ export const Module = {
   REALTIME: "realtime",
   AUTH: "auth",
   VOICE: "voice",
-  SCROLL: "scroll",
 } as const;
 
 export type ModuleType = (typeof Module)[keyof typeof Module];
@@ -45,19 +44,4 @@ export const TtsEvent = {
   DECODE_FAILED: "tts.decode_failed",
   RESUME_FAILED: "tts.resume_failed",
   STREAM_ERROR: "tts.stream_error",
-} as const;
-
-export const ScrollEvent = {
-  /** useLayoutEffect pinned scrollTop to scrollHeight */
-  PIN_LAYOUT_FX: "scroll.pin_layout_fx",
-  /** ResizeObserver pinned scrollTop to scrollHeight */
-  PIN_RESIZE_OBS: "scroll.pin_resize_obs",
-  /** User scrolled up → shouldAutoScroll set to false */
-  USER_SCROLL_UP: "scroll.user_scroll_up",
-  /** User reached bottom → shouldAutoScroll set to true */
-  USER_AT_BOTTOM: "scroll.user_at_bottom",
-  /** Wheel deltaY < 0 detected → shouldAutoScroll set to false */
-  WHEEL_UP: "scroll.wheel_up",
-  /** chatId changed → shouldAutoScroll reset to true */
-  CHAT_RESET: "scroll.chat_reset",
 } as const;
