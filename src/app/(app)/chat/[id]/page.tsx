@@ -46,7 +46,6 @@ import {
     recentChatQueryOptions,
 } from "@/lib/query";
 
-const SETTLED_FRAME_TARGET = 2;
 const LEARNING_ASSISTANT_CONTEXT_LIMIT = 20;
 const OLDER_MESSAGES_ROOT_MARGIN = "24px 0px 0px 0px";
 const CHAT_TURN_SELECTOR = "[data-turn-id]";
@@ -490,6 +489,10 @@ export default function ChatPage() {
     const scrollRootRef = useRef<HTMLDivElement>(null);
     /** True while we are programmatically setting scrollTop — scroll listener should ignore */
     const isProgrammaticScrollRef = useRef(false);
+    /** Shared scroll position tracker — updated by both the scroll listener and the rAF loop */
+    const lastScrollTopRef = useRef(0);
+    /** Last touch Y position — used to detect touch scroll direction */
+    const lastTouchYRef = useRef<number | null>(null);
     const isLoadingOlderRef = useRef(false);
     const olderMessagesRestoreRef = useRef<OlderMessagesRestoreSnapshot | null>(null);
     const [olderRestoreRevision, setOlderRestoreRevision] = useState(0);
@@ -562,6 +565,7 @@ export default function ChatPage() {
 
         isProgrammaticScrollRef.current = true;
         root.scrollTop = Math.max(nextScrollTop, 0);
+        lastScrollTopRef.current = root.scrollTop;
         isProgrammaticScrollRef.current = false;
     }, [getViewportStart]);
 
@@ -599,14 +603,20 @@ export default function ChatPage() {
         const root = scrollRootRef.current;
         if (!root) return;
 
-        let lastScrollTop = root.scrollTop;
+        lastScrollTopRef.current = root.scrollTop;
 
         const onScroll = () => {
-            if (isProgrammaticScrollRef.current) return;
+            const currentScrollTop = root.scrollTop;
+            const distanceToBottom = root.scrollHeight - currentScrollTop - root.clientHeight;
 
-            const distanceToBottom = root.scrollHeight - root.scrollTop - root.clientHeight;
+            // Programmatic scrolls must not trigger direction detection,
+            // but MUST update lastScrollTop so the next user scroll compares against the real position.
+            if (isProgrammaticScrollRef.current) {
+                lastScrollTopRef.current = currentScrollTop;
+                return;
+            }
 
-            if (root.scrollTop < lastScrollTop) {
+            if (currentScrollTop < lastScrollTopRef.current) {
                 // User scrolled up → stop following immediately
                 shouldAutoScrollRef.current = false;
             } else if (distanceToBottom <= 5) {
@@ -614,11 +624,48 @@ export default function ChatPage() {
                 shouldAutoScrollRef.current = true;
             }
 
-            lastScrollTop = root.scrollTop;
+            lastScrollTopRef.current = currentScrollTop;
+        };
+
+        // Directly detect user scroll-up intent from input events.
+        // This is more reliable than inferring direction from scrollTop comparisons,
+        // because the rAF loop modifies scrollTop in the same frame.
+        const onWheel = (e: WheelEvent) => {
+            if (e.deltaY < 0) {
+                shouldAutoScrollRef.current = false;
+            }
+        };
+
+        const onTouchMove = (e: TouchEvent) => {
+            // Touch scrolling upward: fingers move downward on screen
+            // We detect direction by comparing touch positions across events
+            const touch = e.touches[0];
+            if (touch && lastTouchYRef.current !== null) {
+                const delta = touch.clientY - lastTouchYRef.current;
+                if (delta > 0) {
+                    // Fingers moved down → content scrolls up
+                    shouldAutoScrollRef.current = false;
+                }
+            }
+            if (touch) {
+                lastTouchYRef.current = touch.clientY;
+            }
+        };
+
+        const onTouchEnd = () => {
+            lastTouchYRef.current = null;
         };
 
         root.addEventListener("scroll", onScroll, { passive: true });
-        return () => root.removeEventListener("scroll", onScroll);
+        root.addEventListener("wheel", onWheel, { passive: true });
+        root.addEventListener("touchmove", onTouchMove, { passive: true });
+        root.addEventListener("touchend", onTouchEnd, { passive: true });
+        return () => {
+            root.removeEventListener("scroll", onScroll);
+            root.removeEventListener("wheel", onWheel);
+            root.removeEventListener("touchmove", onTouchMove);
+            root.removeEventListener("touchend", onTouchEnd);
+        };
     }, []);
 
     useEffect(() => {
@@ -650,46 +697,45 @@ export default function ChatPage() {
         return () => observer.disconnect();
     }, [hasOlderMessages, isLoading, loadOlderMessagesPreservingViewport]);
 
-    useEffect(() => {
+    // Pin to bottom on content changes (new messages, streaming).
+    // Uses useLayoutEffect so the scroll adjustment happens before the browser
+    // paints — the user never sees an intermediate non-bottom state.
+    useLayoutEffect(() => {
         if (!shouldAutoScrollRef.current) return;
-        let frameId = 0;
-        let settledFrames = 0;
-        let lastScrollHeight = -1;
+        const root = scrollRootRef.current;
+        if (!root) return;
 
-        const pinToBottomUntilSettled = () => {
+        isProgrammaticScrollRef.current = true;
+        root.scrollTop = root.scrollHeight;
+        lastScrollTopRef.current = root.scrollTop;
+        isProgrammaticScrollRef.current = false;
+    }, [chatId, displayMessages, isStreaming]);
+
+    // Keep the view pinned to the bottom while content is still settling
+    // (e.g. images loading). ResizeObserver fires when the scrollable content
+    // area changes size, which happens when images finish loading.
+    useEffect(() => {
+        const root = scrollRootRef.current;
+        if (!root) return;
+
+        const main = root.querySelector("main");
+        if (!main) return;
+
+        const observer = new ResizeObserver(() => {
+            if (!shouldAutoScrollRef.current) return;
             const root = scrollRootRef.current;
-            if (!root || !shouldAutoScrollRef.current) {
-                frameId = 0;
-                return;
-            }
+            if (!root) return;
 
             isProgrammaticScrollRef.current = true;
             root.scrollTop = root.scrollHeight;
+            lastScrollTopRef.current = root.scrollTop;
             isProgrammaticScrollRef.current = false;
+        });
 
-            const distanceToBottom = root.scrollHeight - root.scrollTop - root.clientHeight;
-            const isSettled =
-                distanceToBottom <= 1 && root.scrollHeight === lastScrollHeight;
+        observer.observe(main);
 
-            settledFrames = isSettled ? settledFrames + 1 : 0;
-            lastScrollHeight = root.scrollHeight;
-
-            if (settledFrames >= SETTLED_FRAME_TARGET) {
-                frameId = 0;
-                return;
-            }
-
-            frameId = requestAnimationFrame(pinToBottomUntilSettled);
-        };
-
-        frameId = requestAnimationFrame(pinToBottomUntilSettled);
-
-        return () => {
-            if (frameId !== 0) {
-                cancelAnimationFrame(frameId);
-            }
-        };
-    }, [chatId, displayMessages, isStreaming]);
+        return () => observer.disconnect();
+    }, []);
 
     // Phase 2: Mic start → interrupt TTS + track recording state
     const handleMicStart = useCallback(() => {
