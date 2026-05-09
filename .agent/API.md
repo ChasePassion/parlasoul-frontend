@@ -119,6 +119,7 @@
 当前代码通过 `authClient` 使用这些认证/计费能力：
 
 - 邮箱 OTP 发送与登录
+- 邮箱密码注册与登录
 - Google 登录
 - 会话读取
 - JWT/JWKS 暴露
@@ -193,11 +194,11 @@
 | `POST` | `/v1/uploads/complete` | 必需 | setup、角色头像、音色头像 | 校验上传会话，生成 AVIF 头像变体并返回 `image_key/avatar_urls` |
 | `GET` | `/media/{object_key}` | 无需 | 头像与分享卡渲染 | 读取公开 AVIF 媒体对象，Redis 热点缓存命中时直接返回 |
 | `POST` | `/v1/voice/stt/transcriptions` | 必需 | `ChatInput` 麦克风 | STT 转写 |
-| `GET` | `/v1/voice/tts/messages/{assistant_candidate_id}/audio?audio_format=opus\|mp3` | 必需 | 单条消息手动朗读 | 二进制音频流 |
+| `GET` | `/v1/voice/tts/messages/{assistant_candidate_id}/audio?audio_format=opus\|mp3` | 必需 | 单条消息手动朗读 | 二进制音频流；默认 `mp3`，具体格式支持由角色当前 TTS provider 决定 |
 | `GET` | `/v1/voices?status={status}&source_type={source_type}&cursor={cursor}&limit={limit}` | 必需 | Profile 音色页 | 我的音色分页 |
 | `GET` | `/v1/voices/catalog?provider={provider}&model={model}&include_system={bool}&include_user_custom={bool}` | 必需 | `VoiceSelector` | 角色可选音色目录 |
 | `POST` | `/v1/voices/clones` | 必需，且要求 `voice_clone` 权益 | `CreateVoiceCloneModal` | 创建克隆音色，返回 `202 accepted` |
-| `GET` | `/v1/voices/{voice_id}/preview/audio?audio_format=opus\|mp3` | 必需 | 音色试听 | 二进制音频流 |
+| `GET` | `/v1/voices/{voice_id}/preview/audio?audio_format=opus\|mp3` | 必需 | 音色试听 | 二进制音频流；默认 `mp3`，具体格式支持由音色 provider 决定 |
 | `GET` | `/v1/voices/{voice_id}` | 必需 | 编辑音色、绑定角色管理 | 详情 |
 | `PATCH` | `/v1/voices/{voice_id}` | 必需 | `EditVoiceModal` | 更新元信息和绑定角色 |
 | `DELETE` | `/v1/voices/{voice_id}` | 必需 | Profile 音色页 | 删除音色 |
@@ -219,6 +220,7 @@
 | `POST` | `/v1/growth/make-up` | 必需 | 补签 | 请求体需要 `target_date` |
 | `GET` | `/v1/growth/chats/{chat_id}/header` | 必需 | 聊天头部阅读环 | 当前 chat 的阅读等价 |
 | `GET` | `/v1/growth/overview?focus_character_id={id}` | 必需 | `/stats` | KPI、趋势、榜单 |
+| `GET` | `/v1/growth/characters?cursor={cursor}&limit={limit}&sort_by={sort}` | 必需 | `/stats` 角色台账 | 角色维度排行分页 |
 | `GET` | `/v1/growth/share-cards/pending?chat_id={id}&limit={limit}` | 必需 | `GrowthProvider` | 待消费分享卡 |
 | `POST` | `/v1/growth/share-cards/{trigger_id}/consume` | 必需 | 分享卡弹窗 | 消费分享卡，`204` |
 
@@ -312,9 +314,9 @@
   "greeting_message": "...",
   "avatar_image_key": "images/avatars/characters/{user_id}/{image_id}",
   "visibility": "PUBLIC",
-  "voice_provider": "dashscope",
-  "voice_model": "qwen3-tts-instruct-flash-realtime",
-  "voice_provider_voice_id": "Cherry",
+  "voice_provider": "minimax",
+  "voice_model": "speech-2.8-hd",
+  "voice_provider_voice_id": "Chinese (Mandarin)_Wise_Women",
   "voice_source_type": "system",
   "llm_preset_id": "free",
   "dialogue_style_id": "spring_breeze"
@@ -328,6 +330,7 @@
 - `avatar_image_key` 必须来自 `/v1/uploads/complete`，并且前缀归属当前用户的角色头像空间
 - `llm_preset_id` 可选值：`free` / `flagship`，默认 `free`；`flagship` 需要付费权益
 - `dialogue_style_id` 可选值：`true_nature` / `spring_breeze` / `free_spirit` / `clear_inquiry` / `poetic_reserve` / `proud_resolve`，默认 `true_nature`
+- `voice_source_type=system` 默认走 MiniMax 系统音色目录；`voice_provider`、`voice_model`、`voice_provider_voice_id` 可省略并由后端填充默认值
 - `voice_source_type=clone` 时，后端会校验该音色是否属于当前用户且已就绪
 
 ### 5.5 更新角色
@@ -880,6 +883,7 @@
 
 - `/stats`
   - `GET /v1/growth/overview`
+  - `GET /v1/growth/characters`
 - 全局成长上下文
   - `POST /v1/growth/entry`
   - `GET /v1/growth/share-cards/pending`
