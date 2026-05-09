@@ -496,6 +496,9 @@ export default function ChatPage() {
     /** Timestamp of last user-initiated scroll-down (wheel/touch), used to distinguish
      *  from browser-initiated scrolls like contentEditable "reveal caret". */
     const userScrollDownAtRef = useRef(0);
+    /** True while the user is holding the mouse button on the scroll container
+     *  (e.g. dragging the scrollbar). Prevents reverting legitimate user scrolls. */
+    const isPointerDownRef = useRef(false);
     const isLoadingOlderRef = useRef(false);
     const olderMessagesRestoreRef = useRef<OlderMessagesRestoreSnapshot | null>(null);
     const [olderRestoreRevision, setOlderRestoreRevision] = useState(0);
@@ -623,9 +626,9 @@ export default function ChatPage() {
                 const delta = currentScrollTop - lastScrollTopRef.current;
 
                 // Revert browser-initiated scroll-down (e.g. contentEditable "reveal caret"
-                // which doesn't account for position:sticky).  Allow scroll-down only when
-                // the user explicitly scrolled down via wheel or touch within the last 100ms.
-                if (delta > 0 && Date.now() - userScrollDownAtRef.current > 100) {
+                // which doesn't account for position:sticky).  Allow scroll-down when the
+                // user is actively scrolling via wheel, touch, or scrollbar drag.
+                if (delta > 0 && Date.now() - userScrollDownAtRef.current > 100 && !isPointerDownRef.current) {
                     isProgrammaticScrollRef.current = true;
                     root.scrollTop = lastScrollTopRef.current;
                     isProgrammaticScrollRef.current = false;
@@ -675,15 +678,22 @@ export default function ChatPage() {
             lastTouchYRef.current = null;
         };
 
+        const onPointerDown = () => { isPointerDownRef.current = true; };
+        const onPointerUp = () => { isPointerDownRef.current = false; };
+
         root.addEventListener("scroll", onScroll, { passive: true });
         root.addEventListener("wheel", onWheel, { passive: true });
         root.addEventListener("touchmove", onTouchMove, { passive: true });
         root.addEventListener("touchend", onTouchEnd, { passive: true });
+        root.addEventListener("mousedown", onPointerDown);
+        root.addEventListener("mouseup", onPointerUp);
         return () => {
             root.removeEventListener("scroll", onScroll);
             root.removeEventListener("wheel", onWheel);
             root.removeEventListener("touchmove", onTouchMove);
             root.removeEventListener("touchend", onTouchEnd);
+            root.removeEventListener("mousedown", onPointerDown);
+            root.removeEventListener("mouseup", onPointerUp);
         };
     }, []);
 
