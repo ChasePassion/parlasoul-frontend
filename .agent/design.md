@@ -1593,3 +1593,179 @@ document.body.className
 - **`@theme inline` is for static values**: design tokens should be concrete values (e.g., `"Inter", sans-serif`), not references to other CSS variables
 - **Apply fonts on `body` using `var(--font-outfit)` directly**: bypass `@theme inline` variable resolution entirely
 - **When debugging font issues, check `computed fontFamily` first**: if the actual font in use is not what you expect, no amount of font-weight adjustment will help
+
+---
+
+### Chat Scroll Architecture: Overlay Layout for Full-Height Scrollbar + contentEditable Safety
+
+#### Problem
+
+A chat interface has three competing requirements that are hard to satisfy simultaneously:
+
+1. **Full-height native scrollbar** — the scrollbar should span the entire page height, including the header and footer areas
+2. **No contentEditable scroll interference** — typing in a `contentEditable` composer must NOT scroll the chat message list
+3. **Simple scroll logic** — no fragile `onScroll` revert hacks that fight the browser
+
+The root conflict: if the `contentEditable` composer is inside the scroll container, the browser's "reveal caret" behavior scrolls the nearest scrollable ancestor on every keystroke. But if the composer is outside the scroll container (e.g., in a grid/flex row below it), the scrollbar only spans the message area, not the full page.
+
+#### Why contentEditable "Reveal Caret" Breaks Chat Scrolling
+
+When the user types in a `contentEditable` div:
+
+1. The browser tries to scroll the caret into view in the nearest scrollable ancestor
+2. If the `contentEditable`'s immediate wrapper (`overflow-y: auto; max-h-52`) isn't scrollable (content fits), the browser skips it
+3. The browser walks up the DOM to find the next scrollable ancestor — the chat scroll container
+4. The browser doesn't account for `position: sticky` — it uses the element's document flow position
+5. Result: ~37.6px scroll-down per keystroke when not at the bottom
+
+This scroll happens **without any JavaScript firing** — confirmed via logs showing no `layout_effect_pin`, `main_resize_fired`, or `resize_observer_pin` events during the unwanted scroll.
+
+#### Failed Approach: onScroll Revert
+
+The initial fix was to detect and revert browser-initiated scrolls in the `onScroll` listener:
+
+```
+onScroll → detect direction → if downward && no user intent → revert scrollTop
+```
+
+This required tracking:
+- `userScrollDownAtRef` — timestamp of last user wheel/touch scroll-down
+- `isPointerDownRef` — whether mouse is held (scrollbar drag detection)
+- `lastTouchYRef` — touch position for direction detection
+- `isProgrammaticScrollRef` — flag for programmatic scrolls
+
+Problems:
+- Wheel scrolling became **stuttery** because the revert logic interfered with normal user scrolling
+- Every new input method (scrollbar drag, touch, keyboard) needed special handling
+- Missing one method caused a regression
+
+**Rule: Never fight `scrollTop` with the browser in `onScroll`.** The browser's input system will always have edge cases your revert logic doesn't cover.
+
+#### Solution: Overlay Layout (Method G)
+
+Move the scroll container to `position: absolute; inset: 0` so its native scrollbar spans the full page height. Place header and footer as `position: absolute` overlay siblings — NOT inside the scroll container. The `contentEditable` composer is in the footer overlay, which is never a descendant of the scroll container.
+
+```
+<div relative overflow-hidden>                     ← outer shell
+  <div scrollRoot absolute inset-0 [overflow-y:auto]>  ← full-height native scrollbar
+    <main pt-[headerH] pb-[footerH]>              ← padding reserves space for overlays
+      {messages}
+    </main>
+  </div>
+  <header absolute top-0 z-20 right=[scrollbarW]> ← overlay, not in scroll container
+  <footer absolute bottom-0 z-10 right=[scrollbarW]> ← overlay, contentEditable NOT in scroll container
+</div>
+```
+
+**Why this satisfies all three requirements:**
+
+1. **Full-height scrollbar**: scrollRoot is `absolute inset-0` → fills the entire shell → native scrollbar spans full height
+2. **No contentEditable interference**: the composer is in the footer overlay, which is a sibling of scrollRoot, not a descendant. Browser "reveal caret" walks up the DOM from the contentEditable → hits the footer (not scrollable) → hits the shell (not scrollable) → stops. It never reaches the scrollRoot.
+3. **Simple scroll logic**: no revert hack needed. `onScroll` is purely read-only (detect direction + near-bottom). No `isProgrammaticScrollRef`, no `userScrollDownAtRef`, no `isPointerDownRef`.
+
+#### Scrollbar Width Offset
+
+The header and footer overlays extend to `right: 0` by default, covering the scrollbar. Fix: measure the scrollbar width at mount and set `right: scrollbarWidth` on the overlays.
+
+```tsx
+useLayoutEffect(() => {
+    const root = scrollRootRef?.current;
+    if (!root) return;
+    const prev = root.style.overflowY;
+    root.style.overflowY = "scroll";  // force scrollbar to measure
+    const width = root.offsetWidth - root.clientWidth;
+    root.style.overflowY = prev;       // restore
+    if (width > 0) setScrollbarWidth(width);
+}, [scrollRootRef]);
+```
+
+This runs in `useLayoutEffect` (before paint), so the user never sees the temporary overflow change.
+
+#### Simplified Scroll Logic After Refactoring
+
+**Refs reduced from 7 to 3:**
+
+| Before | After | Purpose |
+|--------|-------|---------|
+| `shouldAutoScrollRef` | `shouldAutoScrollRef` | Should auto-follow bottom? |
+| `isProgrammaticScrollRef` | *(deleted)* | No longer needed |
+| `lastScrollTopRef` | `lastScrollTopRef` | Direction detection |
+| `lastTouchYRef` | *(deleted)* | No longer needed |
+| `userScrollDownAtRef` | *(deleted)* | No longer needed |
+| `isPointerDownRef` | *(deleted)* | No longer needed |
+| `isLoadingOlderRef` | `isLoadingOlderRef` | Older messages loading |
+
+**Event listeners reduced from 7 to 1:**
+
+| Before | After |
+|--------|-------|
+| `scroll` (with revert logic) | `scroll` (read-only) |
+| `wheel` | *(deleted)* |
+| `touchmove` | *(deleted)* |
+| `touchend` | *(deleted)* |
+| `mousedown` | *(deleted)* |
+| `mouseup` | *(deleted)* |
+| (7 total) | (1 total) |
+
+**Unified pin-to-bottom:**
+
+```tsx
+const pinToBottom = useCallback(() => {
+    const root = scrollRootRef.current;
+    if (!root) return;
+    root.scrollTop = root.scrollHeight;
+}, []);
+
+// Pin on content changes (messages, streaming)
+useLayoutEffect(() => {
+    if (!shouldAutoScrollRef.current) return;
+    pinToBottom();
+}, [chatId, displayMessages, isStreaming, pinToBottom]);
+
+// Pin on content/container resize (images, composer height changes)
+useEffect(() => {
+    const root = scrollRootRef.current;
+    if (!root) return;
+    const main = root.querySelector("main");
+    const observer = new ResizeObserver(() => {
+        if (!shouldAutoScrollRef.current) return;
+        pinToBottom();
+    });
+    if (main) observer.observe(main);
+    observer.observe(root);
+    return () => observer.disconnect();
+}, [pinToBottom]);
+```
+
+#### Key CSS Variables
+
+The scrollRoot sets `--header-height` to the actual header height. This is used by:
+- `scrollPaddingTop` on scrollRoot — ensures `scrollTo`/`scrollIntoView` accounts for the header overlay
+- `scroll-mt-(--header-height)` on message articles — prevents messages from being hidden behind the header
+- `getHeaderOffset()` in MessageNavigator — correctly calculates the activation line
+
+The `<main>` element uses `paddingTop: headerHeight` and `paddingBottom: footerHeight` to reserve space for the overlay header/footer, preventing messages from being hidden behind them.
+
+#### Also Helpful: `focus({ preventScroll: true })`
+
+As an extra safety measure, add `focus({ preventScroll: true })` to all `focus()` calls in the `contentEditable` component:
+
+```tsx
+editorRef.current?.focus({ preventScroll: true });
+root.focus({ preventScroll: true });
+```
+
+This prevents even the initial focus from scrolling any ancestor container. Note: this only blocks focus-time scroll, not ongoing caret-reveal scroll — but with the overlay layout, caret-reveal doesn't reach the scroll container anyway.
+
+#### How Other Chat Apps Handle This
+
+Industry standard (Stream Chat, MUI X Chat, Virtuoso): the message list is an independent scrollable region, and the composer is a separate component outside it. Major chat apps do NOT bury an editable composer inside the message scroll container and then try to fix scroll issues with JavaScript.
+
+#### Rule of Thumb
+
+- **The only reliable way to prevent contentEditable "reveal caret" from scrolling a container is to not make the contentEditable a descendant of that container.**
+- CSS `contain: layout/paint` does NOT block caret-reveal scroll propagation.
+- `overflow-y: scroll` on the contentEditable wrapper is unreliable — the browser may still propagate to ancestors.
+- `focus({ preventScroll: true })` only prevents focus-time scroll, not ongoing caret-reveal.
+- When a layout change eliminates the root cause of a bug, delete all the workaround code. Don't keep "just in case" revert logic.
+- For full-height scrollbar + overlay header/footer, measure scrollbar width and offset the overlays to prevent covering the scrollbar.

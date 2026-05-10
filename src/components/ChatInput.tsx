@@ -453,7 +453,7 @@ export default function ChatInput({
         const updatedText = getEditorText().trim();
         setMessage(updatedText);
         setEditorEmptyState(updatedText.length === 0);
-        root.focus();
+        root.focus({ preventScroll: true });
         if (updatedText.length === 0) {
             moveCaretToEnd();
         }
@@ -566,7 +566,7 @@ export default function ChatInput({
                                 }}
                                 onClick={() => {
                                     if (inputAreaState === "default") {
-                                        editorRef.current?.focus();
+                                        editorRef.current?.focus({ preventScroll: true });
                                     }
                                 }}
                             >

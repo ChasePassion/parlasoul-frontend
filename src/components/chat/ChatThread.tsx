@@ -1302,7 +1302,6 @@ export default function ChatThread({
                 )
             )}
 
-            <div className="h-[76px] sm:h-[120px]" aria-hidden="true" />
             <div ref={messagesEndRef} />
         </>
     );
