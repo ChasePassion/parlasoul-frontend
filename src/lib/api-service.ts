@@ -1279,7 +1279,7 @@ export class ApiService {
           });
         } else if (data.type === "error") {
           if (data.code && data.message) {
-            handlers.onError(new Error(`${data.code}: ${data.message}`));
+            handlers.onError(new ApiError(502, data.code, data.message));
           } else {
             handlers.onError(new Error(data.message || "Unknown error"));
           }
@@ -1407,7 +1407,7 @@ export class ApiService {
           });
         } else if (data.type === "error") {
           if (data.code && data.message) {
-            handlers.onError(new Error(`${data.code}: ${data.message}`));
+            handlers.onError(new ApiError(502, data.code, data.message));
           } else {
             handlers.onError(new Error(data.message || "Unknown error"));
           }

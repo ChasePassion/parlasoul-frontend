@@ -154,6 +154,7 @@ export default function ChatPage() {
         handleEditUser,
         handleRetryReplyCard,
         handleSendMessage: originalHandleSendMessage,
+        handleRetrySend,
         interruptStream,
         loadOlderMessages,
         hasOlderMessages,
@@ -914,6 +915,7 @@ export default function ChatPage() {
                 chatId={chatId}
                 onSelectCandidate={handleSelectCandidate}
                 onRegenAssistant={handleRegenAssistant}
+                onRetrySend={handleRetrySend}
                 onEditUser={handleEditUser}
                 onRetryReplyCard={handleRetryReplyCard}
                 playingCandidateId={playingCandidateId}

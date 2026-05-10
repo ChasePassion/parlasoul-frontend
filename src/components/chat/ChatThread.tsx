@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
 import { createPortal } from "react-dom";
 import {
@@ -79,6 +79,7 @@ interface ChatThreadProps {
     chatId: string;
     onSelectCandidate: (turnId: string, candidateNo: number) => void;
     onRegenAssistant: (turnId: string) => void;
+    onRetrySend?: (errorMessageId: string) => void;
     onEditUser: (turnId: string, newContent: string) => void;
     onRetryReplyCard: (message: Message) => Promise<void>;
     playingCandidateId?: string | null;
@@ -103,6 +104,7 @@ export default function ChatThread({
     chatId,
     onSelectCandidate,
     onRegenAssistant,
+    onRetrySend,
     onEditUser,
     onRetryReplyCard,
     playingCandidateId,
@@ -1014,12 +1016,54 @@ export default function ChatThread({
                     renderedMessage.replyCardStatus ??
                     (renderedMessage.replyCard ? "ready" : "idle");
                 const isUserTurn = message.role === "user";
+                const isErrorMessage = !isUserTurn && message.messageStreamStatus === "error";
                 const isLastTurn = index === visibleMessages.length - 1;
                 const topPaddingClass = message.isGreeting
                     ? "pt-[36px]"
                     : isUserTurn
                         ? "pt-3"
                         : "";
+
+                if (isErrorMessage) {
+                    const canRegen = message.assistantTurnId && onRegenAssistant;
+                    const canRetrySend = !message.assistantTurnId && message.retryContent && onRetrySend;
+                    const retryButtonClass = "ml-auto text-red-600 hover:text-red-800 rounded-lg disabled:opacity-50";
+                    return (
+                        <div key={message.id} className="w-full px-3 sm:px-4 lg:px-0">
+                            <div className="mx-auto w-full max-w-[44rem] lg:max-w-[calc(100%-320px)]">
+                                <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
+                                    <AlertCircle className="h-4 w-4 shrink-0" />
+                                    <span>{message.errorMessage ?? "操作失败，请稍后重试"}</span>
+                                    {canRegen && (
+                                        <button
+                                            type="button"
+                                            className={retryButtonClass}
+                                            onClick={() => void onRegenAssistant(message.assistantTurnId!)}
+                                            disabled={isConversationLocked}
+                                            aria-label="重新生成"
+                                        >
+                                            <span className="flex h-8 w-8 items-center justify-center">
+                                                <SpriteIcon name="refresh" size={16} className="text-red-600" />
+                                            </span>
+                                        </button>
+                                    )}
+                                    {canRetrySend && (
+                                        <button
+                                            type="button"
+                                            className={retryButtonClass}
+                                            onClick={() => onRetrySend!(message.id)}
+                                            aria-label="重试"
+                                        >
+                                            <span className="flex h-8 w-8 items-center justify-center">
+                                                <SpriteIcon name="refresh" size={16} className="text-red-600" />
+                                            </span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
 
                 return (
                     <article

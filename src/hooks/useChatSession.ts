@@ -22,7 +22,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { mapCharacterToSidebar } from "@/lib/character-adapter";
 import { snapshotContainsTurnIds } from "@/lib/chat-turn-snapshot";
-import { getErrorMessage } from "@/lib/error-map";
+import { ERROR_MESSAGE_MAP, getErrorMessage } from "@/lib/error-map";
 import { chatTurnsQueryOptions, queryKeys } from "@/lib/query";
 import type { TtsPlaybackManager } from "@/lib/voice/tts-playback-manager";
 import { toast } from "sonner";
@@ -55,6 +55,7 @@ interface UseChatSessionResult {
   handleEditUser: (turnId: string, newContent: string) => Promise<void>;
   handleRetryReplyCard: (message: Message) => Promise<void>;
   handleSendMessage: (content: string) => Promise<void>;
+  handleRetrySend: (errorMessageId: string) => void;
   interruptAllTts: () => void;
   interruptStream: () => void;
   loadOlderMessages: () => Promise<void>;
@@ -123,7 +124,9 @@ const mapTurnsPageMessage = (turn: TurnsPageResponse["turns"][number]): Message 
           : "streaming"
       : undefined,
     errorMessage: isTurnError
-      ? turn.primary_candidate.extra?.error_message ?? "操作失败，请稍后重试"
+      ? ERROR_MESSAGE_MAP[turn.primary_candidate.extra?.error_code ?? ""]?.message
+        ?? turn.primary_candidate.extra?.error_message
+        ?? "操作失败，请稍后重试"
       : undefined,
     replyCardStatus: isAssistant ? (replyCard ? "ready" : "idle") : undefined,
     replyCardErrorCode: null,
@@ -549,6 +552,7 @@ export function useChatSession({
       metaTimeoutId: ReturnType<typeof setTimeout> | null,
       setMetaTimeoutId: (id: ReturnType<typeof setTimeout> | null) => void,
       targetMessageIds: string[],
+      retryContent?: string,
     ) => {
       const errorMessage = getErrorMessage(err);
       setMessages((prev) =>
@@ -559,6 +563,7 @@ export function useChatSession({
                 content: "",
                 messageStreamStatus: "error" as const,
                 errorMessage,
+                retryContent,
               }
             : msg,
         ),
@@ -1497,6 +1502,7 @@ export function useChatSession({
             sendMetaTimeoutId,
             (id) => { sendMetaTimeoutId = id; },
             [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
+            content,
           );
         } else if (!controller.signal.aborted) {
           finalizeStreamError(
@@ -1505,6 +1511,7 @@ export function useChatSession({
             sendMetaTimeoutId,
             (id) => { sendMetaTimeoutId = id; },
             [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
+            content,
           );
         }
       } finally {
@@ -1547,6 +1554,29 @@ export function useChatSession({
     setMessages((prev) => prev.filter((msg) => msg.role === "user" || !msg.isTemp));
   }, [abortActiveTextStream]);
 
+  const handleRetrySend = useCallback(
+    (errorMessageId: string) => {
+      let retryContent = "";
+      setMessages((prev) => {
+        const errorIdx = prev.findIndex((msg) => msg.id === errorMessageId);
+        if (errorIdx < 0) return prev;
+        retryContent = prev[errorIdx].retryContent ?? "";
+        // Remove the error message and the preceding temp user message
+        return prev.filter((msg, idx) => {
+          if (msg.id === errorMessageId) return false;
+          // Remove temp user message right before the error message
+          if (idx === errorIdx - 1 && msg.role === "user" && msg.isTemp) return false;
+          return true;
+        });
+      });
+      if (retryContent) {
+        // Use microtask to ensure state is flushed before sending
+        void Promise.resolve().then(() => handleSendMessage(retryContent));
+      }
+    },
+    [setMessages, handleSendMessage],
+  );
+
   return {
     chat,
     character,
@@ -1563,6 +1593,7 @@ export function useChatSession({
     handleEditUser,
     handleRetryReplyCard,
     handleSendMessage,
+    handleRetrySend,
     interruptAllTts,
     interruptStream,
     loadOlderMessages,
