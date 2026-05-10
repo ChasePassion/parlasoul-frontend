@@ -84,6 +84,7 @@ export default function MessageNavigator({
     maxHeight: 320,
     ready: false,
   });
+  const [isMobile, setIsMobile] = useState(false);
 
   const hoverPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightSyncFrameRef = useRef<number | null>(null);
@@ -131,6 +132,14 @@ export default function MessageNavigator({
       }
     };
   }, [clearHoverPreviewTimer]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 799px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const getMessageElement = useCallback(
     (messageId: string) => {
@@ -514,7 +523,7 @@ export default function MessageNavigator({
     [clearHoverPreviewTimer, highlightState.activeIndex]
   );
 
-  if (navigationItems.length < MIN_MESSAGES || !viewport.ready) {
+  if (isMobile || navigationItems.length < MIN_MESSAGES || !viewport.ready) {
     return null;
   }
 

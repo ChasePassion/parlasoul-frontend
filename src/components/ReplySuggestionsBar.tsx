@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import type { ReplySuggestion } from "@/lib/api";
 
 interface ReplySuggestionsBarProps {
@@ -9,7 +10,21 @@ interface ReplySuggestionsBarProps {
 }
 
 export default function ReplySuggestionsBar({ suggestions, onSelect }: ReplySuggestionsBarProps) {
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        const mq = window.matchMedia("(max-width: 799px)");
+        setIsMobile(mq.matches);
+        const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, []);
+
     if (!suggestions || suggestions.length === 0) return null;
+
+    if (isMobile) {
+        return <MobileSuggestions suggestions={suggestions} onSelect={onSelect} />;
+    }
 
     return (
         <div className="w-full px-0 mb-3">
@@ -19,6 +34,73 @@ export default function ReplySuggestionsBar({ suggestions, onSelect }: ReplySugg
                 ))}
             </div>
         </div>
+    );
+}
+
+function MobileSuggestions({
+    suggestions,
+    onSelect,
+}: {
+    suggestions: ReplySuggestion[];
+    onSelect: (text: string) => void;
+}) {
+    const [open, setOpen] = useState(false);
+
+    return (
+        <>
+            <div className="w-full px-0 mb-3">
+                <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white shadow-sm text-sm text-gray-600 active:bg-gray-50 transition-colors"
+                >
+                    <span>回复建议</span>
+                    <span className="ml-auto text-xs text-gray-400">{suggestions.length} 条</span>
+                </button>
+            </div>
+
+            {open && (
+                <div className="fixed inset-0 z-50">
+                    <div
+                        className="absolute inset-0 bg-black/50 animate-in fade-in duration-200"
+                        onClick={() => setOpen(false)}
+                    />
+                    <div className="absolute bottom-0 inset-x-0 bg-white rounded-t-2xl shadow-xl animate-in slide-in-from-bottom duration-300 max-h-[70vh] flex flex-col">
+                        <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
+                            <h3 className="text-sm font-semibold text-gray-900">回复建议</h3>
+                            <button
+                                type="button"
+                                onClick={() => setOpen(false)}
+                                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 transition-colors"
+                                aria-label="关闭"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div className="overflow-y-auto px-4 pb-6 flex flex-col gap-3">
+                            {suggestions.map((s, i) => (
+                                <button
+                                    key={`${s.type}-${i}`}
+                                    type="button"
+                                    onClick={() => {
+                                        onSelect(s.en);
+                                        setOpen(false);
+                                    }}
+                                    className="text-left rounded-xl border border-gray-200 p-4 active:bg-blue-50 active:border-blue-300 transition-colors"
+                                >
+                                    <div className="text-sm font-semibold text-gray-900 leading-snug">
+                                        {s.en}
+                                    </div>
+                                    <div className="mt-1.5 text-xs text-gray-500 leading-relaxed">
+                                        {s.zh}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 }
 

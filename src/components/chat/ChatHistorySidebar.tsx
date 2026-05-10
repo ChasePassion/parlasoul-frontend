@@ -193,7 +193,7 @@ export default function ChatHistorySidebar({
       <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
         <SheetContent
           side="right"
-          className="w-full max-w-[360px] sm:w-[360px] p-0 gap-0 flex flex-col border-l border-border bg-background shadow-[-10px_0_20px_-10px_rgba(0,0,0,0.05)]"
+          className="w-[85%] max-w-[320px] sm:w-[360px] p-0 gap-0 flex flex-col border-l border-border bg-background shadow-[-10px_0_20px_-10px_rgba(0,0,0,0.05)]"
           showCloseButton={false}
         >
           <SheetHeader className="flex flex-row items-center justify-between border-b border-border/60 px-5 h-[64px] space-y-0 shrink-0 transition-opacity">
@@ -303,7 +303,7 @@ export default function ChatHistorySidebar({
                                 <DropdownMenuTrigger asChild>
                                   <button
                                     type="button"
-                                    className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-1 hover:bg-foreground/5 rounded-md text-muted-foreground hover:text-foreground flex items-center justify-center data-[state=open]:opacity-100 shadow-sm sm:shadow-none"
+                                    className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-1 hover:bg-foreground/5 rounded-md text-muted-foreground hover:text-foreground flex items-center justify-center data-[state=open]:opacity-100"
                                     aria-label="更多操作"
                                   >
                                     <MoreHorizontal className="h-4 w-4" />

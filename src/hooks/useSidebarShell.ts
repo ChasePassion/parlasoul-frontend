@@ -12,6 +12,15 @@ export function useSidebarShell(options: UseSidebarShellOptions = {}) {
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(defaultOpen);
     const [isOverlay, setIsOverlay] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        const mq = window.matchMedia(`(max-width: ${mobileBreakpoint - 1}px)`);
+        setIsMobile(mq.matches);
+        const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, [mobileBreakpoint]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -51,6 +60,7 @@ export function useSidebarShell(options: UseSidebarShellOptions = {}) {
     return {
         isSidebarOpen,
         isOverlay,
+        isMobile,
         close,
         toggle,
     };

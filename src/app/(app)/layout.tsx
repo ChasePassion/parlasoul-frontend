@@ -38,6 +38,7 @@ import {
 interface SidebarContextType {
     isSidebarOpen: boolean;
     isOverlay: boolean;
+    isMobile: boolean;
     toggleSidebar: () => void;
     closeSidebar: () => void;
     sidebarCharacters: Character[];
@@ -76,7 +77,7 @@ export default function AppLayout({
     const appUserId = isProfileReady ? user?.id : undefined;
     const shouldShowProfileError = Boolean(user && profileStatus === "error");
 
-    const { isSidebarOpen, isOverlay, toggle: toggleSidebar, close: closeSidebar } = useSidebarShell();
+    const { isSidebarOpen, isOverlay, isMobile, toggle: toggleSidebar, close: closeSidebar } = useSidebarShell();
     const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
     const [isProfileRetrying, setIsProfileRetrying] = useState(false);
     const {
@@ -177,6 +178,7 @@ export default function AppLayout({
         () => ({
             isSidebarOpen,
             isOverlay,
+            isMobile,
             toggleSidebar,
             closeSidebar,
             sidebarCharacters,
@@ -187,6 +189,7 @@ export default function AppLayout({
         [
             isSidebarOpen,
             isOverlay,
+            isMobile,
             toggleSidebar,
             closeSidebar,
             sidebarCharacters,
@@ -250,6 +253,7 @@ export default function AppLayout({
                         }
                         isSidebarOpen={isSidebarOpen}
                         isOverlay={isOverlay}
+                        isMobile={isMobile}
                         onCloseSidebar={closeSidebar}
                     >
                         {children}

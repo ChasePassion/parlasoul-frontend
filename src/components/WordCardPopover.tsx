@@ -13,6 +13,7 @@ interface WordCardPopoverProps {
     onToggleFavorite: FavoriteToggleHandler;
     onClose: () => void;
     placement?: "top" | "bottom" | "left" | "right";
+    mobileMode?: boolean;
 }
 
 export default function WordCardPopover({
@@ -20,6 +21,7 @@ export default function WordCardPopover({
     onToggleFavorite,
     onClose,
     placement,
+    mobileMode,
 }: WordCardPopoverProps) {
     const popoverRef = useDismissiblePopover<HTMLDivElement>(onClose);
     const { isFavorited: localFavorited, handleToggleFavorite } =
@@ -36,6 +38,7 @@ export default function WordCardPopover({
             isFavorited={localFavorited}
             onToggleFavorite={handleToggleFavorite}
             placement={placement}
+            mobileMode={mobileMode}
         >
             <p className="text-lg font-bold text-gray-900 leading-relaxed">
                 {wordCard.surface}

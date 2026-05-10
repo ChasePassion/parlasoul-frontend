@@ -12,6 +12,7 @@ interface TopConsoleProps {
   onSearchQueryChange: (query: string) => void;
   searchResults: CharacterResponse[];
   onSelectSearchResult: (character: CharacterResponse) => void;
+  onToggleSidebar?: () => void;
 }
 
 export default function TopConsole({
@@ -19,6 +20,7 @@ export default function TopConsole({
   onSearchQueryChange,
   searchResults,
   onSelectSearchResult,
+  onToggleSidebar,
 }: TopConsoleProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [activeResultIndex, setActiveResultIndex] = useState(-1);
@@ -97,11 +99,22 @@ export default function TopConsole({
   };
 
   return (
-    <div className="flex items-center justify-between w-full h-[44px] mb-4 mt-2 relative z-50">
+    <header className="flex items-center justify-between w-full h-[64px] md:h-auto pl-2 pr-[14px] md:px-0 border-b border-divider md:border-none md:mb-4 md:mt-2 bg-white md:bg-transparent relative">
+      {/* 移动端汉堡按钮 */}
+      {onToggleSidebar && (
+        <button
+          type="button"
+          onClick={onToggleSidebar}
+          className="md:hidden w-10 h-10 flex items-center justify-center rounded-lg hover:bg-sidebar-hover text-black shrink-0"
+          aria-label="打开侧边栏"
+        >
+          <SpriteIcon name="sidebar" size={16} />
+        </button>
+      )}
       {/* 搜索框 */}
-      <div ref={searchContainerRef} className="relative w-full max-w-[320px]">
+      <div ref={searchContainerRef} className="relative w-full max-w-[320px] ml-auto md:ml-0">
         <div
-          className={`relative flex items-center h-[44px] rounded-xl border bg-white transition-[border-color,background-color,box-shadow] duration-200 ${
+          className={`relative flex items-center h-9 md:h-[44px] rounded-xl border bg-white transition-[border-color,background-color,box-shadow] duration-200 ${
             isSearchFocused
               ? "border-blue-500 bg-blue-50 shadow-[0_0_0_3px_rgba(59,130,246,0.12)]"
               : "border-black/10 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
@@ -169,6 +182,6 @@ export default function TopConsole({
         )}
       </div>
 
-    </div>
+    </header>
   );
 }

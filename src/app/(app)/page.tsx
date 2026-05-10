@@ -27,7 +27,7 @@ export default function DiscoverPage() {
   const { user } = useAuth();
   const { refreshGrowthEntry } = useGrowth();
   const router = useRouter();
-  const { setSelectedCharacterId } = useSidebar();
+  const { toggleSidebar, setSelectedCharacterId } = useSidebar();
   const userId = user?.id ?? null;
   const discoverConfigQuery = useDiscoverConfigQuery();
   const marketCharactersQuery = useAllMarketCharactersQuery();
@@ -119,13 +119,14 @@ export default function DiscoverPage() {
   return (
     <WorkspaceFrame>
       <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar bg-white">
-        <div className="max-w-[1400px] mx-auto px-10 py-6 min-h-full flex flex-col">
+        <div className="max-w-[1400px] mx-auto px-4 md:px-10 pt-0 md:pt-6 pb-6 min-h-full flex flex-col">
           {/* 顶部控制台 */}
           <TopConsole
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             searchResults={searchResults}
             onSelectSearchResult={handleSelectCharacter}
+            onToggleSidebar={toggleSidebar}
           />
 
           {/* 主内容区 */}

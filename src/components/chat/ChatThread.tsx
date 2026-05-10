@@ -128,6 +128,15 @@ export default function ChatThread({
     const { messageFontSize, displayMode, replyCardEnabled } = useUserSettings();
     const isVoiceActiveProfile = messageActionProfile === "voice-active";
 
+    const [isMobile, setIsMobile] = useState(false);
+    useEffect(() => {
+        const mq = window.matchMedia("(max-width: 799px)");
+        setIsMobile(mq.matches);
+        const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, []);
+
     // Reply card popover state
     const [openReplyCardKey, setOpenReplyCardKey] = useState<string | null>(null);
     const [pendingReplyCardKey, setPendingReplyCardKey] = useState<string | null>(null);
@@ -1169,7 +1178,15 @@ export default function ChatThread({
                             replyCardWrapperRef.current = node;
                             replyCardRefs.setFloating(node);
                         }}
-                        style={{
+                        style={isMobile ? {
+                            position: "fixed",
+                            bottom: "16px",
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            zIndex: 60,
+                            visibility: isReplyCardPositioned ? "visible" : "hidden",
+                            pointerEvents: isReplyCardPositioned ? "auto" : "none",
+                        } : {
                             ...replyCardStyles,
                             zIndex: 60,
                             visibility: isReplyCardPositioned ? "visible" : "hidden",
@@ -1186,7 +1203,8 @@ export default function ChatThread({
                                 )
                             }
                             onClose={handleCloseReplyCard}
-                            placement={replyCardPlacement.split("-")[0] as "top" | "bottom" | "left" | "right"}
+                            placement={isMobile ? "bottom" : replyCardPlacement.split("-")[0] as "top" | "bottom" | "left" | "right"}
+                            mobileMode={isMobile}
                         />
                     </div>,
                     document.body
@@ -1199,7 +1217,15 @@ export default function ChatThread({
                             wordCardWrapperRef.current = node;
                             wordCardRefs.setFloating(node);
                         }}
-                        style={{
+                        style={isMobile ? {
+                            position: "fixed",
+                            bottom: "16px",
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            zIndex: 60,
+                            visibility: isWordCardPositioned ? "visible" : "hidden",
+                            pointerEvents: isWordCardPositioned ? "auto" : "none",
+                        } : {
                             ...wordCardStyles,
                             zIndex: 60,
                             visibility: isWordCardPositioned ? "visible" : "hidden",
@@ -1219,7 +1245,8 @@ export default function ChatThread({
                                 handleToggleWordCardFavorite(isFavorited, savedItemId, wordCard)
                             }
                             onClose={handleCloseWordCard}
-                            placement={wordCardPlacement.split("-")[0] as "top" | "bottom" | "left" | "right"}
+                            placement={isMobile ? "bottom" : wordCardPlacement.split("-")[0] as "top" | "bottom" | "left" | "right"}
+                            mobileMode={isMobile}
                         />
                     </div>,
                     document.body
@@ -1271,7 +1298,15 @@ export default function ChatThread({
                             feedbackCardWrapperRef.current = node;
                             feedbackCardRefs.setFloating(node);
                         }}
-                        style={{
+                        style={isMobile ? {
+                            position: "fixed",
+                            bottom: "16px",
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            zIndex: 60,
+                            visibility: isFeedbackCardPositioned ? "visible" : "hidden",
+                            pointerEvents: isFeedbackCardPositioned ? "auto" : "none",
+                        } : {
                             ...feedbackCardStyles,
                             zIndex: 60,
                             visibility: isFeedbackCardPositioned ? "visible" : "hidden",
@@ -1295,7 +1330,8 @@ export default function ChatThread({
                                 handleToggleFeedbackFavorite(isFavorited, savedItemId, feedbackCard)
                             }
                             onClose={handleCloseFeedbackCard}
-                            placement={feedbackCardPlacement.split("-")[0] as "top" | "bottom" | "left" | "right"}
+                            placement={isMobile ? "bottom" : feedbackCardPlacement.split("-")[0] as "top" | "bottom" | "left" | "right"}
+                            mobileMode={isMobile}
                         />
                     </div>,
                     document.body

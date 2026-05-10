@@ -99,7 +99,7 @@ export default function ChatMainFrame({
             <div
                 ref={scrollRootRef}
                 data-scroll-root
-                className="@w-sm/main:[scrollbar-gutter:stable_both-edges] touch:[scrollbar-width:none] custom-scrollbar absolute inset-0 overflow-x-clip overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]"
+                className="@w-sm/main:[scrollbar-gutter:stable_both-edges] touch:[scrollbar-width:none] [@media(max-width:799px)]:[scrollbar-width:none] custom-scrollbar absolute inset-0 overflow-x-clip overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]"
                 style={{
                     ["--header-height" as string]: `${headerHeight}px`,
                     scrollPaddingTop: `${headerHeight}px`,

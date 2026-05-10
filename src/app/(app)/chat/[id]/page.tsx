@@ -100,6 +100,7 @@ export default function ChatPage() {
     const { autoReadAloudEnabled } = useUserSettings();
     const {
         isSidebarOpen,
+        toggleSidebar,
         refreshSidebarCharacters,
         setSelectedCharacterId,
     } = useSidebar();
@@ -723,6 +724,7 @@ export default function ChatPage() {
                 isHistoryOpen={isHistoryOpen}
                 isNewChatDisabled={!characterId || isStreaming || isConversationReadOnly}
                 isReadOnly={isConversationReadOnly}
+                onToggleSidebar={toggleSidebar}
             />
         </div>
     );

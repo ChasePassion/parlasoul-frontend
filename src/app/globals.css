@@ -226,12 +226,6 @@ strong,
   }
 }
 
-@media (hover: none) {
-  .composer-btn:not(:disabled, :active) {
-    background-color: var(--interactive-bg-secondary-hover);
-  }
-}
-
 .composer-btn {
   font-size: var(--text-sm);
   line-height: var(--tw-leading, 1.42857);

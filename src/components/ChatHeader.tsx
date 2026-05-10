@@ -16,6 +16,7 @@ interface ChatHeaderProps {
     isHistoryOpen?: boolean;
     isNewChatDisabled?: boolean;
     isReadOnly?: boolean;
+    onToggleSidebar?: () => void;
 }
 
 export default function ChatHeader({
@@ -28,6 +29,7 @@ export default function ChatHeader({
     isHistoryOpen = false,
     isNewChatDisabled = false,
     isReadOnly = false,
+    onToggleSidebar,
 }: ChatHeaderProps) {
     if (!character) {
         return (
@@ -44,6 +46,16 @@ export default function ChatHeader({
             style={{ backgroundColor: "var(--workspace-bg)" }}
         >
             <div className="flex items-center gap-3 min-w-0">
+                {onToggleSidebar && (
+                    <button
+                        type="button"
+                        onClick={onToggleSidebar}
+                        className="md:hidden h-9 w-9 flex items-center justify-center rounded-lg hover:bg-sidebar-hover text-black shrink-0"
+                        aria-label="打开侧边栏"
+                    >
+                        <SpriteIcon name="sidebar" size={16} />
+                    </button>
+                )}
                 <Avatar className="h-10 w-10 rounded-lg overflow-hidden shrink-0">
                     <AvatarImage src={character.avatar} alt={character.name} />
                     <AvatarFallback className="bg-gray-100 text-gray-600">
