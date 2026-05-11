@@ -27,7 +27,7 @@ export default function ReplySuggestionsBar({ suggestions, onSelect }: ReplySugg
     }
 
     return (
-        <div className="w-full px-0 mb-3">
+        <div className="w-full px-0 mb-3 pointer-events-auto">
             <div className="group/list flex w-full gap-2 hover:gap-0 transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] items-end">
                 {suggestions.map((s, i) => (
                     <SuggestionCard key={`${s.type}-${i}`} suggestion={s} index={i} onSelect={onSelect} />
@@ -52,7 +52,7 @@ function MobileSuggestions({
                 <button
                     type="button"
                     onClick={() => setOpen(true)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white shadow-sm text-sm text-gray-600 active:bg-gray-50 transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white shadow-sm text-sm text-gray-600 active:bg-gray-50 transition-colors pointer-events-auto"
                 >
                     <span>回复建议</span>
                     <span className="ml-auto text-xs text-gray-400">{suggestions.length} 条</span>
@@ -60,7 +60,7 @@ function MobileSuggestions({
             </div>
 
             {open && (
-                <div className="fixed inset-0 z-50">
+                <div className="fixed inset-0 z-50 pointer-events-auto">
                     <div
                         className="absolute inset-0 bg-black/50 animate-in fade-in duration-200"
                         onClick={() => setOpen(false)}

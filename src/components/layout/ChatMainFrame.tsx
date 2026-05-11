@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, RefObject, useLayoutEffect, useRef, useState } from "react";
+import { ReactNode, RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 interface ChatMainFrameProps {
     header: ReactNode;
@@ -22,6 +22,9 @@ export default function ChatMainFrame({
     const [headerHeight, setHeaderHeight] = useState(DEFAULT_HEADER_HEIGHT);
     const [footerHeight, setFooterHeight] = useState(0);
     const [scrollbarWidth, setScrollbarWidth] = useState(0);
+    const [isMobile, setIsMobile] = useState(false);
+
+    const MOBILE_EXTRA_BOTTOM = 80;
 
     useLayoutEffect(() => {
         const update = () => {
@@ -89,6 +92,16 @@ export default function ChatMainFrame({
         }
     }, [scrollRootRef]);
 
+    useEffect(() => {
+        const mq = window.matchMedia("(max-width: 799px)");
+        setIsMobile(mq.matches);
+        const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, []);
+
+    const extraBottom = isMobile ? MOBILE_EXTRA_BOTTOM : 0;
+
     return (
         <div
             className="@container/main relative min-h-0 min-w-0 flex-1 overflow-hidden"
@@ -103,7 +116,7 @@ export default function ChatMainFrame({
                 style={{
                     ["--header-height" as string]: `${headerHeight}px`,
                     scrollPaddingTop: `${headerHeight}px`,
-                    scrollPaddingBottom: `${footerHeight}px`,
+                    scrollPaddingBottom: `${footerHeight + extraBottom}px`,
                 }}
             >
                 <main
@@ -112,7 +125,7 @@ export default function ChatMainFrame({
                     style={{
                         backgroundColor: "var(--workspace-bg)",
                         paddingTop: `${headerHeight}px`,
-                        paddingBottom: `${footerHeight}px`,
+                        paddingBottom: `${footerHeight + extraBottom}px`,
                     }}
                 >
                     <div id="thread" className="group/thread flex min-h-full flex-col">

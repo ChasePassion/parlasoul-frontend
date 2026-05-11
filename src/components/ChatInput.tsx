@@ -516,7 +516,7 @@ export default function ChatInput({
                     </div>
                 ) : null}
                 <div className="pointer-events-auto relative z-1 flex h-(--composer-container-height,100%) max-w-full flex-(--composer-container-flex,1) flex-col">
-                    <div className="absolute start-0 end-0 bottom-full z-20">
+                    <div className="absolute start-0 end-0 bottom-full z-20 pointer-events-none">
                         {replySuggestions && replySuggestions.length > 0 && (
                             <ReplySuggestionsBar
                                 suggestions={replySuggestions}
