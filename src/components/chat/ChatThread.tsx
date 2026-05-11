@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
 import { createPortal } from "react-dom";
 import {
@@ -605,6 +606,42 @@ export default function ChatThread({
                     return;
                 }
                 console.error("Failed to create feedback card:", err);
+
+                if (openWhenReady) {
+                    const toastId = toast("思考中...", { duration: 2000 });
+                    await new Promise((resolve) => setTimeout(resolve, 800));
+
+                    try {
+                        const retryResponse = await createFeedbackCard(message.id, {
+                            signal: feedbackAbortControllerRef.current?.signal,
+                        });
+                        toast.dismiss(toastId);
+                        setFeedbackCardStates((prev) => {
+                            const existing = prev[messageKey];
+                            if (!existing || existing.requestId !== requestId) return prev;
+                            if (chatId !== liveChatId) return prev;
+                            return {
+                                ...prev,
+                                [messageKey]: {
+                                    ...existing,
+                                    status: "ready",
+                                    feedbackCard: retryResponse.feedback_card,
+                                    errorCode: null,
+                                },
+                            };
+                        });
+                        return;
+                    } catch (retryErr) {
+                        toast.dismiss(toastId);
+                        if (retryErr instanceof DOMException && retryErr.name === "AbortError") {
+                            return;
+                        }
+                        console.error("Retry failed to create feedback card:", retryErr);
+                        toast.error("生成失败，再试一次吧", { duration: 2500 });
+                        err = retryErr;
+                    }
+                }
+
                 const errorCode = deriveFeedbackErrorCode(err);
                 setFeedbackCardStates((prev) => {
                     const existing = prev[messageKey];
