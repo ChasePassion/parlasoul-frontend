@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ReactNode, RefObject, useLayoutEffect, useRef, useState } from "react";
 
 interface ChatMainFrameProps {
     header: ReactNode;
@@ -22,9 +22,8 @@ export default function ChatMainFrame({
     const [headerHeight, setHeaderHeight] = useState(DEFAULT_HEADER_HEIGHT);
     const [footerHeight, setFooterHeight] = useState(0);
     const [scrollbarWidth, setScrollbarWidth] = useState(0);
-    const [isMobile, setIsMobile] = useState(false);
 
-    const MOBILE_EXTRA_BOTTOM = 80;
+    const EXTRA_BOTTOM = 80;
 
     useLayoutEffect(() => {
         const update = () => {
@@ -92,16 +91,6 @@ export default function ChatMainFrame({
         }
     }, [scrollRootRef]);
 
-    useEffect(() => {
-        const mq = window.matchMedia("(max-width: 799px)");
-        setIsMobile(mq.matches);
-        const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-        mq.addEventListener("change", handler);
-        return () => mq.removeEventListener("change", handler);
-    }, []);
-
-    const extraBottom = isMobile ? MOBILE_EXTRA_BOTTOM : 0;
-
     return (
         <div
             className="@container/main relative min-h-0 min-w-0 flex-1 overflow-hidden"
@@ -116,7 +105,7 @@ export default function ChatMainFrame({
                 style={{
                     ["--header-height" as string]: `${headerHeight}px`,
                     scrollPaddingTop: `${headerHeight}px`,
-                    scrollPaddingBottom: `${footerHeight + extraBottom}px`,
+                    scrollPaddingBottom: `${footerHeight + EXTRA_BOTTOM}px`,
                 }}
             >
                 <main
@@ -125,7 +114,7 @@ export default function ChatMainFrame({
                     style={{
                         backgroundColor: "var(--workspace-bg)",
                         paddingTop: `${headerHeight}px`,
-                        paddingBottom: `${footerHeight + extraBottom}px`,
+                        paddingBottom: `${footerHeight + EXTRA_BOTTOM}px`,
                     }}
                 >
                     <div id="thread" className="group/thread flex min-h-full flex-col">
@@ -157,7 +146,7 @@ export default function ChatMainFrame({
                 ref={headerRef}
                 id="page-header"
                 data-fixed-header="less-than-xl"
-                className="draggable no-draggable-children absolute left-0 top-0 z-20 w-full bg-workspace-bg pointer-events-none select-none [view-transition-name:var(--vt-page-header)] *:pointer-events-auto transition-none motion-safe:transition-none [box-shadow:var(--sharp-edge-top-shadow)]"
+                className="draggable no-draggable-children absolute inset-x-0 top-0 z-20 bg-workspace-bg pointer-events-none select-none [view-transition-name:var(--vt-page-header)] *:pointer-events-auto transition-none motion-safe:transition-none [box-shadow:var(--sharp-edge-top-shadow)]"
                 style={{
                     backgroundColor: "var(--workspace-bg)",
                     right: `${scrollbarWidth}px`,
@@ -170,7 +159,7 @@ export default function ChatMainFrame({
             <div
                 ref={footerRef}
                 id="thread-bottom-container"
-                className="absolute bottom-0 left-0 isolate z-10 w-full has-data-has-thread-error:pt-2 has-data-has-thread-error:[box-shadow:var(--sharp-edge-bottom-shadow)] md:border-transparent md:pt-0 dark:border-white/20 md:dark:border-transparent print:hidden flex flex-col bg-workspace-bg"
+                className="absolute bottom-0 inset-x-0 isolate z-10 has-data-has-thread-error:pt-2 has-data-has-thread-error:[box-shadow:var(--sharp-edge-bottom-shadow)] md:border-transparent md:pt-0 dark:border-white/20 md:dark:border-transparent print:hidden flex flex-col bg-workspace-bg"
                 style={{
                     backgroundColor: "var(--workspace-bg)",
                     paddingBottom: "env(safe-area-inset-bottom,0px)",
