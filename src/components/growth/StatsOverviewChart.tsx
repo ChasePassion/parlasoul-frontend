@@ -30,6 +30,7 @@ type ChartMetric = "words" | "messages";
 
 interface StatsOverviewChartProps {
   data: GrowthTrendPoint[];
+  dayCount?: number;
 }
 
 interface RankedCharacter {
@@ -209,6 +210,7 @@ function ChartTooltip({
 
 export default function StatsOverviewChart({
   data,
+  dayCount = 30,
 }: StatsOverviewChartProps) {
   const [metric, setMetric] = useState<ChartMetric>("words");
 
@@ -227,7 +229,7 @@ export default function StatsOverviewChart({
             {metric === "words" ? "每日词数分布" : "每日消息数分布"}
           </CardTitle>
           <p className="text-xs text-[var(--text-tertiary)]">
-            最近 30 天按角色拆分的
+            最近 {dayCount} 天按角色拆分的
             {metric === "words" ? "英文词数" : "消息数"}趋势
           </p>
         </div>
@@ -270,7 +272,7 @@ export default function StatsOverviewChart({
       <CardContent>
         {topCharacters.length > 0 ? (
           <>
-            <div className="h-[320px] w-full">
+            <div className="h-[240px] md:h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={chartRows}
@@ -319,7 +321,7 @@ export default function StatsOverviewChart({
               </ResponsiveContainer>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-3">
+            <div className="mt-2 md:mt-3 flex flex-wrap items-center gap-2 md:gap-3">
               {legendItems.map((item) => (
                 <span
                   key={item.id}
@@ -335,7 +337,7 @@ export default function StatsOverviewChart({
             </div>
           </>
         ) : (
-          <div className="flex h-[320px] items-center justify-center text-sm text-[var(--text-tertiary)]">
+          <div className="flex h-[240px] md:h-[320px] items-center justify-center text-sm text-[var(--text-tertiary)]">
             暂无角色互动数据
           </div>
         )}
