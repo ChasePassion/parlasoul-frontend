@@ -59,14 +59,47 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-[960px] sm:max-w-[960px] w-[90vw] p-0 overflow-hidden bg-white flex h-[650px] border-none shadow-2xl rounded-2xl gap-0">
+            <DialogContent className="max-w-[960px] sm:max-w-[960px] w-[90vw] p-0 overflow-hidden bg-white flex flex-col md:flex-row h-[80dvh] md:h-[650px] border-none shadow-2xl rounded-2xl gap-0">
                 <VisuallyHidden>
                     <DialogTitle>设置</DialogTitle>
                 </VisuallyHidden>
-                <div className="w-[240px] bg-[#f9f9f9] p-4 border-r border-gray-100 flex flex-col pt-6 shrink-0 h-full">
+                {/* Mobile header */}
+                <header className="md:hidden flex items-center px-4 pt-4 pb-2 border-b border-gray-200">
+                    <h2 className="text-lg font-bold text-gray-900 pr-12">设置</h2>
+                </header>
+
+                {/* Mobile tab bar */}
+                <nav className="md:hidden flex gap-1 overflow-x-auto px-0.5 pt-0.5 pb-2">
+                    <button
+                        onClick={() => setActiveTab("preferences")}
+                        className={`whitespace-nowrap flex items-center gap-2 px-3 py-2 rounded-xl transition-all text-sm font-medium ${
+                            activeTab === "preferences"
+                                ? "bg-gray-100 text-gray-900 border border-transparent"
+                                : "text-gray-600 hover:bg-gray-200/50 hover:text-gray-900 border border-transparent"
+                        }`}
+                    >
+                        <UserRound className="w-[18px] h-[18px] shrink-0" />
+                        个人偏好
+                    </button>
+
+                    <button
+                        onClick={() => setActiveTab("learning")}
+                        className={`whitespace-nowrap flex items-center gap-2 px-3 py-2 rounded-xl transition-all text-sm font-medium ${
+                            activeTab === "learning"
+                                ? "bg-gray-100 text-gray-900 border border-transparent"
+                                : "text-gray-600 hover:bg-gray-200/50 hover:text-gray-900 border border-transparent"
+                        }`}
+                    >
+                        <GraduationCap className="w-[18px] h-[18px] shrink-0" />
+                        学习辅助
+                    </button>
+                </nav>
+
+                {/* Desktop sidebar */}
+                <div className="hidden md:flex w-[240px] shrink-0 bg-[#f9f9f9] border-r border-gray-100 flex-col p-4 pt-6">
                     <h2 className="text-2xl font-bold text-gray-900 mb-6 px-3">设置</h2>
 
-                    <nav className="space-y-1">
+                    <nav className="flex flex-col gap-1">
                         <button
                             onClick={() => setActiveTab("preferences")}
                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-[15px] font-medium ${
@@ -126,10 +159,10 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-10 pb-10 pt-6 custom-scrollbar relative h-full">
+                <div className="flex-1 min-h-0 overflow-y-auto px-5 md:px-10 pb-6 md:pb-10 pt-4 md:pt-6 custom-scrollbar relative">
                     {activeTab === "preferences" && (
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-2xl">
-                            <h3 className="text-xl font-semibold text-gray-900 mb-8 pb-4 border-b border-gray-100">个人偏好</h3>
+                            <h3 className="hidden md:block text-xl font-semibold text-gray-900 mb-8 pb-4 border-b border-gray-100">个人偏好</h3>
 
                             <div className="flex flex-col">
                                 <div className="pb-5 pt-0">
@@ -206,7 +239,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
 
                     {activeTab === "learning" && (
                         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-2xl">
-                            <h3 className="text-xl font-semibold text-gray-900 mb-8 pb-4 border-b border-gray-100">学习辅助</h3>
+                            <h3 className="hidden md:block text-xl font-semibold text-gray-900 mb-8 pb-4 border-b border-gray-100">学习辅助</h3>
 
                             <div className="flex flex-col">
                                 <div className="flex items-center justify-between pb-5 pt-0">
