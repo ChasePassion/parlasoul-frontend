@@ -297,24 +297,15 @@ export default function ChatHistorySidebar({
                         </button>
 
                         <DropdownMenu>
-                          <TooltipProvider delayDuration={300}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <DropdownMenuTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-1 hover:bg-foreground/5 rounded-md text-muted-foreground hover:text-foreground flex items-center justify-center data-[state=open]:opacity-100"
-                                    aria-label="更多操作"
-                                  >
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </button>
-                                </DropdownMenuTrigger>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>更多操作</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-1 hover:bg-foreground/5 rounded-md text-muted-foreground hover:text-foreground flex items-center justify-center data-[state=open]:opacity-100"
+                              aria-label="更多操作"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" sideOffset={8} className="w-40">
                             <DropdownMenuItem onClick={() => beginRename(item)} className="cursor-pointer">
                               <Pencil className="mr-2 h-4 w-4" />
