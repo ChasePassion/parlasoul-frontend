@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { BookOpen, Loader2, MessageSquare, Zap } from "lucide-react";
+import { ArrowLeft, BookOpen, Loader2, MessageSquare, Zap } from "lucide-react";
 import WorkspaceFrame from "@/components/layout/WorkspaceFrame";
 import { useSidebar } from "../layout";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { SpriteIcon } from "@/components/ui/sprite-icon";
 import type {
     FeedbackCard,
     ReplyCard,
@@ -447,10 +448,11 @@ function EmptyDetail({ label }: { label: string }) {
 
 export default function FavoritesPage() {
     const { user } = useAuth();
-    const { setSelectedCharacterId } = useSidebar();
+    const { setSelectedCharacterId, toggleSidebar } = useSidebar();
     const [currentTab, setCurrentTab] = useState<FavoriteTab>("word_card");
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [mobileView, setMobileView] = useState<"list" | "detail">("list");
 
     const wordQuery = useSavedItemsInfiniteQuery(user?.id, {
         kind: "word_card",
@@ -520,21 +522,35 @@ export default function FavoritesPage() {
     }
 
     return (
-        <WorkspaceFrame className="bg-[#F7F9FA]">
+        <WorkspaceFrame
+            className="bg-[#F7F9FA]"
+            header={
+                <div className="w-full border-b border-divider md:border-none bg-white md:bg-transparent">
+                    <div className="mx-auto max-w-7xl flex items-center px-4 md:px-6 h-[56px] md:h-auto md:pt-9 md:pb-7">
+                        <button
+                            type="button"
+                            onClick={toggleSidebar}
+                            className="md:hidden w-10 h-10 flex items-center justify-center rounded-lg hover:bg-sidebar-hover text-black shrink-0"
+                            aria-label="打开侧边栏"
+                        >
+                            <SpriteIcon name="sidebar" size={16} />
+                        </button>
+                        <h1 className="text-lg font-medium md:text-[28px] md:font-normal md:leading-tight md:tracking-normal text-[#333333] ml-2 md:ml-0">
+                            收藏夹
+                        </h1>
+                    </div>
+                </div>
+            }
+        >
             <div className="flex-1 overflow-y-auto bg-[#F7F9FA] text-[#333333] antialiased">
-                <header className="mx-auto max-w-7xl px-6 pt-10 pb-8">
-                    <h1 className="text-[28px] leading-tight tracking-normal text-[#333333]">
-                        收藏夹
-                    </h1>
-                </header>
-
                 <Tabs
                     value={currentTab}
                     onValueChange={(value) => {
                         setCurrentTab(value as FavoriteTab);
                         setSelectedIndex(0);
+                        setMobileView("list");
                     }}
-                    className="mx-auto max-w-7xl px-6"
+                    className="mx-auto max-w-7xl px-4 md:px-6 py-2"
                 >
                     <TabsList variant="line" className="flex h-auto gap-4 p-0">
                         {TAB_ORDER.map((tab) => {
@@ -558,13 +574,31 @@ export default function FavoritesPage() {
                     </TabsList>
                 </Tabs>
 
-                <section className="mx-auto max-w-7xl px-6 py-8 pb-20">
+                <section className="mx-auto max-w-7xl px-4 md:px-6 py-4 md:py-6 pb-20">
                     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-                        <Card className="gap-0 rounded-2xl border-[#EAEAEA] bg-white py-0 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-                            <CardContent className="p-8">{detailContent}</CardContent>
+                        <Card className={cn(
+                            "gap-0 rounded-2xl border-[#EAEAEA] bg-white py-0 shadow-[0_4px_20px_rgba(0,0,0,0.03)]",
+                            mobileView !== "detail" && "hidden lg:block",
+                        )}>
+                            <CardContent className="p-6 md:p-8">
+                                {mobileView === "detail" && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setMobileView("list")}
+                                        className="mb-4 flex items-center gap-1 text-sm text-[#888888] hover:text-[#333333] lg:hidden"
+                                    >
+                                        <ArrowLeft className="size-4" />
+                                        返回列表
+                                    </button>
+                                )}
+                                {detailContent}
+                            </CardContent>
                         </Card>
 
-                        <aside className="h-fit lg:sticky lg:top-6">
+                        <aside className={cn(
+                            "h-fit lg:sticky lg:top-6",
+                            mobileView === "detail" && "hidden lg:block",
+                        )}>
                             <div
                                 aria-label={`收藏的${currentMeta.label}`}
                                 className="max-h-[calc(100vh-256px)] overflow-y-auto pr-2 [scrollbar-color:#e5e7eb_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#e5e7eb] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-1.5"
@@ -592,7 +626,10 @@ export default function FavoritesPage() {
                                                 tab={currentTab}
                                                 selected={index === selectedIndex}
                                                 isDeleting={deletingId === item.id}
-                                                onSelect={() => setSelectedIndex(index)}
+                                                onSelect={() => {
+                                                    setSelectedIndex(index);
+                                                    setMobileView("detail");
+                                                }}
                                                 onDelete={() => {
                                                     void handleDeleteFavorite(item.id);
                                                 }}
