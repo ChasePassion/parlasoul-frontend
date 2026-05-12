@@ -2,7 +2,7 @@
 
 本文档由脚本直接连接 PostgreSQL 实例并基于实时元数据生成。
 
-- 生成时间: `2026-05-09 11:29:21 北京时间`
+- 生成时间: `2026-05-12 08:50:40 北京时间`
 - 目标数据库: `localhost:5432/role_play_mem`
 - Schema: `public`
 - 表数量: `22`
@@ -393,7 +393,7 @@ sequenceDiagram
 | `interaction_count` | 角色互动计数，近似反映聊天生成完成次数。 | 聊天成功 finalize 后递增，用于市场热度。 |
 | `creator_id` | 角色创建者。 | 个人中心、权限控制、创作者主页。 |
 | `voice_provider` | 当前绑定音色的 provider。系统音色当前默认 `minimax`，用户克隆音色仍为 `dashscope`。 | 聊天 TTS、角色详情展示、provider-aware TTS gateway 路由。 |
-| `voice_model` | 当前绑定音色的运行时模型。系统默认 `speech-2.8-hd`，克隆音色保存 DashScope 克隆 TTS 模型。 | TTS 调用时直接使用。 |
+| `voice_model` | 当前绑定音色的运行时模型。系统默认 `speech-2.8-turbo`，克隆音色保存 DashScope 克隆 TTS 模型。 | TTS 调用时直接使用。 |
 | `voice_provider_voice_id` | 当前绑定音色在 provider 侧的 voice id。系统音色保存 MiniMax voice id；克隆音色保存 DashScope clone voice id。 | TTS 调用与角色绑定判断。 |
 | `voice_source_type` | 当前绑定音色来源类型。`system` 走系统音色 catalog；`clone` 走用户音色资产校验。 | 区分 system / clone 等来源，并决定 provider registry 路由。 |
 | `llm_preset_id` | 产品化 LLM 预设，当前为 `free/flagship`；`flagship` 需要付费权益。 | 角色创建 / 编辑写入，聊天生成时解析实际 provider/model。 |
@@ -970,13 +970,13 @@ sequenceDiagram
 ### 索引
 
 - `candidates_pkey` [PRIMARY / UNIQUE]
-  大小: `56 kB`
+  大小: `72 kB`
   定义: `CREATE UNIQUE INDEX candidates_pkey ON public.candidates USING btree (id)`
 - `candidates_turn_candidate_no_uniq` [UNIQUE]
   大小: `88 kB`
   定义: `CREATE UNIQUE INDEX candidates_turn_candidate_no_uniq ON public.candidates USING btree (turn_id, candidate_no)`
 - `candidates_turn_id_idx`
-  大小: `64 kB`
+  大小: `72 kB`
   定义: `CREATE INDEX candidates_turn_id_idx ON public.candidates USING btree (turn_id)`
 - `idx_candidates_turn_created`
   大小: `88 kB`
@@ -1810,23 +1810,23 @@ sequenceDiagram
 ### 索引
 
 - `idx_turns_chat_turnno_desc`
-  大小: `88 kB`
+  大小: `96 kB`
   定义: `CREATE INDEX idx_turns_chat_turnno_desc ON public.turns USING btree (chat_id, turn_no DESC)`
 - `turns_chat_id_idx`
   大小: `16 kB`
   定义: `CREATE INDEX turns_chat_id_idx ON public.turns USING btree (chat_id)`
 - `turns_chat_parent_turn_idx`
-  大小: `88 kB`
+  大小: `96 kB`
   定义: `CREATE INDEX turns_chat_parent_turn_idx ON public.turns USING btree (chat_id, parent_turn_id)`
 - `turns_chat_turn_no_uniq` [UNIQUE]
-  大小: `96 kB`
+  大小: `104 kB`
   定义: `CREATE UNIQUE INDEX turns_chat_turn_no_uniq ON public.turns USING btree (chat_id, turn_no)`
 - `turns_parent_candidate_uniq` [UNIQUE]
   大小: `56 kB`
   定义: `CREATE UNIQUE INDEX turns_parent_candidate_uniq ON public.turns USING btree (parent_candidate_id) WHERE (parent_candidate_id IS NOT NULL)`
   谓词: `parent_candidate_id IS NOT NULL`
 - `turns_pkey` [PRIMARY / UNIQUE]
-  大小: `56 kB`
+  大小: `72 kB`
   定义: `CREATE UNIQUE INDEX turns_pkey ON public.turns USING btree (id)`
 
 ## Table `user_access_passes`
