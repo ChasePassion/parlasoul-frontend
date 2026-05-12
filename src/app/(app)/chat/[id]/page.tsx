@@ -293,12 +293,6 @@ export default function ChatPage() {
                 return;
             }
 
-            if (event.type === "conversation.turn.created") {
-                scheduleRealtimeChatTurnsReload({
-                    requiredTurnIds: [event.user_turn_id],
-                });
-                return;
-            }
             if (event.type === "conversation.turn.updated" && event.is_final) {
                 scheduleRealtimeChatTurnsReload({
                     requiredTurnIds: [event.assistant_turn_id],
