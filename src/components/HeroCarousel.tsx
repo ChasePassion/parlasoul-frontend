@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import type { EmblaCarouselType } from "embla-carousel";
+import Autoplay from "embla-carousel-autoplay";
 import Image from "next/image";
+import { cn } from "@/lib/utils";
 
 import type { CharacterResponse } from "@/lib/api-service";
 import type { DiscoverHeroCharacter } from "@/lib/discover-data";
 import { computeHeroTweenStyles } from "@/lib/hero-carousel-tween";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 // ── 动画参数 ──
 const HERO_ASPECT_RATIO = "21 / 9";
@@ -30,11 +33,24 @@ export default function HeroCarousel({
   characters,
   onSelectCharacter,
 }: HeroCarouselProps) {
-  const [emblaRef, emblaApi] = useEmblaCarousel({
-    loop: true,
-    align: "center",
-    skipSnaps: false,
-  });
+  const isMobile = useIsMobile();
+
+  const [autoplay] = useState(() =>
+    Autoplay({ delay: 3000, stopOnInteraction: false, playOnInit: false }),
+  );
+
+  const [emblaRef, emblaApi] = useEmblaCarousel(
+    {
+      loop: true,
+      align: "center",
+      skipSnaps: false,
+    },
+    [autoplay],
+  );
+
+  const selectedIndexRef = useRef(0);
+  const [slideCount, setSlideCount] = useState(0);
+  const dotsContainerRef = useRef<HTMLDivElement | null>(null);
 
   const tweenNodes = useRef<Array<HTMLElement | null>>([]);
   const wheelTargetIndex = useRef(0);
@@ -48,8 +64,10 @@ export default function HeroCarousel({
     });
   }, []);
 
-  // Cover Flow 核心动画函数
+  // Cover Flow 核心动画函数（仅桌面端）
   const tweenScale = useCallback((api: EmblaCarouselType) => {
+    if (isMobile) return;
+
     const engine = api.internalEngine();
     const tweenStyles = computeHeroTweenStyles({
       scrollProgress: api.scrollProgress(),
@@ -71,13 +89,18 @@ export default function HeroCarousel({
       slideNode.style.transform = `scale(${tweenStyle.scale})`;
       slideNode.style.opacity = String(tweenStyle.opacity);
     });
-  }, []);
+  }, [isMobile]);
 
-  // 绑定 Embla 事件
+  // 绑定 Embla 事件（桌面端 tween 动画，移动端完全跳过）
   useEffect(() => {
     if (!emblaApi) return;
 
     setTweenNodes(emblaApi);
+
+    if (isMobile) {
+      return; // 移动端不需要任何 tween 事件绑定
+    }
+
     tweenScale(emblaApi);
 
     let initialTweenFrameId = 0;
@@ -92,26 +115,26 @@ export default function HeroCarousel({
       });
     });
 
-    emblaApi
-      .on("reInit", setTweenNodes)
-      .on("reInit", tweenScale)
-      .on("select", tweenScale)
-      .on("scroll", tweenScale)
-      .on("settle", tweenScale)
-      .on("slideFocus", tweenScale);
+    const events: Array<Parameters<typeof emblaApi.on>[0]> = [
+      "reInit", "select", "scroll", "settle", "slideFocus",
+    ];
+
+    events.forEach((event) => {
+      if (event !== "reInit") {
+        emblaApi.on(event, tweenScale);
+      }
+    });
+    emblaApi.on("reInit", setTweenNodes).on("reInit", tweenScale);
 
     return () => {
       window.cancelAnimationFrame(initialTweenFrameId);
       window.cancelAnimationFrame(followupTweenFrameId);
-      emblaApi
-        .off("reInit", setTweenNodes)
-        .off("reInit", tweenScale)
-        .off("select", tweenScale)
-        .off("scroll", tweenScale)
-        .off("settle", tweenScale)
-        .off("slideFocus", tweenScale);
+      events.forEach((event) => {
+        emblaApi.off(event, tweenScale);
+      });
+      emblaApi.off("reInit", setTweenNodes);
     };
-  }, [emblaApi, setTweenNodes, tweenScale]);
+  }, [emblaApi, setTweenNodes, tweenScale, isMobile]);
 
   useEffect(() => {
     if (!emblaApi) return;
@@ -207,6 +230,62 @@ export default function HeroCarousel({
     };
   }, [emblaApi]);
 
+  // 移动端自动播放，桌面端停止
+  useEffect(() => {
+    if (isMobile) {
+      autoplay.play();
+    } else {
+      autoplay.stop();
+    }
+  }, [isMobile, autoplay]);
+
+  // 移动端清除 Cover Flow tween 残留样式
+  useEffect(() => {
+    if (!isMobile) return;
+
+    tweenNodes.current.forEach((node) => {
+      if (node) {
+        node.style.transform = "";
+        node.style.opacity = "";
+      }
+    });
+  }, [isMobile]);
+
+  // 追踪当前选中 slide — slideCount 用 state 初始化渲染，selectedIndex 用 ref + DOM 避免 re-render
+  useEffect(() => {
+    if (!emblaApi) return;
+
+    const updateDots = () => {
+      const idx = emblaApi.selectedScrollSnap();
+      selectedIndexRef.current = idx;
+      const container = dotsContainerRef.current;
+      if (!container) return;
+      const dots = container.children;
+      for (let i = 0; i < dots.length; i++) {
+        const dot = dots[i] as HTMLElement;
+        if (i === idx) {
+          dot.classList.add("bg-white");
+          dot.classList.remove("bg-white/40");
+        } else {
+          dot.classList.add("bg-white/40");
+          dot.classList.remove("bg-white");
+        }
+      }
+    };
+
+    setSlideCount(emblaApi.scrollSnapList().length);
+    updateDots();
+
+    emblaApi.on("select", updateDots).on("reInit", () => {
+      setSlideCount(emblaApi.scrollSnapList().length);
+      updateDots();
+    });
+
+    return () => {
+      emblaApi.off("select", updateDots);
+    };
+  }, [emblaApi]);
+
   if (characters.length === 0) return null;
 
   return (
@@ -214,9 +293,11 @@ export default function HeroCarousel({
       className="group/carousel relative"
       style={{
         marginTop: "16px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        width: `min(calc(100% + ${HERO_VIEWPORT_BLEED}px), ${HERO_VIEWPORT_MAX_WIDTH}px)`,
+        left: isMobile ? "unset" : "50%",
+        transform: isMobile ? "none" : "translateX(-50%)",
+        width: isMobile
+          ? "100%"
+          : `min(calc(100% + ${HERO_VIEWPORT_BLEED}px), ${HERO_VIEWPORT_MAX_WIDTH}px)`,
       }}
     >
       {/* Embla Viewport */}
@@ -224,21 +305,33 @@ export default function HeroCarousel({
         className="overflow-hidden rounded-[20px]"
         ref={emblaRef}
       >
-        <div className="flex touch-pan-y">
-          {characters.map((item) => (
+        <div className={cn("flex touch-pan-y", isMobile && "will-change-transform")}>
+          {characters.map((item, i) => (
             <div
               key={item.character.id}
-              className="shrink-0 min-w-0 px-1"
-              style={{ flex: `0 0 ${HERO_SLIDE_BASIS}` }}
+              className={cn("shrink-0 min-w-0", isMobile ? "" : "px-1")}
+              style={{
+                flex: isMobile ? "0 0 100%" : `0 0 ${HERO_SLIDE_BASIS}`,
+              }}
             >
               <div
                 data-carousel-slide-inner
-                className="relative w-full overflow-hidden rounded-[20px] transition-[transform,opacity] duration-100 ease-out"
+                className={cn(
+                  "relative w-full overflow-hidden rounded-[20px]",
+                  !isMobile && "transition-[transform,opacity] duration-100 ease-out",
+                )}
                 style={{
                   aspectRatio: HERO_ASPECT_RATIO,
                   maxHeight: HERO_MAX_HEIGHT,
-                  willChange: "transform, opacity",
+                  ...(isMobile
+                    ? { cursor: "pointer" }
+                    : { willChange: "transform, opacity" }),
                 }}
+                onClick={
+                  isMobile
+                    ? () => onSelectCharacter(item.character)
+                    : undefined
+                }
               >
                 {/* 背景图片 */}
                 <Image
@@ -246,8 +339,8 @@ export default function HeroCarousel({
                   alt={item.character.name}
                   fill
                   className="object-contain object-center"
-                  priority
-                  sizes={`(max-width: 768px) 84vw, ${HERO_SLIDE_MAX_WIDTH}px`}
+                  priority={i === 0}
+                  sizes={isMobile ? "100vw" : `${HERO_SLIDE_MAX_WIDTH}px`}
                 />
 
                 {/* 底部渐变遮罩 */}
@@ -260,7 +353,8 @@ export default function HeroCarousel({
                   }}
                 />
 
-                {/* CTA 按钮 - 玻璃拟态 */}
+                {/* CTA 按钮 - 玻璃拟态（仅桌面端） */}
+                {!isMobile && (
                 <div className="absolute bottom-6 left-0 right-0 z-20 flex justify-center">
                   <button
                     className="group/btn relative flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium text-white/95 rounded-[16px] cursor-pointer overflow-hidden transition-all duration-300 ease-out hover:[&>span:last-child]:translate-x-1"
@@ -294,20 +388,40 @@ export default function HeroCarousel({
                     </span>
                   </button>
                 </div>
+                )}
 
-
-                {/* 悬浮阴影 */}
-                <div
-                  className="absolute inset-0 rounded-[20px] pointer-events-none"
-                  style={{
-                    boxShadow: "0 20px 40px rgba(0,0,0,0.1)",
-                  }}
-                />
+                {/* 悬浮阴影（仅桌面端，移动端省去避免 paint 开销） */}
+                {!isMobile && (
+                  <div
+                    className="absolute inset-0 rounded-[20px] pointer-events-none"
+                    style={{
+                      boxShadow: "0 20px 40px rgba(0,0,0,0.1)",
+                    }}
+                  />
+                )}
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* 轮播圆点指示器（仅移动端，用 ref + DOM 操作避免 setState 触发 re-render） */}
+      {isMobile && slideCount > 1 && (
+        <div
+          ref={dotsContainerRef}
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex gap-2 pointer-events-none"
+        >
+          {Array.from({ length: slideCount }).map((_, i) => (
+            <span
+              key={i}
+              className={cn(
+                "block w-2 h-2 rounded-full transition-colors duration-300",
+                i === 0 ? "bg-white" : "bg-white/40",
+              )}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

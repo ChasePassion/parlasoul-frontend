@@ -1769,3 +1769,74 @@ Industry standard (Stream Chat, MUI X Chat, Virtuoso): the message list is an in
 - `focus({ preventScroll: true })` only prevents focus-time scroll, not ongoing caret-reveal.
 - When a layout change eliminates the root cause of a bug, delete all the workaround code. Don't keep "just in case" revert logic.
 - For full-height scrollbar + overlay header/footer, measure scrollbar width and offset the overlays to prevent covering the scrollbar.
+
+---
+
+### Embla Carousel Mobile Scroll Jank — GPU Compositing Layer
+
+#### Problem
+
+Embla Carousel (v8.6.0) scroll animation stuttered/janked on mobile viewports (<768px) during both autoplay (3s interval, `loop: true`) and manual touch swipe. The stutter was visible during the scroll animation itself, not after settling.
+
+Multiple conventional fixes had already been applied without success:
+- Dots moved outside the slide loop (to avoid React re-render of all slides on `selectedIndex` change)
+- `willChange: "transform, opacity"` removed from individual slide-inner elements
+- Cover Flow tween (scale/opacity) disabled on mobile via early return
+- CSS `transition` removed from slide-inner on mobile
+
+Yet scrolling remained choppy.
+
+#### Root Cause
+
+**The `willChange` had been placed on the wrong element.** Embla Carousel works by applying `translate3d` to the **flex container track** (the element with `display: flex` that wraps all slides), NOT to individual slide-inner elements. Slide-inner elements are static children inside the track — they don't move independently.
+
+Without `will-change: transform` on the actual moving track container, the browser did not promote it to a dedicated GPU compositing layer. The result: on every animation frame, the browser performed expensive **paint** (repainting the entire track + all slides + overlays) instead of cheap **compositor-only** (GPU layer re-positioning).
+
+Secondary factors that amplified the paint cost on mobile:
+
+| Factor | Why it matters |
+|--------|---------------|
+| `box-shadow: 0 20px 40px` overlay on every slide | Large blur-radius shadows are paint-expensive; on mobile GPU this is especially costly when repainted every frame |
+| `priority` on ALL slide images | Next.js preloads all images, consuming main-thread decode time; only the first visible image needs `priority` |
+| `sizes` prop set to `84vw` on mobile | Inaccurate — mobile slides are `100%` width, causing suboptimal `srcset` selection |
+| Tween event callbacks (`scroll`/`select`/`settle`/`slideFocus`) still registered on mobile | Embla dispatches these on every animation frame; even with early-return, each call adds overhead |
+| `selectedIndex` React state update on every `select` event | Full component re-render at the end of each scroll, potentially overlapping with the next autoplay step's first frame |
+
+#### Solution
+
+**Primary fix — promote the Embla track to a compositing layer on mobile:**
+
+```tsx
+<div className={cn("flex touch-pan-y", isMobile && "will-change-transform")}>
+```
+
+This applies `will-change: transform` to the element that Embla actually applies `translate3d` to. The browser creates a GPU layer for it, making scroll animation pure compositor work (no paint).
+
+Do NOT add custom `transform` or `transition` CSS to this container — Embla controls its transform internally.
+
+**Secondary fixes:**
+
+1. **Remove `box-shadow` overlay on mobile** — wraps the shadow div in `{!isMobile && (...)}` to eliminate the per-frame paint payload.
+
+2. **Only `priority` the first image** — `priority={i === 0}` instead of `priority` on all slides. Reduces main-thread image decode pressure.
+
+3. **Fix mobile `sizes` to `100vw`** — `sizes={isMobile ? "100vw" : ...}` so Next.js generates correct `srcset` for mobile breakpoint.
+
+4. **Skip tween event bindings entirely on mobile** — In the Embla effect, `if (isMobile) return;` before registering any `scroll`/`select`/`settle`/`slideFocus` event handlers. This eliminates per-frame callback overhead.
+
+5. **Replace `useState` (selectedIndex) with `useRef` + direct DOM manipulation for dots** — `setSelectedIndex()` was the only remaining cause of React re-render on scroll settle. Switch to `selectedIndexRef` and update dot classes imperatively via `dotsContainerRef.current.children`.
+
+#### Verification
+
+Chrome DevTools — Rendering panel:
+- **Paint flashing**: green flashes during carousel scroll = still painting (problem). No green = compositor-only (fixed).
+- **Layer borders**: confirms the track container has its own compositing layer (orange border).
+- **Frame rendering stats**: dropped frame count should drop to near zero.
+
+#### Rule of Thumb
+
+- **`will-change` must go on the element that actually moves**, not its static children. For carousels: the track/container that receives `translate3d`.
+- If a carousel scroll stutters on mobile, suspect a paint-vs-composite problem before suspecting JavaScript.
+- `box-shadow` with large blur radius (≥20px) on moving elements is a reliable source of mobile jank — remove or downgrade it.
+- Only `priority` the above-the-fold image in a carousel — not all of them.
+- React state updates during CSS-based scroll animations are unnecessary overhead; use refs + imperative DOM for non-critical UI that tracks scroll position (like dots).

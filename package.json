@@ -28,6 +28,7 @@
     "clsx": "^2.1.1",
     "dodopayments": "^2.27.0",
     "embla-carousel": "^8.6.0",
+    "embla-carousel-autoplay": "8.6.0",
     "embla-carousel-react": "^8.6.0",
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
