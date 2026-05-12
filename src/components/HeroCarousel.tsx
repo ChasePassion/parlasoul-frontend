@@ -232,12 +232,13 @@ export default function HeroCarousel({
 
   // 移动端自动播放，桌面端停止
   useEffect(() => {
+    if (!emblaApi) return;
     if (isMobile) {
       autoplay.play();
     } else {
       autoplay.stop();
     }
-  }, [isMobile, autoplay]);
+  }, [isMobile, autoplay, emblaApi]);
 
   // 移动端清除 Cover Flow tween 残留样式
   useEffect(() => {
