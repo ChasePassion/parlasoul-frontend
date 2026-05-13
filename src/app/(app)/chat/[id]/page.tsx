@@ -397,6 +397,17 @@ export default function ChatPage() {
         [originalHandleSendMessage, realtimeSession, refreshSidebarCharacters],
     );
 
+    const wrappedHandleContinue = useCallback(
+        async () => {
+            shouldAutoScrollRef.current = true;
+            await handleContinue();
+            void refreshSidebarCharacters().catch((err) => {
+                console.error("Failed to refresh sidebar characters:", err);
+            });
+        },
+        [handleContinue, refreshSidebarCharacters],
+    );
+
     const handleSelectHistoryChat = useCallback(
         (targetChatId: string) => {
             if (targetChatId === chatId) {
@@ -868,7 +879,7 @@ export default function ChatPage() {
                 onSend={handleSendMessage}
                 isStreaming={isStreaming}
                 onInterrupt={interruptStream}
-                onContinue={handleContinue}
+                onContinue={wrappedHandleContinue}
                 roleName={character.name}
                 replySuggestions={realtimeSession.isConnected ? null : currentReplySuggestions}
                 onMicStart={handleMicStart}
