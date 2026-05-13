@@ -39,9 +39,11 @@ export default function HeroCarousel({
     Autoplay({ delay: 3000, stopOnInteraction: false, playOnInit: false }),
   );
 
+  const canLoop = characters.length >= 2;
+
   const [emblaRef, emblaApi] = useEmblaCarousel(
     {
-      loop: true,
+      loop: canLoop,
       align: "center",
       skipSnaps: false,
     },
@@ -233,12 +235,12 @@ export default function HeroCarousel({
   // 移动端自动播放，桌面端停止
   useEffect(() => {
     if (!emblaApi) return;
-    if (isMobile) {
+    if (isMobile && characters.length >= 2) {
       autoplay.play();
     } else {
       autoplay.stop();
     }
-  }, [isMobile, autoplay, emblaApi]);
+  }, [isMobile, autoplay, emblaApi, characters.length]);
 
   // 移动端清除 Cover Flow tween 残留样式
   useEffect(() => {
