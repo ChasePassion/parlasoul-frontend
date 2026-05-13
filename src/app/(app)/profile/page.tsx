@@ -153,8 +153,9 @@ export default function ProfilePage() {
         const url = buildShareUrl(character.name, character.id);
         try {
             await navigator.clipboard.writeText(url);
+            toast.success("链接已复制");
         } catch {
-            // clipboard unavailable
+            toast.error("复制失败，请手动复制");
         }
     };
 
