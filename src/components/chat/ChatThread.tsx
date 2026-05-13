@@ -1064,11 +1064,15 @@ export default function ChatThread({
                 const isUserTurn = message.role === "user";
                 const isErrorMessage = !isUserTurn && message.messageStreamStatus === "error";
                 const isLastTurn = index === visibleMessages.length - 1;
+                const prevMessage = index > 0 ? visibleMessages[index - 1] : null;
+                const isConsecutiveAssistant = !isUserTurn && prevMessage?.role === "assistant";
                 const topPaddingClass = message.isGreeting
                     ? "pt-[36px]"
                     : isUserTurn
                         ? "pt-3"
-                        : "";
+                        : isConsecutiveAssistant
+                            ? "pt-3"
+                            : "";
 
                 if (isErrorMessage) {
                     const canRegen = message.assistantTurnId && onRegenAssistant;

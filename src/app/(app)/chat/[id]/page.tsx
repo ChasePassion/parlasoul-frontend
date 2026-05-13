@@ -153,6 +153,7 @@ export default function ChatPage() {
         setCurrentChatTitle,
         handleSelectCandidate,
         handleRegenAssistant,
+        handleContinue,
         handleEditUser,
         handleRetryReplyCard,
         handleSendMessage: originalHandleSendMessage,
@@ -867,6 +868,7 @@ export default function ChatPage() {
                 onSend={handleSendMessage}
                 isStreaming={isStreaming}
                 onInterrupt={interruptStream}
+                onContinue={handleContinue}
                 roleName={character.name}
                 replySuggestions={realtimeSession.isConnected ? null : currentReplySuggestions}
                 onMicStart={handleMicStart}

@@ -12,6 +12,7 @@ import type { GrowthTodaySummary, GrowthShareCard } from "@/lib/growth-types";
 import {
   ApiError,
   UnauthorizedError,
+  continueGeneration,
   createReplyCard,
   editUserTurnAndStreamReply,
   regenAssistantTurn,
@@ -52,6 +53,7 @@ interface UseChatSessionResult {
   setCurrentChatTitle: (title: string) => void;
   handleSelectCandidate: (turnId: string, candidateNo: number) => Promise<void>;
   handleRegenAssistant: (turnId: string) => Promise<void>;
+  handleContinue: () => Promise<void>;
   handleEditUser: (turnId: string, newContent: string) => Promise<void>;
   handleRetryReplyCard: (message: Message) => Promise<void>;
   handleSendMessage: (content: string) => Promise<void>;
@@ -169,9 +171,13 @@ export function useChatSession({
   const characterIdRef = useRef<string | null>(null);
   const replySuggestionsByCandidateIdRef = useRef<ReplySuggestionsByCandidateId>({});
   const autoReadAloudRef = useRef(autoReadAloudEnabled);
+  const messagesRef = useRef<Message[]>(messages);
   useEffect(() => {
     autoReadAloudRef.current = autoReadAloudEnabled;
   }, [autoReadAloudEnabled]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     replySuggestionsByCandidateIdRef.current = replySuggestionsByCandidateId;
@@ -820,6 +826,277 @@ export function useChatSession({
     },
     [
       applyReplySuggestions,
+      beginStream,
+      character?.status,
+      clearReplySuggestions,
+      clearTrackedController,
+      detachControllerToTail,
+      finalizeStreamError,
+      isStreaming,
+      reloadChatTurns,
+      shouldReloadForRequest,
+      ttsPlaybackManager,
+    ],
+  );
+
+  const handleContinue = useCallback(
+    async () => {
+      if (isStreaming || character?.status === "UNPUBLISHED") return;
+
+      const lastAssistant = [...messagesRef.current].reverse().find(
+        (message) => message.role === "assistant" && message.assistantTurnId,
+      );
+      if (!lastAssistant?.assistantTurnId) return;
+
+      const turnId = lastAssistant.assistantTurnId;
+      let hasStreamError = false;
+
+      ttsPlaybackManager?.interruptAll();
+      await ttsPlaybackManager?.ensureResumedForRealtime();
+
+      const tempAssistantId = `assistant-continue-${crypto.randomUUID()}`;
+      let resolvedAssistantMessageId = tempAssistantId;
+      let resolvedAssistantCandidateId: string | undefined;
+
+      clearReplySuggestions();
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: tempAssistantId,
+          role: "assistant",
+          content: "",
+          isTemp: true,
+          messageStreamStatus: "streaming",
+          replyCardStatus: "idle",
+          replyCardErrorCode: null,
+        },
+      ]);
+
+      const { controller, requestRunId } = beginStream();
+      setIsStreaming(true);
+
+      let continueMetaTimeoutId: ReturnType<typeof setTimeout> | null = null;
+      let continueTimedOut = false;
+
+      try {
+        continueMetaTimeoutId = setTimeout(() => {
+          continueTimedOut = true;
+          controller.abort();
+        }, 30_000);
+
+        await continueGeneration(turnId, {
+          signal: controller.signal,
+          onMeta: (meta) => {
+            if (controller.signal.aborted) return;
+            if (continueMetaTimeoutId) {
+              clearTimeout(continueMetaTimeoutId);
+              continueMetaTimeoutId = null;
+            }
+            resolvedAssistantMessageId = meta.assistant_turn.id;
+            resolvedAssistantCandidateId = meta.assistant_turn.candidate_id;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === tempAssistantId || message.id === resolvedAssistantMessageId
+                  ? {
+                      ...message,
+                      id: resolvedAssistantMessageId,
+                      assistantTurnId: meta.assistant_turn.id,
+                      assistantCandidateId: meta.assistant_turn.candidate_id,
+                      candidateNo: message.candidateNo ?? 1,
+                      candidateCount: message.candidateCount ?? 1,
+                    }
+                  : message,
+              ),
+            );
+          },
+          onChunk: (chunk) => {
+            if (controller.signal.aborted) return;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === tempAssistantId || message.id === resolvedAssistantMessageId
+                  ? {
+                      ...message,
+                      content: message.content + chunk,
+                      isTemp: (message.content + chunk).trim().length === 0,
+                      messageStreamStatus: "streaming",
+                    }
+                  : message,
+              ),
+            );
+          },
+          onDone: async (fullContent, assistantTurnId, assistantCandidateId) => {
+            if (controller.signal.aborted) return;
+            if (assistantCandidateId) {
+              resolvedAssistantCandidateId = assistantCandidateId;
+            }
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === tempAssistantId || message.id === resolvedAssistantMessageId
+                  ? {
+                      ...message,
+                      id: assistantTurnId ?? resolvedAssistantMessageId,
+                      content: fullContent,
+                      assistantTurnId: assistantTurnId ?? message.assistantTurnId,
+                      assistantCandidateId:
+                        assistantCandidateId ?? message.assistantCandidateId,
+                      isTemp: false,
+                      candidateNo: message.candidateNo ?? 1,
+                      candidateCount: message.candidateCount ?? 1,
+                      messageStreamStatus: "done",
+                    }
+                  : message,
+              ),
+            );
+            setIsStreaming(false);
+            detachControllerToTail(controller);
+          },
+          onReplySuggestions: (data) => {
+            if (controller.signal.aborted) return;
+            if (data.suggestions && data.suggestions.length > 0) {
+              applyReplySuggestions(
+                data.assistant_candidate_id,
+                data.suggestions,
+              );
+            }
+          },
+          onReplyCardStarted: (data) => {
+            if (controller.signal.aborted) return;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === resolvedAssistantMessageId ||
+                message.assistantCandidateId === data.assistant_candidate_id
+                  ? {
+                      ...message,
+                      replyCardStatus: "loading",
+                      replyCardErrorCode: null,
+                    }
+                  : message,
+              ),
+            );
+          },
+          onReplyCard: (data) => {
+            if (controller.signal.aborted) return;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === resolvedAssistantMessageId ||
+                message.assistantCandidateId === data.assistant_candidate_id
+                  ? {
+                      ...message,
+                      assistantCandidateId:
+                        message.assistantCandidateId ?? data.assistant_candidate_id,
+                      replyCard: data.reply_card,
+                      replyCardStatus: "ready",
+                      replyCardErrorCode: null,
+                    }
+                  : message,
+              ),
+            );
+          },
+          onReplyCardError: (data) => {
+            if (controller.signal.aborted) return;
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === resolvedAssistantMessageId ||
+                message.assistantCandidateId === data.assistant_candidate_id ||
+                (!message.assistantCandidateId &&
+                  resolvedAssistantCandidateId === data.assistant_candidate_id &&
+                  (message.id === tempAssistantId || message.id === resolvedAssistantMessageId))
+                  ? {
+                      ...message,
+                      assistantCandidateId:
+                        message.assistantCandidateId ?? data.assistant_candidate_id,
+                      replyCardStatus: "error",
+                      replyCardErrorCode: data.code,
+                    }
+                  : message,
+              ),
+            );
+          },
+          onTtsAudioDelta: (data) => {
+            if (controller.signal.aborted) return;
+            if (!autoReadAloudRef.current) return;
+            ttsPlaybackManager?.feedRealtimeChunk(
+              data.assistant_candidate_id,
+              data.audio_b64,
+              data.mime_type,
+              data.seq,
+            );
+          },
+          onTtsAudioDone: (data) => {
+            if (controller.signal.aborted) return;
+            ttsPlaybackManager?.finishRealtime(data.assistant_candidate_id);
+          },
+          onTtsError: (data) => {
+            if (controller.signal.aborted) return;
+            ttsPlaybackManager?.handleTtsError(data.code, data.message);
+          },
+          onError: async (err) => {
+            if (controller.signal.aborted) return;
+            if (continueMetaTimeoutId) {
+              clearTimeout(continueMetaTimeoutId);
+              continueMetaTimeoutId = null;
+            }
+            hasStreamError = true;
+            const errorMessage = getErrorMessage(err);
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === tempAssistantId || message.id === resolvedAssistantMessageId
+                  ? {
+                      ...message,
+                      content: "",
+                      messageStreamStatus: "error",
+                      errorMessage,
+                      replyCardStatus:
+                        deriveReplyCardStatus(message) === "loading"
+                          ? "idle"
+                          : message.replyCardStatus,
+                    }
+                  : message,
+              ),
+            );
+            setIsStreaming(false);
+            clearTrackedController(controller);
+          },
+        });
+        if (
+          !controller.signal.aborted &&
+          hasStreamError &&
+          shouldReloadForRequest(requestRunId)
+        ) {
+          await reloadChatTurns({
+            requiredTurnIds: [resolvedAssistantMessageId],
+          });
+        }
+      } catch (err) {
+        if (continueTimedOut) {
+          finalizeStreamError(
+            new Error("STREAM_TIMEOUT"),
+            controller,
+            continueMetaTimeoutId,
+            (id) => { continueMetaTimeoutId = id; },
+            [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
+          );
+        } else if (!controller.signal.aborted) {
+          finalizeStreamError(
+            err,
+            controller,
+            continueMetaTimeoutId,
+            (id) => { continueMetaTimeoutId = id; },
+            [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
+          );
+        }
+      } finally {
+        clearTrackedController(controller);
+        if (continueMetaTimeoutId) {
+          clearTimeout(continueMetaTimeoutId);
+          continueMetaTimeoutId = null;
+        }
+      }
+    },
+    [
+      applyReplySuggestions,
+      autoReadAloudRef,
       beginStream,
       character?.status,
       clearReplySuggestions,
@@ -1590,6 +1867,7 @@ export function useChatSession({
     setCurrentChatTitle,
     handleSelectCandidate,
     handleRegenAssistant,
+    handleContinue,
     handleEditUser,
     handleRetryReplyCard,
     handleSendMessage,

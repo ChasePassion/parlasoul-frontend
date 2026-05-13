@@ -198,6 +198,8 @@ export const selectTurnCandidateWithSnapshot =
   apiService.selectTurnCandidateWithSnapshot.bind(apiService);
 export const regenAssistantTurn =
   apiService.regenAssistantTurn.bind(apiService);
+export const continueGeneration =
+  apiService.continueGeneration.bind(apiService);
 export const editUserTurnAndStreamReply =
   apiService.editUserTurnAndStreamReply.bind(apiService);
 

@@ -1292,6 +1292,122 @@ export class ApiService {
     }
   }
 
+  async continueGeneration(
+    turnId: string,
+    handlers: {
+      signal?: AbortSignal;
+      onMeta?: (meta: TurnStreamMetaEvent) => void;
+      onChunk: (content: string) => void;
+      onDone: (
+        fullContent: string,
+        assistantTurnId?: string,
+        assistantCandidateId?: string,
+      ) => void;
+      onReplySuggestions?: (data: {
+        assistant_candidate_id: string;
+        suggestions: ReplySuggestion[];
+      }) => void;
+      onReplyCardStarted?: (data: { assistant_candidate_id: string }) => void;
+      onReplyCard?: (data: {
+        assistant_candidate_id: string;
+        reply_card: ReplyCard;
+      }) => void;
+      onReplyCardError?: (data: {
+        assistant_candidate_id: string;
+        code: string;
+        message: string;
+      }) => void;
+      onTtsAudioDelta?: (data: {
+        assistant_candidate_id: string;
+        seq: number;
+        audio_b64: string;
+        mime_type: string;
+      }) => void;
+      onTtsAudioDone?: (data: { assistant_candidate_id: string }) => void;
+      onTtsError?: (data: { code: string; message: string }) => void;
+      onError: (error: Error) => void;
+    },
+  ): Promise<void> {
+    try {
+      const response = await fetchWithBetterAuth(
+        `/v1/turns/${turnId}/continue/stream`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({}),
+          signal: handlers.signal,
+        },
+      );
+
+      if (!response.ok) {
+        return throwApiErrorResponse(response);
+      }
+
+      await consumeSseStream<TurnStreamEvent>(response, (data) => {
+        if (data.type === "meta") {
+          handlers.onMeta?.(data);
+        } else if (data.type === "chunk") {
+          handlers.onChunk(data.content);
+        } else if (data.type === "done") {
+          handlers.onDone(
+            data.full_content,
+            data.assistant_turn_id,
+            data.assistant_candidate_id,
+          );
+        } else if (data.type === "reply_suggestions") {
+          handlers.onReplySuggestions?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            suggestions: data.suggestions,
+          });
+        } else if (data.type === "reply_card_started") {
+          handlers.onReplyCardStarted?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+          });
+        } else if (data.type === "reply_card") {
+          handlers.onReplyCard?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            reply_card: data.reply_card,
+          });
+        } else if (data.type === "reply_card_error") {
+          handlers.onReplyCardError?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            code: data.code,
+            message: data.message,
+          });
+        } else if (data.type === "tts_audio_delta") {
+          handlers.onTtsAudioDelta?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+            seq: data.seq,
+            audio_b64: data.audio_b64,
+            mime_type: data.mime_type,
+          });
+        } else if (data.type === "tts_audio_done") {
+          handlers.onTtsAudioDone?.({
+            assistant_candidate_id: data.assistant_candidate_id,
+          });
+        } else if (data.type === "tts_error") {
+          handlers.onTtsError?.({
+            code: data.code,
+            message: data.message,
+          });
+        } else if (data.type === "error") {
+          if (data.code && data.message) {
+            handlers.onError(new ApiError(502, data.code, data.message));
+          } else {
+            handlers.onError(new Error(data.message || "Unknown error"));
+          }
+        }
+      });
+    } catch (error) {
+      handleStreamError(error, handlers.onError, {
+        apiErrorMode: "detail-error",
+      });
+    }
+  }
+
   async editUserTurnAndStreamReply(
     turnId: string,
     request: UserTurnEditStreamRequest,

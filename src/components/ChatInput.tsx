@@ -35,6 +35,7 @@ interface ChatInputProps {
     // Streaming interrupt
     isStreaming?: boolean;
     onInterrupt?: () => void;
+    onContinue?: () => void;
     voiceButtonState?: VoiceButtonState;
     micCaptureState?: MicCaptureState;
     onStartRealtimeVoice?: () => void;
@@ -55,6 +56,7 @@ export default function ChatInput({
     onMicCancel,
     isStreaming = false,
     onInterrupt,
+    onContinue,
     voiceButtonState = "idle",
     micCaptureState = "hidden",
     onStartRealtimeVoice,
@@ -713,7 +715,7 @@ export default function ChatInput({
                                                                                 ? "取消语音连接"
                                                                                 : isVoiceActive
                                                                                 ? "退出语音模式"
-                                                                                : "进入语音模式"
+                                                                                : "推进剧情"
                                                                         }
                                                                         className={`composer-submit-button-color text-submit-btn-text flex h-9 shrink-0 items-center overflow-hidden rounded-full transition-[width,padding,opacity] duration-200 ease-out hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:text-[#f4f4f4] disabled:opacity-30 dark:focus-visible:outline-white ${
                                                                             isVoiceConnecting
@@ -735,7 +737,11 @@ export default function ChatInput({
                                                                         }
                                                                         onClick={() => {
                                                                             if (!hasText) {
-                                                                                handleVoiceButtonClick();
+                                                                                if (isVoiceActive || voiceButtonState === "connecting") {
+                                                                                    handleVoiceButtonClick();
+                                                                                } else {
+                                                                                    onContinue?.();
+                                                                                }
                                                                                 return;
                                                                             }
                                                                             handleSend();
@@ -757,7 +763,7 @@ export default function ChatInput({
                                                                         ) : isVoiceActive ? (
                                                                             <SpriteIcon name="hangup" size={24} className="h-6 w-6" />
                                                                         ) : (
-                                                                            <SpriteIcon name="sliders" size={20} className="brightness-0 invert" />
+                                                                            <SpriteIcon name="play" size={20} className="brightness-0 invert" />
                                                                         )}
                                                                     </button>
                                                                 )}
