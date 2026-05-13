@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, Copy, Sparkles, X } from "lucide-react";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
 
@@ -182,6 +182,7 @@ export default function LearningAssistantDialog({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const { messages, isStreaming, ask, stop, reset } = useLearningAssistant();
   const windowRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
   const rectRef = useRef<DialogRect | null>(null);
   const rafRef = useRef<number | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -226,6 +227,12 @@ export default function LearningAssistantDialog({
     setRect((previousRect) => (areRectsEqual(previousRect, nextRect) ? previousRect : nextRect));
     applyRect(nextRect);
   }, [applyRect, open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const el = messagesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [open]);
 
   const handleClose = useCallback(() => {
     const currentRect = rectRef.current ?? rect;
@@ -423,7 +430,7 @@ export default function LearningAssistantDialog({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
             <div className="space-y-4">
               {messages.map((message) =>
                 message.role === "user" ? (
