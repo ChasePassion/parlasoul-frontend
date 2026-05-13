@@ -593,23 +593,27 @@ export function useChatSession({
       ttsPlaybackManager?.interruptAll();
       await ttsPlaybackManager?.ensureResumedForRealtime();
 
-      setMessages((prev) =>
-        prev.map((message) => {
-          if (message.id !== turnId) return message;
-          const nextCount = Math.min(10, (message.candidateCount ?? 1) + 1);
-          return {
-            ...message,
-            content: "",
-            candidateNo: nextCount,
-            candidateCount: nextCount,
-            replyCard: null,
-            assistantCandidateId: undefined,
-            messageStreamStatus: "streaming",
-            replyCardStatus: "idle",
-            replyCardErrorCode: null,
-          };
-        }),
-      );
+      setMessages((prev) => {
+        const idx = prev.findIndex((message) => message.id === turnId);
+        if (idx < 0) return prev;
+        const target = prev[idx];
+        const nextCount = Math.min(10, (target.candidateCount ?? 1) + 1);
+        return prev.slice(0, idx + 1).map((message) =>
+          message.id === turnId
+            ? {
+                ...message,
+                content: "",
+                candidateNo: nextCount,
+                candidateCount: nextCount,
+                replyCard: null,
+                assistantCandidateId: undefined,
+                messageStreamStatus: "streaming",
+                replyCardStatus: "idle",
+                replyCardErrorCode: null,
+              }
+            : message,
+        );
+      });
       clearReplySuggestions();
 
       const { controller, requestRunId } = beginStream();
