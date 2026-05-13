@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { useGrowth } from "@/lib/growth-context";
 import ShareCardDialog from "@/components/growth/ShareCardDialog";
+import { preloadPotentialShareCardBackgrounds } from "@/lib/share-card-assets";
 import { useRealtimeVoiceSession } from "@/hooks/useRealtimeVoiceSession";
 import {
     AlertDialog,
@@ -186,6 +187,14 @@ export default function ChatPage() {
 
         void queryClient.prefetchQuery(realtimeIceConfigQueryOptions(user.id));
     }, [isAuthed, queryClient, user?.id]);
+
+    useEffect(() => {
+        const today = new Date();
+        const yyyy = String(today.getFullYear());
+        const mm = String(today.getMonth() + 1).padStart(2, "0");
+        const dd = String(today.getDate()).padStart(2, "0");
+        preloadPotentialShareCardBackgrounds(`${yyyy}-${mm}-${dd}`);
+    }, []);
 
     const flushRealtimeChatTurnsReload = useCallback(async (options?: { force?: boolean }) => {
         if (realtimeReloadTimerRef.current) {

@@ -18,6 +18,7 @@ import type {
   GrowthCalendarMonth,
   GrowthCalendarDay,
 } from "./growth-types";
+import { playGrowthNotification } from "./sound";
 import {
   dismissGrowthEntryForToday as persistGrowthEntryDismissal,
   getGrowthEntrySessionHandledKey,
@@ -250,6 +251,7 @@ export function GrowthProvider({ children }: { children: ReactNode }) {
   const enqueueShareCard = useCallback((card: GrowthShareCard) => {
     setPendingShareCards((prev) => {
       if (prev.some((c) => c.id === card.id)) return prev;
+      playGrowthNotification();
       return [...prev, card];
     });
   }, []);

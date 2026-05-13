@@ -118,3 +118,14 @@ function preloadImage(src: string): Promise<void> {
 export async function preloadShareCardAssets(urls: string[]): Promise<void> {
   await Promise.all(urls.map((src) => preloadImage(src)));
 }
+
+export function preloadPotentialShareCardBackgrounds(today: string): void {
+  const signinBg = resolveShareCardImageSrc(
+    `https://picsum.photos/seed/parlasoul-signin-${today}/${CAPTURE_WIDTH}/${CAPTURE_HEIGHT}`,
+  );
+  const milestoneBg = resolveShareCardImageSrc(
+    `https://picsum.photos/seed/parlasoul-milestone-${today}/${CAPTURE_WIDTH}/${CAPTURE_HEIGHT}`,
+  );
+
+  void preloadShareCardAssets([signinBg, milestoneBg]);
+}
