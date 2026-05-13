@@ -53,7 +53,7 @@ const CardPopoverShell = forwardRef<HTMLDivElement, CardPopoverShellProps>(
                     </button>
                 </div>
 
-                <div className="px-5 pb-5 max-h-[70vh] overflow-y-auto scrollbar-thin">
+                <div className="px-5 pb-5 max-h-[60vh] overflow-y-auto scrollbar-thin">
                     {children}
                 </div>
             </div>
