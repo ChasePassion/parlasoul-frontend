@@ -291,6 +291,99 @@ export default function HeroCarousel({
 
   if (characters.length === 0) return null;
 
+  const item = characters[0];
+
+  // 单张：静态居中，无需轮播
+  if (characters.length === 1) {
+    return (
+      <div
+        className="relative flex justify-center"
+        style={{
+          marginTop: "16px",
+          left: isMobile ? "unset" : "50%",
+          transform: isMobile ? "none" : "translateX(-50%)",
+          width: isMobile
+            ? "100%"
+            : `min(calc(100% + ${HERO_VIEWPORT_BLEED}px), ${HERO_VIEWPORT_MAX_WIDTH}px)`,
+        }}
+      >
+        <div
+          className={cn(
+            "relative overflow-hidden rounded-[20px]",
+            isMobile ? "w-full" : "w-full max-w-[720px]",
+          )}
+          style={{
+            aspectRatio: HERO_ASPECT_RATIO,
+            maxHeight: HERO_MAX_HEIGHT,
+            ...(isMobile ? { cursor: "pointer" } : {}),
+          }}
+          onClick={
+            isMobile
+              ? () => onSelectCharacter(item.character)
+              : undefined
+          }
+        >
+          <Image
+            src={item.imageUrl}
+            alt={item.character.name}
+            fill
+            className="object-contain object-center"
+            priority
+            sizes={isMobile ? "100vw" : `${HERO_SLIDE_MAX_WIDTH}px`}
+          />
+
+          <div
+            className="absolute bottom-0 left-0 right-0 z-10"
+            style={{
+              height: "50%",
+              background:
+                "linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0) 100%)",
+            }}
+          />
+
+          {!isMobile && (
+            <div className="absolute bottom-6 left-0 right-0 z-20 flex justify-center">
+              <button
+                className="group/btn relative flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium text-white/95 rounded-[16px] cursor-pointer overflow-hidden transition-all duration-300 ease-out hover:[&>span:last-child]:translate-x-1"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%)',
+                  backdropFilter: 'blur(20px) saturate(180%)',
+                  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                  border: '1px solid rgba(255, 255, 255, 0.35)',
+                  boxShadow: `
+                    0 8px 32px rgba(0, 0, 0, 0.2),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+                    inset 0 -1px 0 rgba(255, 255, 255, 0.1)
+                  `,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.15) 100%)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%)';
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectCharacter(item.character);
+                }}
+              >
+                <span>{item.ctaText}</span>
+                <span className="inline-block transition-transform duration-200 ease-out">→</span>
+              </button>
+            </div>
+          )}
+
+          {!isMobile && (
+            <div
+              className="absolute inset-0 rounded-[20px] pointer-events-none"
+              style={{ boxShadow: "0 20px 40px rgba(0,0,0,0.1)" }}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="group/carousel relative"
