@@ -105,6 +105,20 @@ export default function DiscoverPage() {
     }));
   }, [discoverCharacters]);
 
+  // 按分类拆分角色
+  const storyIds = useMemo(
+    () => new Set(discoverConfigQuery.data?.story_character_ids ?? []),
+    [discoverConfigQuery.data],
+  );
+  const companionCharacters = useMemo(
+    () => mappedCharacters.filter(c => !storyIds.has(c.id)),
+    [mappedCharacters, storyIds],
+  );
+  const storyCharacters = useMemo(
+    () => mappedCharacters.filter(c => storyIds.has(c.id)),
+    [mappedCharacters, storyIds],
+  );
+
   // 加载状态
   if (isLoading) {
     return (
@@ -140,11 +154,20 @@ export default function DiscoverPage() {
                 onSelectCharacter={handleSelectCharacter}
               />
 
-              {/* 全部角色横滑区 */}
-              {mappedCharacters.length > 0 && (
+              {/* 陪伴型角色横滑区 */}
+              {companionCharacters.length > 0 && (
                 <HorizontalSection
-                  title="全部角色"
-                  characters={mappedCharacters}
+                  title="陪伴"
+                  characters={companionCharacters}
+                  onSelectCharacter={handleSelectCharacter}
+                />
+              )}
+
+              {/* 剧情向角色横滑区 */}
+              {storyCharacters.length > 0 && (
+                <HorizontalSection
+                  title="剧情"
+                  characters={storyCharacters}
                   onSelectCharacter={handleSelectCharacter}
                 />
               )}

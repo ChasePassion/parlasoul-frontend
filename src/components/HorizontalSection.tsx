@@ -141,10 +141,12 @@ export default function HorizontalSection({
           <span className="text-base">✨</span>
           {title}
         </h2>
-        <span className="text-sm text-[#5d5d5d] flex items-center gap-1">
-          {hint}
-          <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
-        </span>
+        {canScrollRight && (
+          <span className="text-sm text-[#5d5d5d] flex items-center gap-1">
+            {hint}
+            <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
+          </span>
+        )}
       </div>
 
 
