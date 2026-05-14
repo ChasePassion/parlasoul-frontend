@@ -115,6 +115,7 @@ export default function ChatPage() {
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [isAssistantOpen, setIsAssistantOpen] = useState(false);
     const [micDialogMessage, setMicDialogMessage] = useState<string | null>(null);
+    const chatInputAddImagesRef = useRef<((files: File[]) => void) | null>(null);
 
     useEffect(() => {
         const manager = new TtsPlaybackManager();
@@ -393,12 +394,12 @@ export default function ChatPage() {
     ]);
 
     const handleSendMessage = useCallback(
-        async (content: string) => {
+        async (content: string, images?: import("@/lib/api-service").ChatImageRef[]) => {
             shouldAutoScrollRef.current = true;
             if (realtimeSession.isConnected && realtimeSession.isBotSpeaking) {
                 await realtimeSession.interruptAssistant();
             }
-            await originalHandleSendMessage(content);
+            await originalHandleSendMessage(content, images);
             void refreshSidebarCharacters().catch((err) => {
                 console.error("Failed to refresh sidebar characters:", err);
             });
@@ -891,6 +892,7 @@ export default function ChatPage() {
                 onContinue={wrappedHandleContinue}
                 roleName={character.name}
                 replySuggestions={realtimeSession.isConnected ? null : currentReplySuggestions}
+                onRegisterAddImages={(fn) => { chatInputAddImagesRef.current = fn; }}
                 onMicStart={handleMicStart}
                 onMicCancel={handleMicCancel}
                 voiceButtonState={voiceButtonState}
@@ -924,6 +926,7 @@ export default function ChatPage() {
                 header={headerContent}
                 thread={threadContent}
                 composer={composerContent}
+                onDropImages={(files) => chatInputAddImagesRef.current?.(files)}
             />
 
             <ChatHistorySidebar

@@ -7,7 +7,7 @@ import type {
   MessageActionStatus,
 } from "@/components/ChatMessage";
 import type { Character } from "@/components/Sidebar";
-import type { ChatResponse, ReplySuggestion } from "@/lib/api";
+import type { ChatImageRef, ChatResponse, ReplySuggestion } from "@/lib/api";
 import type { GrowthTodaySummary, GrowthShareCard } from "@/lib/growth-types";
 import {
   ApiError,
@@ -56,7 +56,7 @@ interface UseChatSessionResult {
   handleContinue: () => Promise<void>;
   handleEditUser: (turnId: string, newContent: string) => Promise<void>;
   handleRetryReplyCard: (message: Message) => Promise<void>;
-  handleSendMessage: (content: string) => Promise<void>;
+  handleSendMessage: (content: string, images?: ChatImageRef[]) => Promise<void>;
   handleRetrySend: (errorMessageId: string) => void;
   interruptAllTts: () => void;
   interruptStream: () => void;
@@ -103,11 +103,13 @@ const mapTurnsPageMessage = (turn: TurnsPageResponse["turns"][number]): Message 
   const isAssistant = turn.author_type === "CHARACTER";
   const isTurnError = isAssistant && turn.state === "ERROR";
   const replyCard = turn.primary_candidate.extra?.reply_card ?? null;
+  const chatImages = turn.primary_candidate.chat_images ?? undefined;
 
   return {
     id: turn.id,
     role: turn.author_type === "USER" ? "user" : "assistant",
     content: isTurnError ? "" : turn.primary_candidate.content,
+    images: chatImages,
     isGreeting:
       turn.author_type === "CHARACTER" &&
       turn.is_proactive &&
@@ -1432,7 +1434,7 @@ export function useChatSession({
   );
 
   const handleSendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, images?: ChatImageRef[]) => {
       if (!character || !canSend || character.status === "UNPUBLISHED") return;
 
       if (isStreaming) {
@@ -1456,6 +1458,7 @@ export function useChatSession({
         id: tempUserId,
         role: "user",
         content,
+        images: images && images.length > 0 ? images : undefined,
         isTemp: true,
       };
       setMessages((prev) => [...prev, userMessage]);
@@ -1489,7 +1492,7 @@ export function useChatSession({
 
         await streamChatMessage(
           chatId,
-          { content },
+          { content, images },
           {
             signal: controller.signal,
             onMeta: (meta) => {

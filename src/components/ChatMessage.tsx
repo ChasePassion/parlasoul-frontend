@@ -6,8 +6,10 @@ import MixedInputTransformBox from "./MixedInputTransformBox";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import type { InputTransform, ReplyCard, ReplySuggestion, DisplayMode } from "@/lib/api";
+import type { InputTransform, ReplyCard, ReplySuggestion, DisplayMode, ChatImageRef } from "@/lib/api-service";
 import { copyToClipboard } from "@/lib/clipboard";
+import { ImageLightbox } from "@/components/ImageLightbox";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
@@ -15,10 +17,13 @@ export type MessageActionStatus = "idle" | "loading" | "ready" | "error";
 export type MessageStreamStatus = "idle" | "streaming" | "done" | "error";
 export type MessageActionProfile = "text" | "voice-active";
 
+export { ChatImageRef };
+
 export interface Message {
     id: string;
     role: "user" | "assistant";
     content: string;
+    images?: ChatImageRef[];
     candidateNo?: number;
     candidateCount?: number;
     isTemp?: boolean;
@@ -111,6 +116,7 @@ export default function ChatMessage({
         message.candidateCount !== undefined;
     const [isUserMessageHovering, setIsUserMessageHovering] = useState(false);
     const [isTouchLikeDevice, setIsTouchLikeDevice] = useState(false);
+    const [lightboxState, setLightboxState] = useState<{ open: boolean; index: number }>({ open: false, index: 0 });
     const isActionRowVisible = !isUser || isTouchLikeDevice || isUserMessageHovering;
 
     const isLeftDisabled = actionsDisabled || k <= 1;
@@ -317,8 +323,16 @@ export default function ChatMessage({
         showCopyOnlyButton || showNav || showReplyCardBtn || showSpeakerBtn || showFeedbackBtn;
 
     return (
+    <>
         <TooltipProvider delayDuration={300}>
         <div className="relative flex w-full min-w-0 flex-col">
+            {isUser && !isEditing && message.images && message.images.length > 0 && (
+                <ImageGrid
+                    images={message.images}
+                    justifyEnd={isUser}
+                    onImageClick={(index) => setLightboxState({ open: true, index })}
+                />
+            )}
             <div
                 className={`flex max-w-full items-start gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}
             >
@@ -617,5 +631,44 @@ export default function ChatMessage({
             </div>
         </div>
         </TooltipProvider>
+
+        {message.images && message.images.length > 0 && (
+            <ImageLightbox
+                images={message.images.map((img) => ({
+                    src: img.original,
+                    previewSrc: img.display,
+                }))}
+                initialIndex={lightboxState.index}
+                open={lightboxState.open}
+                onClose={() => setLightboxState({ open: false, index: 0 })}
+            />
+        )}
+    </>
+    );
+}
+
+function ImageGrid({ images, onImageClick, justifyEnd = false }: { images: ChatImageRef[]; onImageClick: (index: number) => void; justifyEnd?: boolean }) {
+    const isMobile = useIsMobile();
+    const imgSize = isMobile ? "w-24 h-24" : "w-28 h-28";
+
+    return (
+        <div className={`flex flex-wrap gap-1 ${justifyEnd ? "justify-end" : "justify-start"}`}>
+            {images.map((img, idx) => (
+                <button
+                    key={idx}
+                    onClick={() => onImageClick(idx)}
+                    className={`${imgSize} overflow-hidden rounded-xl`}
+                    type="button"
+                >
+                    <img
+                        src={img.display}
+                        alt=""
+                        className="h-full w-full object-cover transition-opacity hover:opacity-90"
+                        decoding="async"
+                        loading="lazy"
+                    />
+                </button>
+            ))}
+        </div>
     );
 }

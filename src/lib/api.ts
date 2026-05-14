@@ -249,6 +249,7 @@ export type {
   ChatCreateResponse,
   TurnsPageResponse,
   ChatStreamRequest,
+  ChatImageRef,
   ChatResponse,
   ChatHistoryItem,
   ChatsPageResponse,

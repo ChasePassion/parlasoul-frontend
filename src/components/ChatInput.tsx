@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, KeyboardEvent } from "react";
-import { Loader2, LoaderCircle } from "lucide-react";
+import { Loader2, LoaderCircle, X } from "lucide-react";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
 import ReplySuggestionsBar from "./ReplySuggestionsBar";
 import { SttRecorder } from "@/lib/voice/stt-recorder";
 import type { ReplySuggestion } from "@/lib/api";
+import type { ChatImageRef } from "@/lib/api-service";
+import { uploadChatImage, validateImageFiles } from "@/lib/chat-image-upload";
 import { toast } from "sonner";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ImageLightbox } from "@/components/ImageLightbox";
 
 // Canvas waveform configuration (from example/app VoiceInput)
 const WAVEFORM_CONFIG = {
@@ -22,13 +26,21 @@ type InputAreaState = "default" | "recording" | "transcribing";
 export type VoiceButtonState = "idle" | "connecting" | "active_ready" | "active_user_speaking";
 export type MicCaptureState = "hidden" | "mic_hot" | "mic_cold";
 
+interface PendingImage {
+    id: string;
+    preview: string;
+    status: "uploading" | "done" | "error";
+    ref?: ChatImageRef;
+}
+
 interface ChatInputProps {
-    onSend: (message: string) => void;
+    onSend: (message: string, images?: ChatImageRef[]) => void;
     disabled?: boolean;
     disabledReason?: string | null;
     roleName?: string;
     replySuggestions?: ReplySuggestion[] | null;
     onSelectSuggestion?: (text: string) => void;
+    onRegisterAddImages?: (fn: ((files: File[]) => void) | null) => void;
     // Phase 2
     onMicStart?: () => void;
     onMicCancel?: () => void;
@@ -52,6 +64,7 @@ export default function ChatInput({
     roleName,
     replySuggestions,
     onSelectSuggestion,
+    onRegisterAddImages,
     onMicStart,
     onMicCancel,
     isStreaming = false,
@@ -69,6 +82,11 @@ export default function ChatInput({
     const savedSelectionRef = useRef<Range | null>(null);
     const [message, setMessage] = useState("");
     const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
+    const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+    const pendingImagesRef = useRef<PendingImage[]>([]);
+    const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [lightboxState, setLightboxState] = useState<{ open: boolean; index: number }>({ open: false, index: 0 });
 
     // Phase 2: recording state
     const [inputAreaState, setInputAreaState] = useState<InputAreaState>("default");
@@ -145,13 +163,87 @@ export default function ChatInput({
         savedSelectionRef.current = range.cloneRange();
     }, []);
 
-    const handleSend = () => {
+    const clearPendingImages = useCallback(() => {
+        setPendingImages((prev) => {
+            prev.forEach((img) => URL.revokeObjectURL(img.preview));
+            return [];
+        });
+    }, []);
+
+    useEffect(() => {
+        pendingImagesRef.current = pendingImages;
+    }, [pendingImages]);
+
+    useEffect(() => {
+        return () => {
+            pendingImagesRef.current.forEach((img) => URL.revokeObjectURL(img.preview));
+        };
+    }, []);
+
+    const addImages = useCallback(async (files: File[]) => {
+        const { valid, errors } = validateImageFiles(files, pendingImages.length);
+        errors.forEach((e) => toast.error(e));
+        if (valid.length === 0) return;
+
+        const newPending: PendingImage[] = valid.map((file) => ({
+            id: crypto.randomUUID(),
+            preview: URL.createObjectURL(file),
+            status: "uploading" as const,
+        }));
+        setPendingImages((prev) => [...prev, ...newPending]);
+
+        await Promise.allSettled(
+            valid.map(async (file, index) => {
+                const pendingId = newPending[index].id;
+                try {
+                    const result = await uploadChatImage(file);
+                    setPendingImages((prev) =>
+                        prev.map((p) => (p.id === pendingId ? { ...p, status: "done" as const, ref: result.ref } : p)),
+                    );
+                } catch {
+                    setPendingImages((prev) =>
+                        prev.map((p) => (p.id === pendingId ? { ...p, status: "error" as const } : p)),
+                    );
+                    toast.error("图片上传失败");
+                }
+            }),
+        );
+    }, [pendingImages.length]);
+
+    const removeImage = useCallback((id: string) => {
+        setPendingImages((prev) => {
+            const img = prev.find((p) => p.id === id);
+            if (img) URL.revokeObjectURL(img.preview);
+            return prev.filter((p) => p.id !== id);
+        });
+    }, []);
+
+    const handleFileChange = useCallback(
+        (e: React.ChangeEvent<HTMLInputElement>) => {
+            const files = e.target.files;
+            if (files && files.length > 0) addImages(Array.from(files));
+            e.target.value = "";
+            setPlusMenuOpen(false);
+        },
+        [addImages],
+    );
+
+    // Expose addImages to parent via ref callback
+    useEffect(() => {
+        onRegisterAddImages?.(addImages);
+        return () => onRegisterAddImages?.(null);
+    }, [addImages, onRegisterAddImages]);
+
+    const handleSend = useCallback(() => {
         const content = getEditorText().trim();
-        if (!content || disabled) return;
-        onSend(content);
+        const doneImages = pendingImages.filter((p) => p.status === "done" && p.ref).map((p) => p.ref!);
+        const uploading = pendingImages.some((p) => p.status === "uploading");
+        if ((!content && doneImages.length === 0) || disabled || uploading) return;
+        onSend(content, doneImages.length > 0 ? doneImages : undefined);
         setMessage("");
+        clearPendingImages();
         clearEditor();
-    };
+    }, [clearEditor, clearPendingImages, disabled, getEditorText, onSend, pendingImages]);
 
     useEffect(() => {
         clearEditor();
@@ -469,6 +561,7 @@ export default function ChatInput({
     }, [appendTextToEditor, inputAreaState, pendingTranscript]);
 
     const hasText = message.length > 0;
+    const hasUploading = pendingImages.some((p) => p.status === "uploading");
     const isInRecordingFlow = inputAreaState === "recording" || inputAreaState === "transcribing";
     const isVoiceConnecting = voiceButtonState === "connecting";
     const isVoiceActive =
@@ -572,6 +665,51 @@ export default function ChatInput({
                                     }
                                 }}
                             >
+                                {/* ── Header area: image preview ── */}
+                                {pendingImages.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 px-3 py-2 [grid-area:header]">
+                                        {pendingImages.map((img) => (
+                                            <div key={img.id} className="relative w-20 h-20 shrink-0">
+                                                <img
+                                                    src={img.preview}
+                                                    alt=""
+                                                    className={`w-20 h-20 rounded-xl object-cover ${img.status === "done" ? "cursor-pointer hover:opacity-90 transition-opacity" : ""}`}
+                                                    onClick={() => {
+                                                        if (img.status === "done") {
+                                                            setLightboxState({ open: true, index: pendingImages.filter((p) => p.status === "done").indexOf(img) });
+                                                        }
+                                                    }}
+                                                />
+                                                {img.status === "uploading" && (
+                                                    <div className="absolute inset-0 rounded-xl bg-black/10 flex items-center justify-center">
+                                                        <Loader2 className="w-5 h-5 text-white animate-spin" />
+                                                    </div>
+                                                )}
+                                                {img.status === "error" && (
+                                                    <div className="absolute inset-0 rounded-xl bg-black/30 flex items-center justify-center">
+                                                        <span className="text-white text-xs">!</span>
+                                                    </div>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors"
+                                                    onClick={() => removeImage(img.id)}
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <ImageLightbox
+                                    images={pendingImages
+                                        .filter((p) => p.status === "done")
+                                        .map((p) => ({ src: p.preview }))}
+                                    initialIndex={lightboxState.index}
+                                    open={lightboxState.open}
+                                    onClose={() => setLightboxState({ open: false, index: 0 })}
+                                />
+
                                 {/* ── Primary area: text input OR waveform OR transcribing ── */}
                                 <div
                                     className={`-my-2.5 relative flex min-h-14 overflow-x-hidden px-1.5 [grid-area:primary] group-data-expanded/composer:mb-0 group-data-expanded/composer:px-2.5 ${isInRecordingFlow ? "[grid-column:1/-1] items-center" : "items-end"} cursor-text`}
@@ -636,19 +774,33 @@ export default function ChatInput({
                                 >
                                     {inputAreaState === "default" && (
                                         <span className="flex" data-state="closed">
-                                            <button
-                                                type="button"
-                                                className="composer-btn"
-                                                data-testid="composer-plus-btn"
-                                                aria-label="Add files and more"
-                                                id="composer-plus-btn"
-                                                aria-haspopup="menu"
-                                                aria-expanded="false"
-                                                data-state="closed"
-                                                onClick={() => toast("功能开发中")}
-                                            >
-                                                <SpriteIcon name="desktop" size={20} />
-                                            </button>
+                                            <Popover open={plusMenuOpen} onOpenChange={setPlusMenuOpen}>
+                                                <PopoverTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className="composer-btn"
+                                                        data-testid="composer-plus-btn"
+                                                        aria-label="Add files and more"
+                                                        id="composer-plus-btn"
+                                                        aria-haspopup="menu"
+                                                    >
+                                                        <SpriteIcon name="desktop" size={20} />
+                                                    </button>
+                                                </PopoverTrigger>
+                                                <PopoverContent side="top" align="start" sideOffset={16} className="w-44 p-1 rounded-xl">
+                                                    <button
+                                                        type="button"
+                                                        className="flex items-center gap-3 w-full px-3 py-1.5 rounded-md hover:bg-accent text-sm"
+                                                        onClick={() => fileInputRef.current?.click()}
+                                                    >
+                                                        <svg viewBox="0 0 1024 1024" width="20" height="20" fill="currentColor">
+                                                            <path d="M896 89.6H128C72.704 89.6 28.16 134.144 28.16 189.44v645.12c0 55.296 44.544 99.84 99.84 99.84h768c55.296 0 99.84-44.544 99.84-99.84V189.44c0-55.296-44.544-99.84-99.84-99.84z m-768 76.8h768c12.8 0 23.04 10.24 23.04 23.04v459.776l-211.968-211.968c-11.264-11.264-26.112-17.408-41.472-17.408s-30.72 6.144-41.472 17.408L363.52 697.856l-96.768-96.768c-23.04-23.04-60.416-23.04-83.456 0l-78.848 78.848V189.44c0.512-12.8 10.752-23.04 23.552-23.04z m768 691.2H128c-12.8 0-23.04-10.24-23.04-23.04v-45.568L225.28 668.672l111.104 111.104c7.168 7.168 16.896 11.264 27.136 11.264s19.968-4.096 27.136-11.264L665.6 504.832l253.44 253.44V834.56c0 12.8-10.24 23.04-23.04 23.04z" />
+                                                            <path d="M289.28 386.56m-64 0a64 64 0 1 0 128 0 64 64 0 1 0-128 0Z" />
+                                                        </svg>
+                                                        <span>照片</span>
+                                                    </button>
+                                                </PopoverContent>
+                                            </Popover>
                                         </span>
                                     )}
                                 </div>
@@ -728,6 +880,7 @@ export default function ChatInput({
                                                                             transformOrigin: "right center",
                                                                         }}
                                                                         disabled={
+                                                                            hasUploading ||
                                                                             isInRecordingFlow ||
                                                                             (disabled &&
                                                                                 !hasText &&
@@ -810,6 +963,7 @@ export default function ChatInput({
                     </form>
                 </div>
                 <input
+                    ref={fileInputRef}
                     className="sr-only select-none"
                     tabIndex={-1}
                     aria-hidden="true"
@@ -817,16 +971,7 @@ export default function ChatInput({
                     accept="image/*"
                     multiple
                     type="file"
-                />
-                <input
-                    className="sr-only select-none"
-                    tabIndex={-1}
-                    aria-hidden="true"
-                    id="upload-camera"
-                    accept="image/*"
-                    capture="environment"
-                    multiple
-                    type="file"
+                    onChange={handleFileChange}
                 />
             </div>
         </div>

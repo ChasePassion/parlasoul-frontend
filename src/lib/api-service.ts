@@ -409,6 +409,7 @@ export interface CandidateResponse {
   rank?: number | null;
   created_at: string;
   extra?: CandidateExtra | null;
+  chat_images?: ChatImageRef[] | null;
 }
 
 export interface TurnResponse {
@@ -462,8 +463,15 @@ export interface TurnsPageResponse {
   has_more: boolean;
 }
 
+export interface ChatImageRef {
+  image_key: string;
+  original: string;
+  display: string;
+}
+
 export interface ChatStreamRequest {
   content: string;
+  images?: ChatImageRef[];
 }
 
 export interface TurnSelectRequest {
@@ -860,7 +868,7 @@ type ApiRequestOptions = {
   signal?: AbortSignal;
 };
 
-type MediaUploadKind = "user_avatar" | "character_avatar" | "voice_avatar";
+type MediaUploadKind = "user_avatar" | "character_avatar" | "voice_avatar" | "chat_image";
 
 interface UploadFileOptions extends ApiRequestOptions {
   kind?: MediaUploadKind;
@@ -878,8 +886,10 @@ interface PresignedUploadResponse {
 interface CompleteUploadResponse {
   upload_id: string;
   image_key: string;
-  avatar_urls: AvatarUrls;
+  avatar_urls: AvatarUrls | null;
   content_type: "image/avif";
+  original_url?: string;
+  display_url?: string;
 }
 
 export interface UploadImageResult extends CompleteUploadResponse {
@@ -891,16 +901,13 @@ export class ApiService {
     file: File,
     options: UploadFileOptions = {},
   ): Promise<UploadImageResult> {
+    const kind = options.kind ?? "character_avatar";
     const presigned = await httpClient.post<
       PresignedUploadResponse,
       { kind: MediaUploadKind; mime_type: string; size_bytes: number }
     >(
       "/v1/uploads/presign",
-      {
-        kind: options.kind ?? "character_avatar",
-        mime_type: file.type,
-        size_bytes: file.size,
-      },
+      { kind, mime_type: file.type, size_bytes: file.size },
       { signal: options.signal },
     );
 
@@ -915,21 +922,22 @@ export class ApiService {
       throw new ApiError(putResponse.status, "external_error", "图片上传到对象存储失败");
     }
 
+    const completeBody = {
+      upload_id: presigned.upload_id,
+      etag: putResponse.headers.get("ETag"),
+    };
     const completed = await httpClient.post<
       CompleteUploadResponse,
-      { upload_id: string; etag: string | null }
+      typeof completeBody
     >(
       "/v1/uploads/complete",
-      {
-        upload_id: presigned.upload_id,
-        etag: putResponse.headers.get("ETag"),
-      },
+      completeBody,
       { signal: options.signal },
     );
 
     return {
       ...completed,
-      url: completed.avatar_urls.md,
+      url: completed.avatar_urls?.md ?? completed.display_url ?? completed.original_url ?? "",
     };
   }
 

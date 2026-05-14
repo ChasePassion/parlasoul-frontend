@@ -1,12 +1,13 @@
 "use client";
 
-import { ReactNode, RefObject, useLayoutEffect, useRef, useState } from "react";
+import { ReactNode, RefObject, useCallback, useLayoutEffect, useRef, useState } from "react";
 
 interface ChatMainFrameProps {
     header: ReactNode;
     thread: ReactNode;
     composer: ReactNode;
     scrollRootRef?: RefObject<HTMLDivElement | null>;
+    onDropImages?: (files: File[]) => void;
 }
 
 const DEFAULT_HEADER_HEIGHT = 64;
@@ -16,12 +17,42 @@ export default function ChatMainFrame({
     thread,
     composer,
     scrollRootRef,
+    onDropImages,
 }: ChatMainFrameProps) {
     const headerRef = useRef<HTMLElement | null>(null);
     const footerRef = useRef<HTMLDivElement | null>(null);
     const [headerHeight, setHeaderHeight] = useState(DEFAULT_HEADER_HEIGHT);
     const [footerHeight, setFooterHeight] = useState(0);
     const [scrollbarWidth, setScrollbarWidth] = useState(0);
+
+    // Drag-drop state
+    const [isDragging, setIsDragging] = useState(false);
+    const dragCounter = useRef(0);
+
+    const handleDragEnter = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        dragCounter.current++;
+        if (e.dataTransfer.types.includes("Files")) setIsDragging(true);
+    }, []);
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        dragCounter.current--;
+        if (dragCounter.current === 0) setIsDragging(false);
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        dragCounter.current = 0;
+        setIsDragging(false);
+        if (!onDropImages) return;
+        const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+        if (files.length > 0) onDropImages(files);
+    }, [onDropImages]);
 
     const EXTRA_BOTTOM = 80;
 
@@ -96,7 +127,23 @@ export default function ChatMainFrame({
             className="@container/main relative min-h-0 min-w-0 flex-1 overflow-hidden"
             data-chat-main-shell
             style={{ backgroundColor: "var(--workspace-bg)" }}
+            onDragEnter={onDropImages ? handleDragEnter : undefined}
+            onDragLeave={onDropImages ? handleDragLeave : undefined}
+            onDragOver={onDropImages ? handleDragOver : undefined}
+            onDrop={onDropImages ? handleDrop : undefined}
         >
+            {/* Drag overlay */}
+            {isDragging && (
+                <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+                    <div className="bg-white/90 dark:bg-neutral-800/90 rounded-2xl px-8 py-6 shadow-lg flex flex-col items-center gap-2">
+                        <svg viewBox="0 0 1024 1024" width="40" height="40" fill="currentColor" className="text-gray-500">
+                            <path d="M896 89.6H128C72.704 89.6 28.16 134.144 28.16 189.44v645.12c0 55.296 44.544 99.84 99.84 99.84h768c55.296 0 99.84-44.544 99.84-99.84V189.44c0-55.296-44.544-99.84-99.84-99.84z m-768 76.8h768c12.8 0 23.04 10.24 23.04 23.04v459.776l-211.968-211.968c-11.264-11.264-26.112-17.408-41.472-17.408s-30.72 6.144-41.472 17.408L363.52 697.856l-96.768-96.768c-23.04-23.04-60.416-23.04-83.456 0l-78.848 78.848V189.44c0.512-12.8 10.752-23.04 23.552-23.04z m768 691.2H128c-12.8 0-23.04-10.24-23.04-23.04v-45.568L225.28 668.672l111.104 111.104c7.168 7.168 16.896 11.264 27.136 11.264s19.968-4.096 27.136-11.264L665.6 504.832l253.44 253.44V834.56c0 12.8-10.24 23.04-23.04 23.04z" />
+                            <path d="M289.28 386.56m-64 0a64 64 0 1 0 128 0 64 64 0 1 0-128 0Z" />
+                        </svg>
+                        <span className="text-gray-700 dark:text-gray-300 text-sm font-medium">释放以添加图片</span>
+                    </div>
+                </div>
+            )}
             {/* Full-height scroll root — native scrollbar spans entire page */}
             <div
                 ref={scrollRootRef}

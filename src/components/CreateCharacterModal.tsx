@@ -219,7 +219,7 @@ export default function CreateCharacterModal({
 
             const result = await uploadFile(file, { kind: "character_avatar" });
             setAvatarImageKey(result.image_key);
-            setAvatarPreview(result.avatar_urls.md);
+            setAvatarPreview(result.avatar_urls?.md ?? "");
         } catch (err) {
             setError(getErrorMessage(err));
             setAvatarPreview(null);
