@@ -698,7 +698,7 @@ export default function ChatThread({
                 previous.key !== currentKey &&
                 (message.candidateCount ?? 1) > previous.candidateCount
             ) {
-                void ensureFeedbackCard(message);
+                // feedback card is triggered only by manual "improve" tap
             }
         });
     }, [ensureFeedbackCard, isLoading, isVoiceActiveProfile, messages]);
