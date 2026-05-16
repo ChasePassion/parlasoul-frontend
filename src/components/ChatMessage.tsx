@@ -653,7 +653,7 @@ function ImageGrid({ images, onImageClick, justifyEnd = false }: { images: ChatI
     const imgSize = isMobile ? "w-24 h-24" : "w-28 h-28";
 
     return (
-        <div className={`flex flex-wrap gap-1 ${justifyEnd ? "justify-end" : "justify-start"}`}>
+        <div className={`flex flex-wrap gap-1 mb-1 ${justifyEnd ? "justify-end" : "justify-start"}`}>
             {images.map((img, idx) => (
                 <button
                     key={idx}
