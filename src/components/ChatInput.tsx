@@ -853,7 +853,10 @@ export default function ChatInput({
                                                                         type="button"
                                                                         aria-label="暂停生成"
                                                                         className="composer-submit-button-color flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-black focus-visible:outline-none dark:focus-visible:outline-white"
-                                                                        onClick={onInterrupt}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            onInterrupt?.();
+                                                                        }}
                                                                     >
                                                                         <span className="bg-white rounded-[3px]" style={{ width: '16px', height: '16px' }} />
                                                                     </button>
@@ -888,7 +891,8 @@ export default function ChatInput({
                                                                                 !isVoiceConnecting) ||
                                                                             (disabled && hasText)
                                                                         }
-                                                                        onClick={() => {
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
                                                                             if (!hasText) {
                                                                                 if (isVoiceActive || voiceButtonState === "connecting") {
                                                                                     handleVoiceButtonClick();
