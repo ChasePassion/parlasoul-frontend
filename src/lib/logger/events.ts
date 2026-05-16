@@ -19,6 +19,17 @@ export const AuthEvent = {
   EMAIL_OTP_DELIVERY_QUEUED: "email_otp.delivery_queued",
   EMAIL_OTP_DELIVERY_SENT: "email_otp.delivery_sent",
   EMAIL_OTP_DELIVERY_FAILED: "email_otp.delivery_failed",
+  LOGIN_STARTED: "auth.login.started",
+  LOGIN_API_CALLED: "auth.login.api_called",
+  LOGIN_COMPLETED: "auth.login.completed",
+  LOGIN_FAILED: "auth.login.failed",
+  LOGOUT_STARTED: "auth.logout.started",
+  LOGOUT_COMPLETED: "auth.logout.completed",
+  SESSION_REFETCHED: "auth.session.refetched",
+  JWT_FETCHED: "auth.jwt.fetched",
+  JWT_FAILED: "auth.jwt.failed",
+  PROFILE_FETCH_STARTED: "auth.profile.fetch_started",
+  PROFILE_FETCH_RESULT: "auth.profile.fetch_result",
 } as const;
 
 export const RealtimeEvent = {

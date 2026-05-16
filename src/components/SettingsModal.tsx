@@ -1,14 +1,20 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useUserSettings } from "@/lib/user-settings-context";
 import { useAuth } from "@/lib/auth-context";
 import { isBillingPaywallDisabled } from "@/lib/billing-flags";
+import { useMyProactiveCharactersQuery, useReplaceMyProactiveCharactersMutation } from "@/lib/query";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     CheckCircle2,
     Loader2,
@@ -16,9 +22,9 @@ import {
     GraduationCap,
     UserRound,
 } from "lucide-react";
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import { toast } from "sonner";
 
 export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
     const router = useRouter();
@@ -37,6 +43,8 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
         setAutoReadAloudEnabled,
         preferredExpressionBiasEnabled,
         setPreferredExpressionBiasEnabled,
+        proactiveEnabled,
+        setProactiveEnabled,
         memoryEnabled,
         setMemoryEnabled,
         isLoading,
@@ -44,17 +52,77 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
         error,
         retrySync,
     } = useUserSettings();
-    const { entitlements, isEntitlementsLoading } = useAuth();
+    const { user, entitlements, isEntitlementsLoading } = useAuth();
 
     const [activeTab, setActiveTab] = useState<"preferences" | "learning">("preferences");
+    const [isProactiveDialogOpen, setIsProactiveDialogOpen] = useState(false);
+    const [proactiveSearch, setProactiveSearch] = useState("");
+    const [draftCharacterIds, setDraftCharacterIds] = useState<string[]>([]);
     const paywallDisabled = isBillingPaywallDisabled();
     const canUseMemoryFeature = paywallDisabled ? true : entitlements?.features.memory_feature ?? null;
     const isMemoryLocked = canUseMemoryFeature === false;
     const isMemoryReadonly = !paywallDisabled && (isEntitlementsLoading || canUseMemoryFeature !== true);
     const displayedMemoryEnabled = canUseMemoryFeature === true ? memoryEnabled : false;
+    const {
+        data: proactiveCharactersResponse,
+        isLoading: isProactiveCharactersLoading,
+    } = useMyProactiveCharactersQuery(user?.id, open);
+    const {
+        mutateAsync: replaceProactiveCharacters,
+        isPending: isSavingProactiveCharacters,
+    } = useReplaceMyProactiveCharactersMutation(user?.id);
 
     const handleOpenBilling = () => {
         router.push("/pricing");
+    };
+
+    useEffect(() => {
+        if (!isProactiveDialogOpen || !proactiveCharactersResponse) {
+            return;
+        }
+        setDraftCharacterIds(
+            proactiveCharactersResponse.items
+                .filter((item) => item.enabled)
+                .map((item) => item.character.id),
+        );
+    }, [isProactiveDialogOpen, proactiveCharactersResponse]);
+
+    const filteredProactiveItems = useMemo(() => {
+        const proactiveItems = proactiveCharactersResponse?.items ?? [];
+        const keyword = proactiveSearch.trim().toLowerCase();
+        if (!keyword) {
+            return proactiveItems;
+        }
+        return proactiveItems.filter((item) => {
+            const name = item.character.name.toLowerCase();
+            const description = item.character.description.toLowerCase();
+            return name.includes(keyword) || description.includes(keyword);
+        });
+    }, [proactiveCharactersResponse, proactiveSearch]);
+    const filteredCharacterIds = filteredProactiveItems.map((item) => item.character.id);
+    const selectedCount = proactiveCharactersResponse
+        ? proactiveCharactersResponse.items.filter((item) => item.enabled).length
+        : draftCharacterIds.length;
+    const allFilteredSelected =
+        filteredCharacterIds.length > 0 &&
+        filteredCharacterIds.every((characterId) => draftCharacterIds.includes(characterId));
+
+    const toggleDraftCharacter = (characterId: string, checked: boolean) => {
+        setDraftCharacterIds((prev) => {
+            if (checked) {
+                return prev.includes(characterId) ? prev : [...prev, characterId];
+            }
+            return prev.filter((value) => value !== characterId);
+        });
+    };
+
+    const handleSaveProactiveCharacters = async () => {
+        try {
+            await replaceProactiveCharacters({ character_ids: draftCharacterIds });
+            setIsProactiveDialogOpen(false);
+        } catch {
+            toast.error("主动消息角色设置保存失败");
+        }
     };
 
     return (
@@ -233,6 +301,41 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
                                         </div>
                                     ) : null}
                                 </div>
+
+                                <Separator className="opacity-60" />
+
+                                <div className="py-5">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div className="space-y-0.5 pr-6">
+                                            <h4 className="text-gray-900 text-[15px]" style={{ fontWeight: 475 }}>角色主动消息</h4>
+                                            <p className="text-[13px] text-gray-500 leading-relaxed">开启后，角色会按你的本地时区在合适的时候主动联系你。</p>
+                                        </div>
+                                        <Switch
+                                            checked={proactiveEnabled}
+                                            onCheckedChange={setProactiveEnabled}
+                                        />
+                                    </div>
+
+                                    <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 shadow-sm">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <p className="text-[13px] font-medium text-gray-900">允许主动联系你的角色</p>
+                                                <p className="mt-1 text-[12px] text-gray-500">
+                                                    已选择 {selectedCount} 个角色
+                                                </p>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={!proactiveEnabled}
+                                                onClick={() => setIsProactiveDialogOpen(true)}
+                                            >
+                                                管理角色
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -305,6 +408,112 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean, onOpenCha
                     )}
                 </div>
             </DialogContent>
+
+            <Dialog
+                open={isProactiveDialogOpen}
+                onOpenChange={(nextOpen) => {
+                    setIsProactiveDialogOpen(nextOpen);
+                    if (!nextOpen) {
+                        setProactiveSearch("");
+                    }
+                }}
+            >
+                <DialogContent className="max-w-[720px] p-0 overflow-hidden bg-white border-none shadow-2xl rounded-2xl">
+                    <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+                        <DialogTitle className="text-xl font-semibold text-gray-900">管理角色</DialogTitle>
+                    </div>
+
+                    <div className="px-6 py-5 space-y-4">
+                        <Input
+                            value={proactiveSearch}
+                            onChange={(event) => setProactiveSearch(event.target.value)}
+                            placeholder="搜索角色名称..."
+                        />
+
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                className="px-0 text-gray-600 hover:text-gray-900"
+                                onClick={() => {
+                                    setDraftCharacterIds(
+                                        allFilteredSelected
+                                            ? draftCharacterIds.filter(
+                                                (characterId) => !filteredCharacterIds.includes(characterId),
+                                            )
+                                            : Array.from(
+                                                new Set([...draftCharacterIds, ...filteredCharacterIds]),
+                                            ),
+                                    );
+                                }}
+                            >
+                                {allFilteredSelected ? "取消全选" : "全选"}
+                            </Button>
+                            <span className="text-gray-500">
+                                共 {filteredProactiveItems.length} 个角色
+                            </span>
+                        </div>
+
+                        <ScrollArea className="h-[320px] rounded-xl border border-gray-100">
+                            <div className="p-2 space-y-1">
+                                {isProactiveCharactersLoading ? (
+                                    <div className="flex items-center justify-center py-16 text-sm text-gray-500">
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        正在加载角色列表
+                                    </div>
+                                ) : filteredProactiveItems.length === 0 ? (
+                                    <div className="flex items-center justify-center py-16 text-sm text-gray-500">
+                                        暂无可管理的角色
+                                    </div>
+                                ) : (
+                                    filteredProactiveItems.map((item) => {
+                                        const checked = draftCharacterIds.includes(item.character.id);
+                                        return (
+                                            <label
+                                                key={item.character.id}
+                                                className="flex items-start gap-3 rounded-lg px-3 py-3 hover:bg-gray-50 cursor-pointer"
+                                            >
+                                                <Checkbox
+                                                    checked={checked}
+                                                    onCheckedChange={(value) =>
+                                                        toggleDraftCharacter(item.character.id, value === true)
+                                                    }
+                                                    className="mt-0.5"
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="text-sm font-medium text-gray-900 truncate">
+                                                        {item.character.name}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-gray-500 truncate">
+                                                        {item.character.description}
+                                                    </div>
+                                                </div>
+                                            </label>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </ScrollArea>
+
+                        <div className="flex items-center justify-end gap-3 pt-2">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setIsProactiveDialogOpen(false)}
+                            >
+                                取消
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={() => void handleSaveProactiveCharacters()}
+                                disabled={isSavingProactiveCharacters}
+                            >
+                                {isSavingProactiveCharacters ? "保存中..." : "保存"}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </Dialog>
     );
 }

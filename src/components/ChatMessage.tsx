@@ -28,6 +28,7 @@ export interface Message {
     candidateCount?: number;
     isTemp?: boolean;
     isGreeting?: boolean;
+    isProactiveOutreach?: boolean;
     // Phase 1 learning fields
     inputTransform?: InputTransform | null;
     replyCard?: ReplyCard | null;

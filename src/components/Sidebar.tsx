@@ -53,6 +53,7 @@ export interface Character {
         usage_hint: string | null;
     };
     distinct_user_count?: number;
+    has_unread_proactive?: boolean;
 }
 
 function SidebarToggleIcon({ className = "" }: { className?: string }) {
@@ -229,13 +230,16 @@ export default function Sidebar({
                             `}
                             title={isCollapsed ? character.name : undefined}
                         >
-                            <div className={`flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-8' : 'w-10'}`}>
+                            <div className={`relative flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-8' : 'w-10'}`}>
                                 <Avatar className={`rounded-lg overflow-hidden shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'h-8 w-8' : 'h-10 w-10'}`}>
                                     <AvatarImage src={character.avatar} alt={character.name} />
                                     <AvatarFallback className="bg-gray-100 text-gray-600 text-[10px]">
                                         {character.name.slice(0, 2)}
                                     </AvatarFallback>
                                 </Avatar>
+                                {character.has_unread_proactive && (
+                                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
+                                )}
                             </div>
                             <div className={`flex flex-col items-start justify-center min-w-[150px] transition-all duration-300 ease-in-out ${isCollapsed ? "opacity-0 ml-2" : "opacity-100 ml-3"}`}>
                                 <span className={`text-text-primary truncate w-full text-left transition-all duration-300 ease-in-out ${isCollapsed ? 'text-[13.5px]' : 'text-sm'}`}>

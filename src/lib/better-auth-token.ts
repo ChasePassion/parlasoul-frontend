@@ -1,4 +1,5 @@
 import { authClient } from "./auth-client";
+import { logger, Module, AuthEvent } from "./logger";
 
 const DEFAULT_JWT_CACHE_MS = 14 * 60 * 1000;
 
@@ -41,12 +42,20 @@ async function requestBetterAuthJwt(): Promise<string | null> {
   const token = response.data?.token ?? null;
 
   if (!token) {
+    logger.warn(Module.AUTH, AuthEvent.JWT_FAILED, "JWT token request returned empty", {
+      has_data: !!response.data,
+      has_error: !!response.error,
+      error_code: response.error?.code,
+    });
     clearBetterAuthJwt();
     return null;
   }
 
   cachedJwt = token;
   cachedJwtExpiresAt = getJwtExpiry(token);
+  logger.info(Module.AUTH, AuthEvent.JWT_FETCHED, "JWT token acquired", {
+    jwt_expires_in_ms: cachedJwtExpiresAt - Date.now(),
+  });
   return token;
 }
 
@@ -97,9 +106,23 @@ export async function fetchWithBetterAuth(
 ): Promise<Response> {
   const { retryOnUnauthorized = true } = options;
   const firstHeaders = await buildAuthorizedHeaders(init.headers);
+  const hasAuth = !!firstHeaders.get("Authorization");
+  const urlShort = String(input).split("/").slice(-2).join("/");
+  logger.info(Module.AUTH, AuthEvent.PROFILE_FETCH_STARTED, `API request with auth`, {
+    url: urlShort,
+    has_auth_header: hasAuth,
+    retry_enabled: retryOnUnauthorized,
+  });
+
   const firstResponse = await fetch(input, {
     ...init,
     headers: firstHeaders,
+  });
+
+  logger.info(Module.AUTH, AuthEvent.PROFILE_FETCH_RESULT, `API response`, {
+    url: urlShort,
+    status: firstResponse.status,
+    has_auth_header: hasAuth,
   });
 
   if (firstResponse.status !== 401 || !retryOnUnauthorized) {
@@ -110,6 +133,13 @@ export async function fetchWithBetterAuth(
   const retryHeaders = await buildAuthorizedHeaders(init.headers, true);
   const previousAuth = firstHeaders.get("Authorization");
   const retryAuth = retryHeaders.get("Authorization");
+
+  logger.info(Module.AUTH, AuthEvent.JWT_FETCHED, "Retrying after 401 with refreshed JWT", {
+    url: urlShort,
+    previous_auth_present: !!previousAuth,
+    retry_auth_present: !!retryAuth,
+    same_token: retryAuth === previousAuth,
+  });
 
   if (!retryAuth || retryAuth === previousAuth) {
     return firstResponse;

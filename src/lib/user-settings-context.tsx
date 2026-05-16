@@ -27,6 +27,8 @@ const DEFAULT_REPLY_CARD_ENABLED = true;
 const DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED = true;
 const DEFAULT_AUTO_READ_ALOUD_ENABLED = true;
 const DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED = true;
+const DEFAULT_PROACTIVE_ENABLED = false;
+const DEFAULT_TIMEZONE = "Asia/Shanghai";
 const SETTINGS_SYNC_DEBOUNCE_MS = 400;
 
 interface SettingsState {
@@ -37,6 +39,8 @@ interface SettingsState {
     mixedInputAutoTranslateEnabled: boolean;
     autoReadAloudEnabled: boolean;
     preferredExpressionBiasEnabled: boolean;
+    proactiveEnabled: boolean;
+    timezone: string;
 }
 
 interface UserSettingsContextType extends SettingsState {
@@ -47,6 +51,7 @@ interface UserSettingsContextType extends SettingsState {
     setMixedInputAutoTranslateEnabled: (enabled: boolean) => void;
     setAutoReadAloudEnabled: (enabled: boolean) => void;
     setPreferredExpressionBiasEnabled: (enabled: boolean) => void;
+    setProactiveEnabled: (enabled: boolean) => void;
     minMessageFontSize: number;
     maxMessageFontSize: number;
     isLoading: boolean;
@@ -63,6 +68,8 @@ interface RemoteUserSettingsResponse {
     mixed_input_auto_translate_enabled?: boolean;
     auto_read_aloud_enabled?: boolean;
     preferred_expression_bias_enabled?: boolean;
+    proactive_enabled?: boolean;
+    timezone?: string;
 }
 
 const UserSettingsContext = createContext<UserSettingsContextType | undefined>(
@@ -82,6 +89,8 @@ const defaultState: SettingsState = {
     mixedInputAutoTranslateEnabled: DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED,
     autoReadAloudEnabled: DEFAULT_AUTO_READ_ALOUD_ENABLED,
     preferredExpressionBiasEnabled: DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED,
+    proactiveEnabled: DEFAULT_PROACTIVE_ENABLED,
+    timezone: DEFAULT_TIMEZONE,
 };
 
 type DirtyField = keyof SettingsState;
@@ -94,6 +103,14 @@ const saveToLocalStorage = (state: SettingsState) => {
         );
     } catch {
         // Ignore localStorage write failures and continue.
+    }
+};
+
+const resolveBrowserTimeZone = (): string | null => {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+    } catch {
+        return null;
     }
 };
 
@@ -116,6 +133,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     const [mixedInputAutoTranslateEnabled, setMixedInputAutoTranslateEnabledState] = useState(defaultState.mixedInputAutoTranslateEnabled);
     const [autoReadAloudEnabled, setAutoReadAloudEnabledState] = useState(defaultState.autoReadAloudEnabled);
     const [preferredExpressionBiasEnabled, setPreferredExpressionBiasEnabledState] = useState(defaultState.preferredExpressionBiasEnabled);
+    const [proactiveEnabled, setProactiveEnabledState] = useState(defaultState.proactiveEnabled);
+    const [timezone, setTimezoneState] = useState(defaultState.timezone);
 
     const [hasLoadedLocalSettings, setHasLoadedLocalSettings] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -123,6 +142,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
 
     const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const dirtyFieldsRef = useRef<Set<DirtyField>>(new Set());
+    const timezoneSyncRef = useRef<string | null>(null);
 
     // Track the latest values for sync without stale closure issues
     const latestRef = useRef({
@@ -133,6 +153,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         mixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
         preferredExpressionBiasEnabled,
+        proactiveEnabled,
+        timezone,
     });
     latestRef.current = {
         messageFontSize,
@@ -142,6 +164,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         mixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
         preferredExpressionBiasEnabled,
+        proactiveEnabled,
+        timezone,
     };
 
     const syncSettings = useCallback(async () => {
@@ -159,6 +183,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             mixed_input_auto_translate_enabled?: boolean;
             auto_read_aloud_enabled?: boolean;
             preferred_expression_bias_enabled?: boolean;
+            proactive_enabled?: boolean;
+            timezone?: string;
         } = {};
 
         for (const field of dirtyFields) {
@@ -176,6 +202,10 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
                 payload.auto_read_aloud_enabled = current.autoReadAloudEnabled;
             } else if (field === "preferredExpressionBiasEnabled") {
                 payload.preferred_expression_bias_enabled = current.preferredExpressionBiasEnabled;
+            } else if (field === "proactiveEnabled") {
+                payload.proactive_enabled = current.proactiveEnabled;
+            } else if (field === "timezone") {
+                payload.timezone = current.timezone;
             }
         }
 
@@ -217,6 +247,12 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
                 if (typeof parsed.preferredExpressionBiasEnabled === "boolean") {
                     setPreferredExpressionBiasEnabledState(parsed.preferredExpressionBiasEnabled);
                 }
+                if (typeof parsed.proactiveEnabled === "boolean") {
+                    setProactiveEnabledState(parsed.proactiveEnabled);
+                }
+                if (typeof parsed.timezone === "string" && parsed.timezone.trim()) {
+                    setTimezoneState(parsed.timezone);
+                }
             }
         } catch {
             // Ignore malformed/blocked local storage reads.
@@ -247,6 +283,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             mixedInputAutoTranslateEnabled: remote.mixed_input_auto_translate_enabled ?? DEFAULT_MIXED_INPUT_AUTO_TRANSLATE_ENABLED,
             autoReadAloudEnabled: remote.auto_read_aloud_enabled ?? DEFAULT_AUTO_READ_ALOUD_ENABLED,
             preferredExpressionBiasEnabled: remote.preferred_expression_bias_enabled ?? DEFAULT_PREFERRED_EXPRESSION_BIAS_ENABLED,
+            proactiveEnabled: remote.proactive_enabled ?? DEFAULT_PROACTIVE_ENABLED,
+            timezone: remote.timezone ?? DEFAULT_TIMEZONE,
         };
 
         setMessageFontSizeState(nextState.messageFontSize);
@@ -256,6 +294,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         setMixedInputAutoTranslateEnabledState(nextState.mixedInputAutoTranslateEnabled);
         setAutoReadAloudEnabledState(nextState.autoReadAloudEnabled);
         setPreferredExpressionBiasEnabledState(nextState.preferredExpressionBiasEnabled);
+        setProactiveEnabledState(nextState.proactiveEnabled);
+        setTimezoneState(nextState.timezone);
         saveToLocalStorage(nextState);
         setError(null);
     }, [hasLoadedLocalSettings, remoteSettings]);
@@ -265,6 +305,28 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             setError("设置同步失败，已使用本地配置");
         }
     }, [isSettingsError]);
+
+    useEffect(() => {
+        if (!userId || !hasLoadedLocalSettings || !remoteSettings) {
+            return;
+        }
+
+        const browserTimeZone = resolveBrowserTimeZone();
+        if (!browserTimeZone) {
+            return;
+        }
+
+        const remote = remoteSettings as RemoteUserSettingsResponse;
+        if (browserTimeZone === remote.timezone || timezoneSyncRef.current === browserTimeZone) {
+            timezoneSyncRef.current = browserTimeZone;
+            return;
+        }
+
+        timezoneSyncRef.current = browserTimeZone;
+        setTimezoneState(browserTimeZone);
+        dirtyFieldsRef.current.add("timezone");
+        setChangeVersion((value) => value + 1);
+    }, [hasLoadedLocalSettings, remoteSettings, userId]);
 
     // Persist to localStorage on every change after loading
     useEffect(() => {
@@ -277,6 +339,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             mixedInputAutoTranslateEnabled,
             autoReadAloudEnabled,
             preferredExpressionBiasEnabled,
+            proactiveEnabled,
+            timezone,
         });
     }, [
         hasLoadedLocalSettings,
@@ -287,6 +351,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         mixedInputAutoTranslateEnabled,
         autoReadAloudEnabled,
         preferredExpressionBiasEnabled,
+        proactiveEnabled,
+        timezone,
     ]);
 
     // Debounced remote sync
@@ -361,6 +427,11 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         markDirty("preferredExpressionBiasEnabled");
     }, [markDirty]);
 
+    const setProactiveEnabled = useCallback((enabled: boolean) => {
+        setProactiveEnabledState(enabled);
+        markDirty("proactiveEnabled");
+    }, [markDirty]);
+
     const retrySync = useCallback(async () => {
         if (dirtyFieldsRef.current.size === 0) {
             await refetchSettings();
@@ -383,6 +454,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             mixedInputAutoTranslateEnabled,
             autoReadAloudEnabled,
             preferredExpressionBiasEnabled,
+            proactiveEnabled,
+            timezone,
             setMessageFontSize,
             setDisplayMode,
             setMemoryEnabled,
@@ -390,6 +463,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             setMixedInputAutoTranslateEnabled,
             setAutoReadAloudEnabled,
             setPreferredExpressionBiasEnabled,
+            setProactiveEnabled,
             minMessageFontSize: MIN_MESSAGE_FONT_SIZE,
             maxMessageFontSize: MAX_MESSAGE_FONT_SIZE,
             isLoading,
@@ -398,8 +472,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
             retrySync,
         }),
         [
-            messageFontSize, displayMode, memoryEnabled, replyCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled, preferredExpressionBiasEnabled,
-            setMessageFontSize, setDisplayMode, setMemoryEnabled, setReplyCardEnabled, setMixedInputAutoTranslateEnabled, setAutoReadAloudEnabled, setPreferredExpressionBiasEnabled,
+            messageFontSize, displayMode, memoryEnabled, replyCardEnabled, mixedInputAutoTranslateEnabled, autoReadAloudEnabled, preferredExpressionBiasEnabled, proactiveEnabled, timezone,
+            setMessageFontSize, setDisplayMode, setMemoryEnabled, setReplyCardEnabled, setMixedInputAutoTranslateEnabled, setAutoReadAloudEnabled, setPreferredExpressionBiasEnabled, setProactiveEnabled,
             isLoading, isSaving, error, retrySync,
         ]
     );

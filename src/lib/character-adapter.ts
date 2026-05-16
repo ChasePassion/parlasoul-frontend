@@ -28,6 +28,7 @@ interface CharacterLike {
     voice_source_type?: VoiceSelectableItem["source_type"];
     voice?: VoiceSelectableItem | null;
     distinct_user_count?: number;
+    has_unread_proactive?: boolean;
 }
 
 export function mapCharacterToSidebar(
@@ -55,5 +56,6 @@ export function mapCharacterToSidebar(
         voice_source_type: source.voice_source_type,
         voice: source.voice ?? undefined,
         distinct_user_count: source.distinct_user_count ?? 0,
+        has_unread_proactive: source.has_unread_proactive ?? false,
     };
 }

@@ -1066,7 +1066,7 @@ export default function ChatThread({
                 const isLastTurn = index === visibleMessages.length - 1;
                 const prevMessage = index > 0 ? visibleMessages[index - 1] : null;
                 const isConsecutiveAssistant = !isUserTurn && prevMessage?.role === "assistant";
-                const topPaddingClass = message.isGreeting
+                const topPaddingClass = message.isGreeting || message.isProactiveOutreach
                     ? "pt-[36px]"
                     : isUserTurn
                         ? "pt-3"

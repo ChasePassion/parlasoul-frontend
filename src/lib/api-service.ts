@@ -70,6 +70,8 @@ export interface UserSettingsResponse {
   mixed_input_auto_translate_enabled: boolean;
   auto_read_aloud_enabled: boolean;
   preferred_expression_bias_enabled: boolean;
+  proactive_enabled: boolean;
+  timezone: string;
   message_font_size: number;
   updated_at: string;
 }
@@ -81,6 +83,8 @@ export interface UpdateUserSettingsRequest {
   mixed_input_auto_translate_enabled?: boolean;
   auto_read_aloud_enabled?: boolean;
   preferred_expression_bias_enabled?: boolean;
+  proactive_enabled?: boolean;
+  timezone?: string;
   message_font_size?: number;
 }
 
@@ -307,6 +311,7 @@ export interface CharacterBrief {
   visibility: CharacterVisibility;
   creator_id?: string | null;
   creator_username?: string | null;
+  has_unread_proactive?: boolean;
 }
 
 export interface ChatResponse {
@@ -317,6 +322,7 @@ export interface ChatResponse {
   type: ChatType;
   state: ChatState;
   visibility: ChatVisibility;
+  origin: "user" | "proactive";
   last_turn_at?: string | null;
   last_turn_id?: string | null;
   last_turn_no?: number | null;
@@ -418,10 +424,25 @@ export interface TurnResponse {
   author_type: TurnAuthorType;
   state: TurnState;
   is_proactive: boolean;
+  source?: "greeting" | "proactive_outreach" | string | null;
   parent_turn_id?: string | null;
   parent_candidate_id?: string | null;
   primary_candidate: CandidateResponse;
   candidate_count: number;
+}
+
+export interface ProactiveCharacterPreferenceItem {
+  character: CharacterBrief;
+  enabled: boolean;
+  last_interaction_at?: string | null;
+}
+
+export interface ProactiveCharacterPreferenceListResponse {
+  items: ProactiveCharacterPreferenceItem[];
+}
+
+export interface ReplaceProactiveCharacterPreferencesRequest {
+  character_ids: string[];
 }
 
 export interface ChatDetailResponse {
@@ -976,6 +997,25 @@ export class ApiService {
       "/v1/users/me/entitlements",
       options,
     );
+  }
+
+  async getMyProactiveCharacters(
+    options: ApiRequestOptions = {},
+  ): Promise<ProactiveCharacterPreferenceListResponse> {
+    return httpClient.get<ProactiveCharacterPreferenceListResponse>(
+      "/v1/users/me/proactive-characters",
+      options,
+    );
+  }
+
+  async replaceMyProactiveCharacters(
+    data: ReplaceProactiveCharacterPreferencesRequest,
+    options: ApiRequestOptions = {},
+  ): Promise<ProactiveCharacterPreferenceListResponse> {
+    return httpClient.put<
+      ProactiveCharacterPreferenceListResponse,
+      ReplaceProactiveCharacterPreferencesRequest
+    >("/v1/users/me/proactive-characters", data, options);
   }
 
   async getWechatPaymentProducts(

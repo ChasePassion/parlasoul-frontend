@@ -16,6 +16,7 @@ import {
 } from "./auth-user-mapper";
 import type { BackendProfileStatus } from "./auth-profile-state";
 import { clearBetterAuthJwt } from "./better-auth-token";
+import { logger, Module, AuthEvent } from "./logger";
 import { queryKeys, useUserEntitlementsQuery, useUserProfileQuery } from "./query";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -113,34 +114,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const login = useCallback(
         async (email: string, code: string) => {
+            const startTime = Date.now();
+            logger.info(Module.AUTH, AuthEvent.LOGIN_STARTED, "Login started", {
+                email_hint: email.split("@").pop(),
+            });
+
             const result = await authClient.signIn.emailOtp({
                 email,
                 otp: code,
             });
 
+            logger.info(Module.AUTH, AuthEvent.LOGIN_API_CALLED, "signIn.emailOtp completed", {
+                has_error: !!result.error,
+                error_code: result.error?.code,
+                has_session: !!result.data,
+                elapsed_ms: Date.now() - startTime,
+            });
+
             if (result.error) {
+                logger.fromError(Module.AUTH, result.error, AuthEvent.LOGIN_FAILED, {
+                    error_code: result.error.code,
+                });
                 throw new Error(result.error.message || "验证码登录失败");
             }
 
             clearBetterAuthJwt();
+            logger.info(Module.AUTH, AuthEvent.SESSION_REFETCHED, "JWT cleared, resetting query client");
+
+            await queryClient.cancelQueries();
             queryClient.clear();
             await refetch();
+
+            logger.info(Module.AUTH, AuthEvent.LOGIN_COMPLETED, "Login completed", {
+                elapsed_ms: Date.now() - startTime,
+            });
         },
         [queryClient, refetch],
     );
 
     const logout = useCallback(
         async () => {
+            logger.info(Module.AUTH, AuthEvent.LOGOUT_STARTED, "Logout started");
+
             const result = await authClient.signOut();
             if (result.error) {
                 throw new Error(result.error.message || "退出登录失败");
             }
 
             clearBetterAuthJwt();
+            await queryClient.cancelQueries();
             queryClient.clear();
-            await refetch();
+
+            logger.info(Module.AUTH, AuthEvent.LOGOUT_COMPLETED, "Logout completed");
         },
-        [queryClient, refetch],
+        [queryClient],
     );
 
     const refreshUser = useCallback(

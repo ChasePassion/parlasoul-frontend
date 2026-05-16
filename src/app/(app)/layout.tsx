@@ -158,6 +158,7 @@ export default function AppLayout({
         try {
             const chatId = await openChatMutation.mutateAsync(character.id);
             router.push(`/chat/${chatId}`);
+            refetchSidebarCharacters();
         } catch (err) {
             console.error("Failed to open chat:", err);
         }

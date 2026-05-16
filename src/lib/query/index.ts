@@ -7,6 +7,7 @@ export * from "./catalog-queries";
 export * from "./character-queries";
 export * from "./chat-queries";
 export * from "./growth-queries";
+export * from "./proactive-queries";
 export * from "./realtime-queries";
 export * from "./saved-item-queries";
 export * from "./sidebar-queries";

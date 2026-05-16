@@ -2,10 +2,10 @@
 
 本文档由脚本直接连接 PostgreSQL 实例并基于实时元数据生成。
 
-- 生成时间: `2026-05-12 08:50:40 北京时间`
+- 生成时间: `2026-05-15 18:05:32 北京时间`
 - 目标数据库: `localhost:5432/role_play_mem`
 - Schema: `public`
-- 表数量: `22`
+- 表数量: `24`
 
 ## 业务语义总览
 
@@ -208,6 +208,8 @@ sequenceDiagram
   - [`characters`](#table-characters)
   - [`voice_profiles`](#table-voice_profiles)
   - [`chats`](#table-chats)
+  - [`proactive_character_preferences`](#table-proactive_character_preferences)
+  - [`proactive_message_dispatches`](#table-proactive_message_dispatches)
   - [`turns`](#table-turns)
   - [`candidates`](#table-candidates)
   - [`saved_items`](#table-saved_items)
@@ -279,6 +281,8 @@ sequenceDiagram
 | `mixed_input_auto_translate_enabled` | 是否对中英混输做自动转写/翻译。 | `ChatService` / `TurnService` 在流式生成前读取。 |
 | `auto_read_aloud_enabled` | 是否自动播放实时 TTS。 | 前端聊天页消费 SSE `tts_audio_delta` 时判断。 |
 | `preferred_expression_bias_enabled` | 是否使用用户偏好表达做回复建议偏置。 | 学习辅助和回复建议生成时读取。 |
+| `proactive_enabled` | 是否允许角色主动联系当前用户。 | scheduler 扫描用户时的全局总开关。 |
+| `timezone` | 用户本地时区（IANA 字符串）。 | 主动消息时间槽按此字段换算本地 10:00 / 15:00 / 21:00。 |
 | `message_font_size` | 聊天消息字号偏好。 | 前端设置页、聊天 UI。 |
 | `created_at` | 设置行创建时间。 | 审计。 |
 | `updated_at` | 最近一次设置变更时间。 | 前端显示“已同步/最后更新时间”。 |
@@ -454,6 +458,7 @@ sequenceDiagram
 | `type` | 会话类型，当前主链路是一对一聊天。 | 预留 ROOM 能力。 |
 | `state` | 会话状态，当前主要是 `ACTIVE`。 | 历史查询和后续归档扩展。 |
 | `visibility` | 会话可见性，应用层当前只写 `PRIVATE`，数据库 enum 仍保留 `UNLISTED` 作为历史兼容值。 | 当前主链路只做本人聊天隔离，未来共享能力预留。 |
+| `origin` | 会话来源。`user` 表示用户主动发起，`proactive` 表示角色主动外联创建。 | recent chat、draft 清理、sidebar 暴露逻辑都依赖该字段区分普通 greeting chat 与主动消息 chat。 |
 | `title` | 会话标题。默认是占位标题，首条用户消息后可能被自动改写。 | 聊天历史列表与 header。 |
 | `last_turn_at` | 当前会话最新 turn 的时间。 | 最近会话排序。 |
 | `last_turn_id` | 当前记录的最新 turn。 | 历史列表和刷新定位。 |
@@ -464,6 +469,55 @@ sequenceDiagram
 | `archived_at` | 归档时间。 | 为未来 archive 场景预留。 |
 | `created_at` | 建会话时间。 | 历史和最近会话回退排序。 |
 | `updated_at` | 会话最近更新时间。 | 重命名、状态变化时刷新。 |
+
+#### [proactive_character_preferences](#table-proactive_character_preferences)
+
+- 表职责
+  - 保存“某个用户是否允许某个已互动角色主动联系自己”的角色级开关。
+- 表协作
+  - 只有“至少出现过 1 条用户 turn 的角色”才应该出现在这张表里。
+  - 与 [`user_settings`](#table-user_settings) 的 `proactive_enabled` 一起构成两级门控：
+    - 全局开关
+    - 角色级开关
+- 当前地位
+  - 主动消息系统主链路表。
+
+| 字段 | 业务语义 | 典型读写场景 |
+| --- | --- | --- |
+| `user_id` | 偏好所属用户。 | 设置页加载与保存。 |
+| `character_id` | 被配置的角色。 | selector 筛选候选角色。 |
+| `enabled` | 是否允许这个角色主动联系当前用户。 | 设置页勾选、scheduler 选角。 |
+| `created_at` | 创建时间。 | 审计。 |
+| `updated_at` | 最近一次改动时间。 | 设置页保存后刷新。 |
+
+#### [proactive_message_dispatches](#table-proactive_message_dispatches)
+
+- 表职责
+  - 作为主动消息调度的持久化队列表与执行审计表。
+- 表协作
+  - scheduler 写入唯一 `(user_id, slot_at)` dispatch。
+  - worker claim 之后执行选角、拉记忆、LLM 生成、chat/turn 落库，并回写状态。
+- 当前地位
+  - 主动消息系统主链路表。
+
+| 字段 | 业务语义 | 典型读写场景 |
+| --- | --- | --- |
+| `id` | dispatch 主键。 | 调试、脚本、日志关联。 |
+| `user_id` | 本次时间槽对应的目标用户。 | scheduler 入队、worker claim。 |
+| `slot_at` | 该用户本地时间槽换算成 UTC 后的唯一触发时间。 | 唯一约束去重。 |
+| `slot_label` | 时间槽标签，例如 `10:00`。 | 调试和报表。 |
+| `timezone` | 当次调度时使用的用户时区。 | 排查时区计算问题。 |
+| `status` | 当前状态：queued / processing / retry_waiting / succeeded / skipped / failed。 | scheduler/worker 生命周期流转。 |
+| `selected_character_id` | 本次被选中的角色。 | 选角成功后回写。 |
+| `attempt_count` | 已经尝试处理的次数。 | 退避重试。 |
+| `next_attempt_at` | 下一次允许被 worker claim 的时间。 | retry_waiting 调度。 |
+| `lease_expires_at` | 当前 processing lease 的过期时间。 | worker 崩溃后的重领。 |
+| `error_code` | 最后一次失败或跳过的错误码。 | 诊断。 |
+| `error_message` | 最后一次失败或跳过的文字描述。 | 诊断。 |
+| `payload_json` | 执行附带信息，例如 chat_id、candidate_id、选角权重等。 | 调试与脚本输出。 |
+| `created_at` | dispatch 创建时间。 | 审计。 |
+| `updated_at` | 最近更新时间。 | worker 状态变更。 |
+| `completed_at` | 成功/失败/跳过的结束时间。 | 报表与排障。 |
 
 #### [turns](#table-turns)
 
@@ -487,7 +541,7 @@ sequenceDiagram
 | `author_user_id` | 用户消息的作者用户。 | `author_type=USER` 时有效。 |
 | `author_character_id` | 角色消息的作者角色。 | `author_type=CHARACTER` 时有效。 |
 | `state` | turn 级状态，如 `OK/ERROR`。 | 流式失败时标记错误。 |
-| `is_proactive` | 是否主动消息。 | 开场白 turn 为 true。 |
+| `is_proactive` | 是否是“assistant 主动起头”的根 turn。当前既覆盖 greeting，也覆盖角色主动外联消息。 | 前端消息渲染、selector cooldown、draft 清理都会参考，但必须结合 `candidates.extra.source` 进一步区分 greeting 与 proactive_outreach。 |
 | `primary_candidate_id` | 当前被选中的候选文本版本。 | 切换候选后更新。 |
 | `meta` | turn 级扩展上下文。 | 当前主链路很少直接消费，更多是保留位。 |
 | `created_at` | 创建时间。 | 排序、审计。 |
@@ -832,6 +886,8 @@ sequenceDiagram
 | [`jwks`](#table-jwks) | BASE TABLE |
 | [`payment_orders`](#table-payment_orders) | BASE TABLE |
 | [`payment_webhook_events`](#table-payment_webhook_events) | BASE TABLE |
+| [`proactive_character_preferences`](#table-proactive_character_preferences) | BASE TABLE |
+| [`proactive_message_dispatches`](#table-proactive_message_dispatches) | BASE TABLE |
 | [`saved_items`](#table-saved_items) | BASE TABLE |
 | [`session`](#table-session) | BASE TABLE |
 | [`subscription_webhook_events`](#table-subscription_webhook_events) | BASE TABLE |
@@ -970,7 +1026,7 @@ sequenceDiagram
 ### 索引
 
 - `candidates_pkey` [PRIMARY / UNIQUE]
-  大小: `72 kB`
+  大小: `80 kB`
   定义: `CREATE UNIQUE INDEX candidates_pkey ON public.candidates USING btree (id)`
 - `candidates_turn_candidate_no_uniq` [UNIQUE]
   大小: `88 kB`
@@ -1008,7 +1064,7 @@ sequenceDiagram
 | `updated_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
 | `system_prompt` | `text` | NOT NULL | - | - | - |
 | `voice_provider` | `character varying(40)` | NOT NULL | 'minimax'::character varying | - | - |
-| `voice_model` | `character varying(120)` | NOT NULL | 'speech-2.8-hd'::character varying | - | - |
+| `voice_model` | `character varying(120)` | NOT NULL | 'speech-2.8-turbo'::character varying | - | - |
 | `voice_provider_voice_id` | `character varying(191)` | NOT NULL | 'Chinese (Mandarin)_Wise_Women'::character varying | - | - |
 | `voice_source_type` | `character varying(20)` | NOT NULL | 'system'::character varying | - | - |
 | `status` | `character varying(20)` | NOT NULL | 'ACTIVE'::character varying | - | - |
@@ -1045,6 +1101,10 @@ sequenceDiagram
   定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE`
 - `public.growth_character_stats` 通过 `growth_character_stats_character_id_fkey` 引用本表
   定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE`
+- `public.proactive_character_preferences` 通过 `proactive_character_preferences_character_id_fkey` 引用本表
+  定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE`
+- `public.proactive_message_dispatches` 通过 `proactive_message_dispatches_selected_character_id_fkey` 引用本表
+  定义: `FOREIGN KEY (selected_character_id) REFERENCES characters(id) ON DELETE SET NULL`
 - `public.turns` 通过 `turns_author_character_id_fkey` 引用本表
   定义: `FOREIGN KEY (author_character_id) REFERENCES characters(id)`
 
@@ -1096,6 +1156,7 @@ sequenceDiagram
 | `last_turn_no` | `bigint` | NULL | - | - | - |
 | `active_leaf_turn_id` | `uuid` | NULL | - | - | - |
 | `title` | `character varying(120)` | NOT NULL | '新聊天'::character varying | - | - |
+| `origin` | `character varying(20)` | NOT NULL | 'user'::character varying | - | - |
 
 ### 约束
 
@@ -1105,6 +1166,8 @@ sequenceDiagram
   定义: `FOREIGN KEY (character_id) REFERENCES characters(id)`
 - `chats_user_id_fkey` [FOREIGN KEY]
   定义: `FOREIGN KEY (user_id) REFERENCES users(id)`
+- `chats_origin_check` [CHECK]
+  定义: `CHECK (origin::text = ANY (ARRAY['user'::character varying, 'proactive'::character varying]::text[]))`
 
 ### 外键出站引用
 
@@ -1586,6 +1649,116 @@ sequenceDiagram
   大小: `16 kB`
   定义: `CREATE UNIQUE INDEX payment_webhook_events_webhook_id_uniq ON public.payment_webhook_events USING btree (webhook_id)`
 
+## Table `proactive_character_preferences`
+
+<a id="table-proactive_character_preferences"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `未启用`
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `user_id` | `uuid` | NOT NULL | - | - | - |
+| `character_id` | `uuid` | NOT NULL | - | - | - |
+| `enabled` | `boolean` | NOT NULL | true | - | - |
+| `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `updated_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+
+### 约束
+
+- `proactive_character_preferences_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (user_id, character_id)`
+- `proactive_character_preferences_character_id_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE`
+- `proactive_character_preferences_user_id_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+
+### 外键出站引用
+
+- `proactive_character_preferences_character_id_fkey` -> `public.characters`
+  定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE`
+- `proactive_character_preferences_user_id_fkey` -> `public.users`
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+
+### 被其他表引用
+
+- 无
+
+### 索引
+
+- `proactive_character_preferences_pkey` [PRIMARY / UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX proactive_character_preferences_pkey ON public.proactive_character_preferences USING btree (user_id, character_id)`
+
+## Table `proactive_message_dispatches`
+
+<a id="table-proactive_message_dispatches"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `未启用`
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `uuid` | NOT NULL | - | - | - |
+| `user_id` | `uuid` | NOT NULL | - | - | - |
+| `slot_at` | `timestamp with time zone` | NOT NULL | - | - | - |
+| `slot_label` | `character varying(20)` | NOT NULL | - | - | - |
+| `timezone` | `character varying(64)` | NOT NULL | - | - | - |
+| `status` | `character varying(20)` | NOT NULL | 'queued'::character varying | - | - |
+| `selected_character_id` | `uuid` | NULL | - | - | - |
+| `attempt_count` | `integer` | NOT NULL | 0 | - | - |
+| `next_attempt_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `lease_expires_at` | `timestamp with time zone` | NULL | - | - | - |
+| `error_code` | `character varying(64)` | NULL | - | - | - |
+| `error_message` | `text` | NULL | - | - | - |
+| `payload_json` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+| `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `updated_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `completed_at` | `timestamp with time zone` | NULL | - | - | - |
+
+### 约束
+
+- `proactive_message_dispatches_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (id)`
+- `proactive_message_dispatches_user_slot_uniq` [UNIQUE]
+  定义: `UNIQUE (user_id, slot_at)`
+- `proactive_message_dispatches_selected_character_id_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (selected_character_id) REFERENCES characters(id) ON DELETE SET NULL`
+- `proactive_message_dispatches_user_id_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+- `proactive_message_dispatches_status_check` [CHECK]
+  定义: `CHECK (status::text = ANY (ARRAY['queued'::character varying, 'processing'::character varying, 'retry_waiting'::character varying, 'succeeded'::character varying, 'skipped'::character varying, 'failed'::character varying]::text[]))`
+
+### 外键出站引用
+
+- `proactive_message_dispatches_selected_character_id_fkey` -> `public.characters`
+  定义: `FOREIGN KEY (selected_character_id) REFERENCES characters(id) ON DELETE SET NULL`
+- `proactive_message_dispatches_user_id_fkey` -> `public.users`
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+
+### 被其他表引用
+
+- 无
+
+### 索引
+
+- `proactive_message_dispatches_pkey` [PRIMARY / UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX proactive_message_dispatches_pkey ON public.proactive_message_dispatches USING btree (id)`
+- `proactive_message_dispatches_status_next_attempt_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX proactive_message_dispatches_status_next_attempt_idx ON public.proactive_message_dispatches USING btree (status, next_attempt_at)`
+- `proactive_message_dispatches_user_created_at_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX proactive_message_dispatches_user_created_at_idx ON public.proactive_message_dispatches USING btree (user_id, created_at)`
+- `proactive_message_dispatches_user_slot_uniq` [UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX proactive_message_dispatches_user_slot_uniq ON public.proactive_message_dispatches USING btree (user_id, slot_at)`
+
 ## Table `saved_items`
 
 <a id="table-saved_items"></a>
@@ -1919,6 +2092,8 @@ sequenceDiagram
 | `auto_read_aloud_enabled` | `boolean` | NOT NULL | true | - | - |
 | `preferred_expression_bias_enabled` | `boolean` | NOT NULL | true | - | - |
 | `memory_enabled` | `boolean` | NOT NULL | true | - | - |
+| `proactive_enabled` | `boolean` | NOT NULL | false | - | - |
+| `timezone` | `character varying(64)` | NOT NULL | 'Asia/Shanghai'::character varying | - | - |
 
 ### 约束
 
@@ -2008,6 +2183,10 @@ sequenceDiagram
 - `public.growth_user_stats` 通过 `growth_user_stats_user_id_fkey` 引用本表
   定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
 - `public.payment_orders` 通过 `payment_orders_user_id_fkey` 引用本表
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+- `public.proactive_character_preferences` 通过 `proactive_character_preferences_user_id_fkey` 引用本表
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+- `public.proactive_message_dispatches` 通过 `proactive_message_dispatches_user_id_fkey` 引用本表
   定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
 - `public.saved_items` 通过 `saved_items_user_id_fkey` 引用本表
   定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`

@@ -112,8 +112,10 @@ const mapTurnsPageMessage = (turn: TurnsPageResponse["turns"][number]): Message 
     images: chatImages,
     isGreeting:
       turn.author_type === "CHARACTER" &&
-      turn.is_proactive &&
-      !turn.parent_turn_id,
+      turn.source === "greeting",
+    isProactiveOutreach:
+      turn.author_type === "CHARACTER" &&
+      turn.source === "proactive_outreach",
     candidateNo: turn.primary_candidate.candidate_no,
     candidateCount: turn.candidate_count,
     inputTransform: turn.primary_candidate.extra?.input_transform ?? null,

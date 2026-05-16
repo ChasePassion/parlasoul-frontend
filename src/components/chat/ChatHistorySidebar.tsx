@@ -234,7 +234,7 @@ export default function ChatHistorySidebar({
                 return (
                   <div
                     key={item.chat.id}
-                    className={`group relative rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-colors border-l-[2.5px] cursor-pointer ${
+                    className={`group relative chat-history-item rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-colors border-l-[2.5px] cursor-pointer ${
                       isActive
                         ? "bg-primary/[0.07] border-primary"
                         : "border-transparent hover:bg-accent/40"
@@ -288,7 +288,7 @@ export default function ChatHistorySidebar({
                           onClick={() => onSelectChat(item.chat.id)}
                           className="min-w-0 flex-1 text-left flex flex-col justify-center"
                         >
-                          <div className="truncate text-[13.5px] font-normal text-foreground tracking-tight leading-tight">
+                          <div className="min-w-0 history-title-fade text-[13.5px] font-normal text-foreground tracking-tight leading-tight">
                             {getChatTitle(item.chat.title)}
                           </div>
                           <div className={`mt-0.5 flex items-center text-[11px] font-normal leading-tight ${isActive ? "text-muted-foreground" : "text-muted-foreground/80"}`}>
@@ -300,7 +300,7 @@ export default function ChatHistorySidebar({
                           <DropdownMenuTrigger asChild>
                             <button
                               type="button"
-                              className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-1 hover:bg-foreground/5 rounded-md text-muted-foreground hover:text-foreground flex items-center justify-center data-[state=open]:opacity-100"
+                              className="shrink-0 chat-history-menu-btn p-1 hover:bg-foreground/5 rounded-md text-muted-foreground hover:text-foreground flex items-center justify-center"
                               aria-label="更多操作"
                             >
                               <MoreHorizontal className="h-4 w-4" />

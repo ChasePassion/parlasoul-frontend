@@ -58,6 +58,8 @@ export const queryKeys = {
       [...queryKeys.user.all(userId), "profile"] as const,
     settings: (userId: NullableId) =>
       [...queryKeys.user.all(userId), "settings"] as const,
+    proactiveCharacters: (userId: NullableId) =>
+      [...queryKeys.user.all(userId), "proactive-characters"] as const,
   },
 
   sidebar: {

@@ -173,6 +173,10 @@ export const updateUserProfile = apiService.updateUserProfile.bind(apiService);
 export const getMySettings = apiService.getMySettings.bind(apiService);
 export const updateMySettings = apiService.updateMySettings.bind(apiService);
 export const getMyEntitlements = apiService.getMyEntitlements.bind(apiService);
+export const getMyProactiveCharacters =
+  apiService.getMyProactiveCharacters.bind(apiService);
+export const replaceMyProactiveCharacters =
+  apiService.replaceMyProactiveCharacters.bind(apiService);
 
 // 角色相关
 export const createCharacter = apiService.createCharacter.bind(apiService);

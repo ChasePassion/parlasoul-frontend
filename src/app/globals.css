@@ -836,6 +836,26 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.28);
 }
 
+/* ── Chat history sidebar: title horizontal fade ── */
+.history-title-fade {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent);
+}
+
+/* ── Chat history sidebar: hover-to-reveal menu button ── */
+.chat-history-item .chat-history-menu-btn {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.chat-history-item:hover .chat-history-menu-btn,
+.chat-history-item .chat-history-menu-btn[data-state="open"] {
+  opacity: 1;
+}
+
 .message-navigator-preview-scroll {
   scrollbar-gutter: stable;
   scrollbar-width: thin;
