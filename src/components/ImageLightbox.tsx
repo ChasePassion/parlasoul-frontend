@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { X } from "lucide-react";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 export interface LightboxImage {
   src: string;
@@ -22,6 +23,7 @@ export function ImageLightbox({ images, initialIndex = 0, open, onClose }: Image
   const [current, setCurrent] = useState(initialIndex);
   const [displaySrc, setDisplaySrc] = useState("");
   const touchStartX = useRef(0);
+  const isMobile = useIsMobile();
 
   const prev = useCallback(() => {
     setCurrent((i) => (i - 1 + images.length) % images.length);
@@ -100,25 +102,37 @@ export function ImageLightbox({ images, initialIndex = 0, open, onClose }: Image
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
-        className="bg-black/90 border-none shadow-none max-w-full max-h-full w-full h-full rounded-none flex items-center justify-center"
+        className={
+          isMobile
+            ? "bg-black/90 border-none shadow-none max-w-full max-h-full w-full h-full rounded-none flex items-center justify-center"
+            : "bg-transparent border-none shadow-none max-w-[90vw] max-h-[90vh] flex items-center justify-center p-0"
+        }
         showCloseButton={false}
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
-        onClick={onClose}
+        onPointerDownOutside={isMobile ? (e) => e.preventDefault() : undefined}
+        onInteractOutside={isMobile ? (e) => e.preventDefault() : undefined}
+        onClick={isMobile ? onClose : undefined}
       >
         <DialogTitle className="sr-only">
           图片查看 {current + 1} / {images.length}
         </DialogTitle>
 
-        <button
-          onClick={(e) => { e.stopPropagation(); onClose(); }}
-          className="absolute top-4 right-4 z-50 w-10 h-10 flex items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/40 transition-colors"
-        >
-          <X className="w-6 h-6" />
-        </button>
+        {isMobile && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            className="absolute top-4 right-4 z-50 w-10 h-10 flex items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/40 transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        )}
 
         {images.length > 1 && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/70 text-sm z-50 pointer-events-none">
+          <div
+            className={
+              isMobile
+                ? "absolute top-4 left-1/2 -translate-x-1/2 text-white/70 text-sm z-50 pointer-events-none"
+                : "absolute top-3 left-1/2 -translate-x-1/2 text-muted-foreground text-sm z-50 pointer-events-none"
+            }
+          >
             {current + 1} / {images.length}
           </div>
         )}
@@ -126,10 +140,10 @@ export function ImageLightbox({ images, initialIndex = 0, open, onClose }: Image
         <img
           src={displaySrc || images[current]?.previewSrc || images[current]?.src}
           alt=""
-          className="max-w-[90vw] max-h-[85vh] object-contain select-none"
+          className="max-w-[90vw] max-h-[85vh] object-contain select-none rounded-lg"
           draggable={false}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
+          onTouchStart={isMobile ? handleTouchStart : undefined}
+          onTouchEnd={isMobile ? handleTouchEnd : undefined}
           onClick={(e) => e.stopPropagation()}
         />
       </DialogContent>
