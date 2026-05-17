@@ -272,7 +272,7 @@ export default function StatsOverviewChart({
       <CardContent>
         {topCharacters.length > 0 ? (
           <>
-            <div className="h-[240px] md:h-[320px] w-full">
+            <div className="h-[240px] md:h-[320px] w-full outline-none [&_*]:outline-none">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={chartRows}
