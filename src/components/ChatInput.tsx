@@ -569,6 +569,16 @@ export default function ChatInput({
     const showVoiceWave = voiceButtonState === "active_user_speaking";
     const showMicCaptureButton = micCaptureState !== "hidden";
     const isMicCaptureEnabled = micCaptureState === "mic_hot";
+    const voiceMenuLabel = isVoiceConnecting
+        ? "取消连接"
+        : isVoiceActive
+        ? "结束语音通话"
+        : "语音通话";
+    const voiceMenuHint = isVoiceConnecting
+        ? "正在建立连接"
+        : isVoiceActive
+        ? "当前通话进行中"
+        : "与角色开始实时通话";
 
     const handleVoiceButtonClick = useCallback(() => {
         if (disabled || isInRecordingFlow) return;
@@ -582,15 +592,30 @@ export default function ChatInput({
             onStopRealtimeVoice?.();
             return;
         }
-
-        onStartRealtimeVoice?.();
     }, [
         disabled,
         isInRecordingFlow,
         isVoiceActive,
         onCancelRealtimeVoiceStart,
-        onStartRealtimeVoice,
         onStopRealtimeVoice,
+        voiceButtonState,
+    ]);
+
+    const handleVoiceMenuClick = useCallback(() => {
+        if (disabled || isInRecordingFlow) return;
+
+        if (voiceButtonState === "connecting" || isVoiceActive) {
+            handleVoiceButtonClick();
+            return;
+        }
+
+        onStartRealtimeVoice?.();
+    }, [
+        disabled,
+        handleVoiceButtonClick,
+        isInRecordingFlow,
+        isVoiceActive,
+        onStartRealtimeVoice,
         voiceButtonState,
     ]);
 
@@ -780,24 +805,42 @@ export default function ChatInput({
                                                         type="button"
                                                         className="composer-btn"
                                                         data-testid="composer-plus-btn"
-                                                        aria-label="Add files and more"
+                                                        aria-label="更多功能"
                                                         id="composer-plus-btn"
                                                         aria-haspopup="menu"
                                                     >
                                                         <SpriteIcon name="desktop" size={20} />
                                                     </button>
                                                 </PopoverTrigger>
-                                                <PopoverContent side="top" align="start" sideOffset={16} className="w-44 p-1 rounded-xl">
+                                                <PopoverContent side="top" align="start" sideOffset={16} className="w-56 rounded-xl p-1">
                                                     <button
                                                         type="button"
-                                                        className="flex items-center gap-3 w-full px-3 py-1.5 rounded-md hover:bg-accent text-sm"
+                                                        className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent"
                                                         onClick={() => fileInputRef.current?.click()}
                                                     >
                                                         <svg viewBox="0 0 1024 1024" width="20" height="20" fill="currentColor">
                                                             <path d="M896 89.6H128C72.704 89.6 28.16 134.144 28.16 189.44v645.12c0 55.296 44.544 99.84 99.84 99.84h768c55.296 0 99.84-44.544 99.84-99.84V189.44c0-55.296-44.544-99.84-99.84-99.84z m-768 76.8h768c12.8 0 23.04 10.24 23.04 23.04v459.776l-211.968-211.968c-11.264-11.264-26.112-17.408-41.472-17.408s-30.72 6.144-41.472 17.408L363.52 697.856l-96.768-96.768c-23.04-23.04-60.416-23.04-83.456 0l-78.848 78.848V189.44c0.512-12.8 10.752-23.04 23.552-23.04z m768 691.2H128c-12.8 0-23.04-10.24-23.04-23.04v-45.568L225.28 668.672l111.104 111.104c7.168 7.168 16.896 11.264 27.136 11.264s19.968-4.096 27.136-11.264L665.6 504.832l253.44 253.44V834.56c0 12.8-10.24 23.04-23.04 23.04z" />
                                                             <path d="M289.28 386.56m-64 0a64 64 0 1 0 128 0 64 64 0 1 0-128 0Z" />
                                                         </svg>
-                                                        <span>照片</span>
+                                                        <span className="flex min-w-0 flex-col items-start">
+                                                            <span>照片</span>
+                                                            <span className="text-muted-foreground text-xs">上传聊天图片</span>
+                                                        </span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent"
+                                                        onClick={() => {
+                                                            handleVoiceMenuClick();
+                                                            setPlusMenuOpen(false);
+                                                        }}
+                                                        disabled={disabled || isInRecordingFlow}
+                                                    >
+                                                        <SpriteIcon name="sliders" size={20} />
+                                                        <span className="flex min-w-0 flex-col items-start text-left">
+                                                            <span>{voiceMenuLabel}</span>
+                                                            <span className="text-muted-foreground text-xs">{voiceMenuHint}</span>
+                                                        </span>
                                                     </button>
                                                 </PopoverContent>
                                             </Popover>
