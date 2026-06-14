@@ -2,7 +2,7 @@
 
 本文档由脚本直接连接 PostgreSQL 实例并基于实时元数据生成。
 
-- 生成时间: `2026-05-15 18:05:32 北京时间`
+- 生成时间: `2026-06-15 03:19:58 北京时间`
 - 目标数据库: `localhost:5432/role_play_mem`
 - Schema: `public`
 - 表数量: `24`
@@ -187,11 +187,11 @@ sequenceDiagram
   - [`user_access_passes`](#table-user_access_passes) 已生效的一次性权益通行证
 - 真正的“功能是否可用”由后端 `SubscriptionService` 同时计算 recurring subscription 与 active one-time pass，返回 `effective_source`。
 
-#### 4.6 角色分享与可见性兼容
+#### 4.6 角色分享与可见性
 
-- 当前应用层只允许写入 `PUBLIC` 和 `PRIVATE` 两种角色 / 会话可见性。
-- 迁移 `20260501_0034` 已把历史 `UNLISTED` 行迁移为 `PRIVATE`，后续业务代码不会再创建新的 `UNLISTED` 数据。
-- PostgreSQL 的 `visibility_t` 和 `chat_visibility_t` 枚举类型仍保留 `UNLISTED`，这是为了避免直接重建 enum 类型带来的迁移风险；实时结构快照会如实显示该兼容值。
+- 应用层只允许写入 `PUBLIC` 和 `PRIVATE` 两种角色 / 会话可见性。
+- 迁移 `20260501_0034` 先把历史 `UNLISTED` 行迁移为 `PRIVATE`，业务代码不再产生新的 `UNLISTED` 数据。
+- 迁移 `20260525_0039` 随后重建 `visibility_t` 与 `chat_visibility_t` 枚举类型，彻底移除 `UNLISTED`；当前两个枚举仅剩 `PUBLIC` 与 `PRIVATE` 两个取值。
 - 前端 `/share/{slug}` 分享页通过 slug 末尾的 character UUID 读取角色详情。当前 active 的 `PUBLIC` 与 `PRIVATE` 角色都允许通过直链读取；`PRIVATE` 不进入市场列表但可被直链访问。进入 get-or-create chat 前，前端会要求登录并保留 `next` 参数。
 
 ### 5. 数据域分组
@@ -393,8 +393,7 @@ sequenceDiagram
 | `system_prompt` | 驱动角色行为的核心 system prompt。 | 聊天生成时构造 LLM system prompt。 |
 | `greeting_message` | 首次建 chat 时自动插入的开场白。 | `create_chat` 时创建第一条主动消息。 |
 | `avatar_image_key` | R2 中角色头像对象 key 前缀，可推导 `/media/*/*.avif` 变体 URL。 | 角色创建 / 编辑新上传后写入，市场、聊天、成长统计和分享卡读取。 |
-| `visibility` | 角色可见性，应用层当前只写 `PUBLIC/PRIVATE`；数据库 enum 仍保留 `UNLISTED` 作为历史兼容值。 | 市场查询、详情页权限、分享页直链读取。 |
-| `interaction_count` | 角色互动计数，近似反映聊天生成完成次数。 | 聊天成功 finalize 后递增，用于市场热度。 |
+| `visibility` | 角色可见性，枚举 `visibility_t` 取值 `PUBLIC/PRIVATE`。 | 市场查询、详情页权限、分享页直链读取。 |
 | `creator_id` | 角色创建者。 | 个人中心、权限控制、创作者主页。 |
 | `voice_provider` | 当前绑定音色的 provider。系统音色当前默认 `minimax`，用户克隆音色仍为 `dashscope`。 | 聊天 TTS、角色详情展示、provider-aware TTS gateway 路由。 |
 | `voice_model` | 当前绑定音色的运行时模型。系统默认 `speech-2.8-turbo`，克隆音色保存 DashScope 克隆 TTS 模型。 | TTS 调用时直接使用。 |
@@ -457,7 +456,7 @@ sequenceDiagram
 | `character_id` | 会话对应角色。 | 角色切换和历史归档。 |
 | `type` | 会话类型，当前主链路是一对一聊天。 | 预留 ROOM 能力。 |
 | `state` | 会话状态，当前主要是 `ACTIVE`。 | 历史查询和后续归档扩展。 |
-| `visibility` | 会话可见性，应用层当前只写 `PRIVATE`，数据库 enum 仍保留 `UNLISTED` 作为历史兼容值。 | 当前主链路只做本人聊天隔离，未来共享能力预留。 |
+| `visibility` | 会话可见性，枚举 `chat_visibility_t` 取值当前主链路写 `PRIVATE`。 | 当前主链路只做本人聊天隔离，未来共享能力预留。 |
 | `origin` | 会话来源。`user` 表示用户主动发起，`proactive` 表示角色主动外联创建。 | recent chat、draft 清理、sidebar 暴露逻辑都依赖该字段区分普通 greeting chat 与主动消息 chat。 |
 | `title` | 会话标题。默认是占位标题，首条用户消息后可能被自动改写。 | 聊天历史列表与 header。 |
 | `last_turn_at` | 当前会话最新 turn 的时间。 | 最近会话排序。 |
@@ -1026,19 +1025,19 @@ sequenceDiagram
 ### 索引
 
 - `candidates_pkey` [PRIMARY / UNIQUE]
-  大小: `80 kB`
+  大小: `88 kB`
   定义: `CREATE UNIQUE INDEX candidates_pkey ON public.candidates USING btree (id)`
 - `candidates_turn_candidate_no_uniq` [UNIQUE]
   大小: `88 kB`
   定义: `CREATE UNIQUE INDEX candidates_turn_candidate_no_uniq ON public.candidates USING btree (turn_id, candidate_no)`
 - `candidates_turn_id_idx`
-  大小: `72 kB`
+  大小: `80 kB`
   定义: `CREATE INDEX candidates_turn_id_idx ON public.candidates USING btree (turn_id)`
 - `idx_candidates_turn_created`
   大小: `88 kB`
   定义: `CREATE INDEX idx_candidates_turn_created ON public.candidates USING btree (turn_id, created_at DESC)`
 - `uq_candidates_turn_id_id` [UNIQUE]
-  大小: `88 kB`
+  大小: `120 kB`
   定义: `CREATE UNIQUE INDEX uq_candidates_turn_id_id ON public.candidates USING btree (turn_id, id)`
 
 ## Table `characters`
@@ -1057,8 +1056,7 @@ sequenceDiagram
 | `name` | `character varying(100)` | NOT NULL | - | - | - |
 | `description` | `text` | NOT NULL | - | - | - |
 | `greeting_message` | `text` | NULL | - | - | - |
-| `visibility` | `visibility_t` | NOT NULL | 'PUBLIC'::visibility_t | - | - |
-| `interaction_count` | `bigint` | NOT NULL | 0 | - | - |
+| `visibility` | `visibility_t` | NOT NULL | 'PRIVATE'::visibility_t | - | - |
 | `creator_id` | `uuid` | NOT NULL | - | - | - |
 | `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
 | `updated_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
@@ -1125,9 +1123,6 @@ sequenceDiagram
 - `idx_characters_creator`
   大小: `16 kB`
   定义: `CREATE INDEX idx_characters_creator ON public.characters USING btree (creator_id)`
-- `idx_characters_visibility_interactions`
-  大小: `16 kB`
-  定义: `CREATE INDEX idx_characters_visibility_interactions ON public.characters USING btree (visibility, interaction_count DESC)`
 
 ## Table `chats`
 
@@ -1187,13 +1182,13 @@ sequenceDiagram
   大小: `16 kB`
   定义: `CREATE UNIQUE INDEX chats_pkey ON public.chats USING btree (id)`
 - `chats_user_character_state_sort_idx`
-  大小: `40 kB`
+  大小: `16 kB`
   定义: `CREATE INDEX chats_user_character_state_sort_idx ON public.chats USING btree (user_id, character_id, state, COALESCE(last_turn_at, created_at) DESC, id DESC)`
 - `chats_user_id_idx`
   大小: `16 kB`
   定义: `CREATE INDEX chats_user_id_idx ON public.chats USING btree (user_id)`
 - `chats_user_state_sort_idx`
-  大小: `40 kB`
+  大小: `16 kB`
   定义: `CREATE INDEX chats_user_state_sort_idx ON public.chats USING btree (user_id, state, COALESCE(last_turn_at, created_at) DESC, id DESC)`
 - `idx_chats_character`
   大小: `16 kB`
@@ -1689,7 +1684,7 @@ sequenceDiagram
 ### 索引
 
 - `proactive_character_preferences_pkey` [PRIMARY / UNIQUE]
-  大小: `8192 bytes`
+  大小: `16 kB`
   定义: `CREATE UNIQUE INDEX proactive_character_preferences_pkey ON public.proactive_character_preferences USING btree (user_id, character_id)`
 
 ## Table `proactive_message_dispatches`
@@ -1747,16 +1742,16 @@ sequenceDiagram
 ### 索引
 
 - `proactive_message_dispatches_pkey` [PRIMARY / UNIQUE]
-  大小: `8192 bytes`
+  大小: `16 kB`
   定义: `CREATE UNIQUE INDEX proactive_message_dispatches_pkey ON public.proactive_message_dispatches USING btree (id)`
 - `proactive_message_dispatches_status_next_attempt_idx`
-  大小: `8192 bytes`
+  大小: `16 kB`
   定义: `CREATE INDEX proactive_message_dispatches_status_next_attempt_idx ON public.proactive_message_dispatches USING btree (status, next_attempt_at)`
 - `proactive_message_dispatches_user_created_at_idx`
-  大小: `8192 bytes`
+  大小: `16 kB`
   定义: `CREATE INDEX proactive_message_dispatches_user_created_at_idx ON public.proactive_message_dispatches USING btree (user_id, created_at)`
 - `proactive_message_dispatches_user_slot_uniq` [UNIQUE]
-  大小: `8192 bytes`
+  大小: `16 kB`
   定义: `CREATE UNIQUE INDEX proactive_message_dispatches_user_slot_uniq ON public.proactive_message_dispatches USING btree (user_id, slot_at)`
 
 ## Table `saved_items`
@@ -1986,7 +1981,7 @@ sequenceDiagram
   大小: `96 kB`
   定义: `CREATE INDEX idx_turns_chat_turnno_desc ON public.turns USING btree (chat_id, turn_no DESC)`
 - `turns_chat_id_idx`
-  大小: `16 kB`
+  大小: `32 kB`
   定义: `CREATE INDEX turns_chat_id_idx ON public.turns USING btree (chat_id)`
 - `turns_chat_parent_turn_idx`
   大小: `96 kB`
@@ -1995,7 +1990,7 @@ sequenceDiagram
   大小: `104 kB`
   定义: `CREATE UNIQUE INDEX turns_chat_turn_no_uniq ON public.turns USING btree (chat_id, turn_no)`
 - `turns_parent_candidate_uniq` [UNIQUE]
-  大小: `56 kB`
+  大小: `64 kB`
   定义: `CREATE UNIQUE INDEX turns_parent_candidate_uniq ON public.turns USING btree (parent_candidate_id) WHERE (parent_candidate_id IS NOT NULL)`
   谓词: `parent_candidate_id IS NOT NULL`
 - `turns_pkey` [PRIMARY / UNIQUE]
@@ -2334,6 +2329,6 @@ sequenceDiagram
 - `author_type_t`: `USER`, `CHARACTER`, `SYSTEM`
 - `chat_state_t`: `ACTIVE`, `ARCHIVED`
 - `chat_type_t`: `ONE_ON_ONE`, `ROOM`
-- `chat_visibility_t`: `PRIVATE`, `UNLISTED`, `PUBLIC`
+- `chat_visibility_t`: `PUBLIC`, `PRIVATE`
 - `turn_state_t`: `OK`, `FILTERED`, `DELETED`, `ERROR`
-- `visibility_t`: `PUBLIC`, `PRIVATE`, `UNLISTED`
+- `visibility_t`: `PUBLIC`, `PRIVATE`
