@@ -15,6 +15,7 @@ export interface DiscoverConfig {
   hero_character_ids: string[];
   hero_items: DiscoverHeroItem[];
   story_character_ids: string[];
+  professional_character_ids: string[];
 }
 
 export interface DiscoverHeroCharacter {

@@ -110,13 +110,21 @@ export default function DiscoverPage() {
     () => new Set(discoverConfigQuery.data?.story_character_ids ?? []),
     [discoverConfigQuery.data],
   );
+  const professionalIds = useMemo(
+    () => new Set(discoverConfigQuery.data?.professional_character_ids ?? []),
+    [discoverConfigQuery.data],
+  );
   const companionCharacters = useMemo(
-    () => mappedCharacters.filter(c => !storyIds.has(c.id)),
-    [mappedCharacters, storyIds],
+    () => mappedCharacters.filter(c => !storyIds.has(c.id) && !professionalIds.has(c.id)),
+    [mappedCharacters, storyIds, professionalIds],
   );
   const storyCharacters = useMemo(
     () => mappedCharacters.filter(c => storyIds.has(c.id)),
     [mappedCharacters, storyIds],
+  );
+  const professionalCharacters = useMemo(
+    () => mappedCharacters.filter(c => professionalIds.has(c.id)),
+    [mappedCharacters, professionalIds],
   );
 
   // 加载状态
@@ -168,6 +176,15 @@ export default function DiscoverPage() {
                 <HorizontalSection
                   title="剧情"
                   characters={storyCharacters}
+                  onSelectCharacter={handleSelectCharacter}
+                />
+              )}
+
+              {/* 职业向角色横滑区 */}
+              {professionalCharacters.length > 0 && (
+                <HorizontalSection
+                  title="职业"
+                  characters={professionalCharacters}
                   onSelectCharacter={handleSelectCharacter}
                 />
               )}
