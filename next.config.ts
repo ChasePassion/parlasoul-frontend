@@ -55,6 +55,11 @@ const baseConfig: NextConfig = {
         protocol: "https",
         hostname: "*.r2.dev",
       },
+      {
+        protocol: "https",
+        hostname: "117.72.161.187",
+        pathname: "/media/images/discover/heroes/**",
+      },
     ],
   },
   turbopack: {
