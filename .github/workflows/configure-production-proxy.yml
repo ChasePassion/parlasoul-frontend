@@ -66,18 +66,22 @@ jobs:
               interval: 3600
               health-check:
                 enable: true
-                url: https://github.com/favicon.ico
+                url: https://ghcr.io/v2/
                 interval: 300
                 timeout: 10000
+                expected-status: 401
           proxy-groups:
             - name: AUTO
               type: url-test
               use:
                 - subscription
-              url: https://github.com/favicon.ico
+              url: https://ghcr.io/v2/
               interval: 300
               tolerance: 50
               lazy: false
+              timeout: 10000
+              max-failed-times: 2
+              expected-status: 401
           rules:
             - DOMAIN-SUFFIX,github.com,AUTO
             - DOMAIN-SUFFIX,githubusercontent.com,AUTO
