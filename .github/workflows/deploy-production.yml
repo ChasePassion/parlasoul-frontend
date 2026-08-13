@@ -122,7 +122,17 @@ jobs:
           export FRONTEND_IMAGE="${FRONTEND_IMAGE}"
           cd "${DEPLOY_ROOT}"
 
-          docker pull "${FRONTEND_IMAGE}"
+          for attempt in \$(seq 1 5); do
+            if docker pull "${FRONTEND_IMAGE}"; then
+              break
+            fi
+            if [ "\${attempt}" -eq 5 ]; then
+              echo "Failed to pull frontend image after \${attempt} attempts" >&2
+              exit 1
+            fi
+            echo "Image pull attempt \${attempt}/5 failed, retrying in 15s..."
+            sleep 15
+          done
           FRONTEND_IMAGE="${FRONTEND_IMAGE}" docker compose -f compose.yaml -f compose.production.yaml up -d --no-deps --force-recreate frontend
           docker compose -f compose.yaml -f compose.production.yaml restart nginx
           sleep 5
