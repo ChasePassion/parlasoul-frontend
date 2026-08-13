@@ -115,6 +115,8 @@ jobs:
           ssh -i "$HOME/.ssh/deploy_key" \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
             "$DEPLOY_USER@$DEPLOY_HOST" /bin/bash <<EOF
           set -euo pipefail
           export FRONTEND_IMAGE="${FRONTEND_IMAGE}"
