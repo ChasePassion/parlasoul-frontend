@@ -1,0 +1,147 @@
+name: configure-production-proxy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_HOST_KEY_FINGERPRINT: ${{ secrets.DEPLOY_HOST_KEY_FINGERPRINT }}
+      MIHOMO_SUBSCRIPTION_URL: ${{ secrets.MIHOMO_SUBSCRIPTION_URL }}
+    steps:
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          ssh-keyscan -t ed25519 "$DEPLOY_HOST" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          ssh-keygen -lf "$HOME/.ssh/known_hosts" | grep -F "$DEPLOY_HOST_KEY_FINGERPRINT"
+
+      - name: Install Mihomo and configure Docker proxy
+        run: |
+          set -euo pipefail
+          MIHOMO_VERSION="v1.19.29"
+          MIHOMO_URL="https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-amd64-v3-${MIHOMO_VERSION}.gz"
+          curl -fsSL --retry 5 --retry-all-errors "$MIHOMO_URL" -o /tmp/mihomo.gz
+          gunzip -c /tmp/mihomo.gz > /tmp/mihomo
+          chmod 755 /tmp/mihomo
+
+          printf '%s' "${MIHOMO_SUBSCRIPTION_URL}" | ssh -i "$HOME/.ssh/deploy_key" \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'install -d -m 700 /etc/mihomo && umask 077 && cat > /etc/mihomo/subscription-url'
+
+          scp -i "$HOME/.ssh/deploy_key" \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
+            /tmp/mihomo "$DEPLOY_USER@$DEPLOY_HOST:/tmp/mihomo"
+
+          ssh -i "$HOME/.ssh/deploy_key" \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
+            "$DEPLOY_USER@$DEPLOY_HOST" /bin/bash <<'REMOTE'
+          set -euo pipefail
+          install -m 755 /tmp/mihomo /usr/local/bin/mihomo
+          subscription_url="$(cat /etc/mihomo/subscription-url)"
+          cat > /etc/mihomo/config.yaml <<EOF
+          mixed-port: 7890
+          allow-lan: false
+          bind-address: 127.0.0.1
+          mode: rule
+          log-level: warning
+          ipv6: false
+          unified-delay: true
+          tcp-concurrent: true
+          external-controller: 127.0.0.1:9090
+          proxy-providers:
+            subscription:
+              type: http
+              url: "${subscription_url}"
+              path: ./providers/subscription.yaml
+              interval: 3600
+              health-check:
+                enable: true
+                url: https://github.com/favicon.ico
+                interval: 300
+                timeout: 10000
+          proxy-groups:
+            - name: AUTO
+              type: url-test
+              use:
+                - subscription
+              url: https://github.com/favicon.ico
+              interval: 300
+              tolerance: 50
+              lazy: false
+          rules:
+            - DOMAIN-SUFFIX,github.com,AUTO
+            - DOMAIN-SUFFIX,githubusercontent.com,AUTO
+            - DOMAIN-SUFFIX,githubassets.com,AUTO
+            - DOMAIN-SUFFIX,ghcr.io,AUTO
+            - MATCH,DIRECT
+          EOF
+          chmod 600 /etc/mihomo/config.yaml /etc/mihomo/subscription-url
+          mkdir -p /etc/mihomo/providers
+
+          cat > /etc/systemd/system/mihomo.service <<'EOF'
+          [Unit]
+          Description=Mihomo Proxy Service
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/local/bin/mihomo -d /etc/mihomo
+          Restart=on-failure
+          RestartSec=5s
+          LimitNOFILE=1048576
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          mkdir -p /etc/systemd/system/docker.service.d
+          cat > /etc/systemd/system/docker.service.d/http-proxy.conf <<'EOF'
+          [Service]
+          Environment="HTTP_PROXY=http://127.0.0.1:7890"
+          Environment="HTTPS_PROXY=http://127.0.0.1:7890"
+          Environment="NO_PROXY=localhost,127.0.0.1,::1"
+          EOF
+
+          systemctl daemon-reload
+          systemctl enable --now mihomo
+          /usr/local/bin/mihomo -t -d /etc/mihomo
+          for attempt in $(seq 1 12); do
+            if curl -fsS --proxy http://127.0.0.1:7890 --max-time 20 https://github.com/favicon.ico >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              journalctl -u mihomo --no-pager -n 50
+              exit 1
+            fi
+            sleep 5
+          done
+          systemctl restart docker
+          systemctl is-active --quiet mihomo
+          systemctl is-active --quiet docker
+          curl -fsS --proxy http://127.0.0.1:7890 --max-time 20 https://ghcr.io/v2/ >/dev/null || test "$?" -eq 22
+          REMOTE
