@@ -22,6 +22,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   deploy:
@@ -31,7 +32,7 @@ jobs:
        github.event.workflow_run.head_branch == 'master') ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     environment:
       name: production
       url: https://parlasoul.com
@@ -107,6 +108,21 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
           ssh-keygen -lf "$HOME/.ssh/known_hosts" | grep -F "$DEPLOY_HOST_KEY_FINGERPRINT"
 
+      - name: Stage frontend image
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          export FRONTEND_IMAGE="ghcr.io/chasepassion/parlasoul-frontend:${IMAGE_TAG}"
+          printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+          docker pull "${FRONTEND_IMAGE}"
+          docker save "${FRONTEND_IMAGE}" | gzip -1 | ssh -i "$HOME/.ssh/deploy_key" \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'gzip -d | docker load'
+
       - name: Deploy frontend
         run: |
           set -euo pipefail
@@ -122,17 +138,6 @@ jobs:
           export FRONTEND_IMAGE="${FRONTEND_IMAGE}"
           cd "${DEPLOY_ROOT}"
 
-          for attempt in \$(seq 1 5); do
-            if docker pull "${FRONTEND_IMAGE}"; then
-              break
-            fi
-            if [ "\${attempt}" -eq 5 ]; then
-              echo "Failed to pull frontend image after \${attempt} attempts" >&2
-              exit 1
-            fi
-            echo "Image pull attempt \${attempt}/5 failed, retrying in 15s..."
-            sleep 15
-          done
           FRONTEND_IMAGE="${FRONTEND_IMAGE}" docker compose -f compose.yaml -f compose.production.yaml up -d --no-deps --force-recreate frontend
           docker compose -f compose.yaml -f compose.production.yaml restart nginx
           sleep 5
