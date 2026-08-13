@@ -9,7 +9,7 @@ permissions:
 jobs:
   configure:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     environment:
       name: production
     env:
@@ -33,25 +33,12 @@ jobs:
       - name: Install Mihomo and configure Docker proxy
         run: |
           set -euo pipefail
-          MIHOMO_VERSION="v1.19.29"
-          MIHOMO_URL="https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-amd64-v3-${MIHOMO_VERSION}.gz"
-          curl -fsSL --retry 5 --retry-all-errors "$MIHOMO_URL" -o /tmp/mihomo.gz
-          gunzip -c /tmp/mihomo.gz > /tmp/mihomo
-          chmod 755 /tmp/mihomo
-
           printf '%s' "${MIHOMO_SUBSCRIPTION_URL}" | ssh -i "$HOME/.ssh/deploy_key" \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=40 \
             "$DEPLOY_USER@$DEPLOY_HOST" 'install -d -m 700 /etc/mihomo && umask 077 && cat > /etc/mihomo/subscription-url'
-
-          scp -i "$HOME/.ssh/deploy_key" \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=40 \
-            /tmp/mihomo "$DEPLOY_USER@$DEPLOY_HOST:/tmp/mihomo"
 
           ssh -i "$HOME/.ssh/deploy_key" \
             -o StrictHostKeyChecking=yes \
@@ -60,7 +47,6 @@ jobs:
             -o ServerAliveCountMax=40 \
             "$DEPLOY_USER@$DEPLOY_HOST" /bin/bash <<'REMOTE'
           set -euo pipefail
-          install -m 755 /tmp/mihomo /usr/local/bin/mihomo
           subscription_url="$(cat /etc/mihomo/subscription-url)"
           cat > /etc/mihomo/config.yaml <<EOF
           mixed-port: 7890
@@ -102,6 +88,21 @@ jobs:
           chmod 600 /etc/mihomo/config.yaml /etc/mihomo/subscription-url
           mkdir -p /etc/mihomo/providers
 
+          mkdir -p /etc/systemd/system/docker.service.d
+          cat > /etc/systemd/system/docker.service.d/http-proxy.conf <<'EOF'
+          [Service]
+          Environment="HTTP_PROXY=http://127.0.0.1:7890"
+          Environment="HTTPS_PROXY=http://127.0.0.1:7890"
+          Environment="NO_PROXY=localhost,127.0.0.1,::1"
+          EOF
+
+          docker pull docker.io/metacubex/mihomo:v1.19.29
+          docker rm -f mihomo-extract >/dev/null 2>&1 || true
+          docker create --name mihomo-extract docker.io/metacubex/mihomo:v1.19.29
+          docker cp mihomo-extract:/mihomo /usr/local/bin/mihomo
+          docker rm mihomo-extract
+          chmod 755 /usr/local/bin/mihomo
+
           cat > /etc/systemd/system/mihomo.service <<'EOF'
           [Unit]
           Description=Mihomo Proxy Service
@@ -119,17 +120,8 @@ jobs:
           WantedBy=multi-user.target
           EOF
 
-          mkdir -p /etc/systemd/system/docker.service.d
-          cat > /etc/systemd/system/docker.service.d/http-proxy.conf <<'EOF'
-          [Service]
-          Environment="HTTP_PROXY=http://127.0.0.1:7890"
-          Environment="HTTPS_PROXY=http://127.0.0.1:7890"
-          Environment="NO_PROXY=localhost,127.0.0.1,::1"
-          EOF
-
           systemctl daemon-reload
           systemctl enable --now mihomo
-          /usr/local/bin/mihomo -t -d /etc/mihomo
           for attempt in $(seq 1 12); do
             if curl -fsS --proxy http://127.0.0.1:7890 --max-time 20 https://github.com/favicon.ico >/dev/null; then
               break
@@ -140,8 +132,9 @@ jobs:
             fi
             sleep 5
           done
+          /usr/local/bin/mihomo -t -d /etc/mihomo
           systemctl restart docker
-          systemctl is-active --quiet mihomo
           systemctl is-active --quiet docker
+          systemctl is-active --quiet mihomo
           curl -fsS --proxy http://127.0.0.1:7890 --max-time 20 https://ghcr.io/v2/ >/dev/null || test "$?" -eq 22
           REMOTE
