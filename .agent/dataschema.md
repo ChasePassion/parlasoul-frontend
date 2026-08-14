@@ -2,10 +2,10 @@
 
 本文档由脚本直接连接 PostgreSQL 实例并基于实时元数据生成。
 
-- 生成时间: `2026-06-15 03:19:58 北京时间`
+- 生成时间: `2026-08-14 18:37:37 北京时间`
 - 目标数据库: `localhost:5432/role_play_mem`
 - Schema: `public`
-- 表数量: `24`
+- 表数量: `30`
 
 ## 业务语义总览
 
@@ -22,6 +22,8 @@ ParlaSoul 当前是一个“前端认证层 + 后端业务层 + 共享 PostgreSQ
   - 同时承载两类表：
     - `better-auth` 维护的认证表
     - FastAPI 维护的业务表
+  - realtime 通话测试数据也落在 FastAPI 业务表中，但它们只是内容无关的可观测数据，不是聊天正文的真相源。
+  - 评测 harness（phase18）的 `eval_runs` / `eval_results` 也是业务表，但只由进程外 CLI 以 `system` 上下文读写，不属于在线 API 数据面。
 - Redis
   - 保存前端分享卡图片代理缓存。
   - 保存后端媒体上传会话、上传互斥锁、AVIF 热点对象缓存和短期 404 缓存，不保存业务主数据。
@@ -51,6 +53,7 @@ ParlaSoul 当前是一个“前端认证层 + 后端业务层 + 共享 PostgreSQ
   - 角色系统音色绑定：[`characters`](#table-characters) 保存 MiniMax 系统 TTS 三元组；用户克隆音色资产仍保存在 [`voice_profiles`](#table-voice_profiles)
   - 成长系统：[`growth_user_stats`](#table-growth_user_stats) 等 5 张统计表
   - 订阅与支付权益：[`subscription_webhook_events`](#table-subscription_webhook_events)、[`payment_orders`](#table-payment_orders)、[`payment_webhook_events`](#table-payment_webhook_events)、[`user_access_passes`](#table-user_access_passes)
+  - realtime 通话观测：[`realtime_call_sessions`](#table-realtime_call_sessions)、[`realtime_call_events`](#table-realtime_call_events)、[`realtime_turn_metrics`](#table-realtime_turn_metrics)、[`realtime_webrtc_stats_samples`](#table-realtime_webrtc_stats_samples)
   - 媒体资源：Cloudflare R2 存对象，Redis 做短期会话和热点缓存，业务表记录 `avatar_image_key`
 - 当前非前端主链路 / 兼容遗留
   - 当前旧验证码登录链路已经从代码库与数据库 schema 中移除，认证统一收敛到 `better-auth`。
@@ -194,6 +197,17 @@ sequenceDiagram
 - 迁移 `20260525_0039` 随后重建 `visibility_t` 与 `chat_visibility_t` 枚举类型，彻底移除 `UNLISTED`；当前两个枚举仅剩 `PUBLIC` 与 `PRIVATE` 两个取值。
 - 前端 `/share/{slug}` 分享页通过 slug 末尾的 character UUID 读取角色详情。当前 active 的 `PUBLIC` 与 `PRIVATE` 角色都允许通过直链读取；`PRIVATE` 不进入市场列表但可被直链访问。进入 get-or-create chat 前，前端会要求登录并保留 `next` 参数。
 
+#### 4.7 Realtime 通话观测
+
+- 浏览器在申请麦克风前先创建 observation，再把 `observation_id` 带入 `/v1/realtime/session` 与实际 `rt_*` 运行时会话绑定。
+- [`realtime_call_sessions`](#table-realtime_call_sessions) 保存一次通话尝试的上下文和聚合摘要；其余三张表以 `observation_id + user_id` 复合外键归属到它。
+- 客户端事件、服务端事件和 WebRTC stats 使用单调递增的 `seq` 去重；浏览器 stats 默认每 1 秒一个样本。
+- 客户端与服务端分别使用自己的 monotonic clock；`occurred_offset_ms` 只能在同一 `source` 泳道内直接相减，不能把两侧 offset 当作同一绝对时间轴。
+- 方案 A 的隐私边界是硬约束：四张表只允许 schema 固定白名单中的事件名、原因码、错误码、枚举、计数和数值指标；“格式像 slug”不代表可以写入。系统不保存原始音频、PCM/WAV/base64、完整或部分转写、字幕正文、LLM/TTS 文本、SDP、IP/地址/URL、设备 ID/label、原始 User-Agent 或任意错误消息。
+- 正常通话产生的 user/assistant turn 仍按原产品语义进入 [`turns`](#table-turns) 和 [`candidates`](#table-candidates)，观测表不复制正文。
+- 测试数据当前不配置自动 TTL，用户通话结束后仍可在 `/realtime-lab` 按 observation 回看。“无 TTL”只适用于内容无关的观测数据，不放宽上述禁入规则。
+- 四张表都启用并强制 PostgreSQL RLS：普通请求依赖 `app.current_user_id` 且只能读写自己 `user_id` 的行；只有显式 `system` 上下文可跨用户执行后台操作。
+
 ### 5. 数据域分组
 
 - 共享用户核心域
@@ -213,6 +227,11 @@ sequenceDiagram
   - [`turns`](#table-turns)
   - [`candidates`](#table-candidates)
   - [`saved_items`](#table-saved_items)
+- Realtime 通话观测域
+  - [`realtime_call_sessions`](#table-realtime_call_sessions)
+  - [`realtime_call_events`](#table-realtime_call_events)
+  - [`realtime_turn_metrics`](#table-realtime_turn_metrics)
+  - [`realtime_webrtc_stats_samples`](#table-realtime_webrtc_stats_samples)
 - 成长系统域
   - [`growth_user_stats`](#table-growth_user_stats)
   - [`growth_daily_stats`](#table-growth_daily_stats)
@@ -224,6 +243,9 @@ sequenceDiagram
   - [`payment_webhook_events`](#table-payment_webhook_events)
   - [`payment_orders`](#table-payment_orders)
   - [`user_access_passes`](#table-user_access_passes)
+- 评测域
+  - [`eval_runs`](#table-eval_runs)
+  - [`eval_results`](#table-eval_results)
 - 基础设施域
   - [`alembic_version`](#table-alembic_version)
 
@@ -598,6 +620,148 @@ sequenceDiagram
 | `source_meta` | 附加来源上下文。 | 额外补充生成来源信息。 |
 | `created_at` | 收藏时间。 | 收藏页分页排序。 |
 
+### Realtime 通话观测域
+
+该数据域的共同约束：
+
+- 四张表均开启 `ENABLE ROW LEVEL SECURITY` 与 `FORCE ROW LEVEL SECURITY`，RLS policy 以 `user_id = app.current_user_id` 隔离用户，显式 `system` 上下文例外。
+- 子表都通过 `(observation_id, user_id)` 复合外键指向会话表，避免跨用户挂接观测数据；删除 observation 时级联删除子表。
+- 不配置自动 TTL，数据用于用户回看和后续性能优化。
+- 严禁原始音频、完整或部分转写、字幕正文、prompt/LLM/TTS 文本、SDP、IP/地址/URL、设备标识和原始 User-Agent 进入任何字段或 JSON。
+
+#### [realtime_call_sessions](#table-realtime_call_sessions)
+
+- 表职责
+  - 保存一次 realtime 通话尝试的观测信封、运行时绑定、终态和内容无关的汇总指标。
+- 表协作
+  - 浏览器先通过 telemetry API 创建 observation，然后把 `observation_id` 传给 `/v1/realtime/session`；后端校验 user/chat/character 上下文后绑定唯一 `rtc_session_id`。
+  - `/realtime-lab` 从这张表分页读取测试记录，再按 `observation_id` 拉取三张子表。
+  - `(user_id, started_at, observation_id)` 与 `(user_id, mode, started_at, observation_id)` 支撑列表/cursor 分页；`chat_id`、`character_id`、`ended_at` 各有定位索引；`status='failed'` 另有 `(user_id, started_at)` 部分索引。
+- 当前地位
+  - Realtime 可观测根表；不是 chat/turn 内容真相源。
+
+| 字段 | 业务语义 | 典型读写场景 |
+| --- | --- | --- |
+| `observation_id` | 一次通话观测的 UUID 主键，也是 Lab 诊断编号。 | 创建观测、绑定 WebRTC session、查询详情。 |
+| `user_id` | 观测归属用户，也是 RLS 隔离键。 | 列表/详情查询、子表复合外键。 |
+| `chat_id` | chat 模式下关联的会话；chat 删除时置空以保留观测记录。 | 创建 chat 观测、按会话定位。 |
+| `character_id` | chat 模式下关联的角色；角色删除时置空。 | 校验 session 上下文、按角色定位。 |
+| `rtc_session_id` | 实际 aiortc 运行时会话 ID，格式为 `rt_*`，全局唯一；negotiation 前可为空。 | 将 HTTP observation 与进程内 runtime 关联。 |
+| `mode` | 观测模式：`chat` 或 `lab`。 | 列表筛选、区分正式聊天与隔离实验。 |
+| `scenario` | 固定测试场景：`normal/slow_speaker/barge_in/network_switch/mic_toggle/background_tab`。 | Lab 场景选择与同类测试比较。 |
+| `experiment_tag` | 可选安全 slug 实验标签，不允许自由文本。 | 对比特定配置批次。 |
+| `client_build` / `server_build` | 受格式约束的前后端构建标识。 | 回归定位和版本对比。 |
+| `browser_name` / `browser_version` | 归一化浏览器枚举和受控版本；不保存原始 User-Agent。 | 实机兼容性分组。 |
+| `os_name` / `os_version` | 归一化操作系统枚举和受控版本。 | Windows/macOS/iOS/Android 等环境比较。 |
+| `status` | 会话观测生命周期：`starting/connected/completed/failed/cancelled`。首个 `completed/failed/cancelled` 终态获胜，晚到的不同终态不会覆盖它。 | 建连成功、挂断、失败定类。 |
+| `failure_stage` | 失败所在受控阶段：signaling、ICE、media、STT、LLM、TTS、playout、persistence、client 或 unknown。 | `status=failed` 时快速分类。 |
+| `error_code` | 固定安全错误码 slug，不保存任意错误消息。 | Lab 展示和失败聚合。 |
+| `started_at` / `connected_at` / `ended_at` | 服务端墙钟上的开始、建连和结束时间。 | 列表排序、会话生命周期展示。 |
+| `duration_ms` | 客户端在本地 monotonic clock 域内计算的会话总时长。 | 终态 PATCH 和 Lab 摘要。 |
+| `turn_count` / `interruption_count` | 已观测 turn 数与已确认打断数。 | 单会话统计。 |
+| `safe_config` | 白名单配置 JSON，仅含 stats 间隔、ICE policy、VAD/endpoint/interruption/playout 毫秒阈值和音频帧长。 | 对比配置与结果，禁止 secret/自由文本。 |
+| `summary` | 白名单会话聚合 JSON，如 TTFA、打断停止、RTT、丢包、jitter buffer、concealed ratio 和丢弃事件数。 | Lab 列表与指标卡片。 |
+| `created_at` / `updated_at` | observation 创建和最后更新时间。 | 分页、并发更新审计。 |
+
+#### [realtime_call_events](#table-realtime_call_events)
+
+- 表职责
+  - 保存客户端或服务端的低频、内容无关时间线事件。
+- 表协作
+  - `(observation_id, source, seq)` 唯一，允许同一批次安全重试并返回 duplicate count。
+  - Lab 将 client/server 分成独立泳道，因为两侧 `occurred_offset_ms` 不共享时钟原点。
+  - `(observation_id, occurred_offset_ms, id)` 支撑单 observation 时间线；`received_at` 索引用于接收时间排序和跨泳道粗略对齐。
+- 当前地位
+  - 诊断阶段顺序的时间线，不是通用日志表。
+
+| 字段 | 业务语义 | 典型读写场景 |
+| --- | --- | --- |
+| `id` | 服务端自增事件主键。 | 稳定排序和详情响应。 |
+| `observation_id` / `user_id` | 事件所属 observation 和 RLS 用户。 | 复合外键、会话时间线查询。 |
+| `source` | 时钟与事件来源：`client` 或 `server`。 | Lab 分泳道展示。 |
+| `seq` | 在同一 observation/source 内单调递增的幂等序号。 | 批量上报去重。 |
+| `event_type` | schema 固定白名单中的事件名，不接受白名单外的任意 slug。 | `session.connected`、`speech_start`、`state_transition` 等节点。 |
+| `stage` | 受控阶段，覆盖 session/signaling/ICE/media/VAD/endpointing/STT/LLM/TTS/persistence/playout/server RTP source/server playout queue/interruption/state machine/client/unknown。 | 按管线阶段定位。 |
+| `reason_code` | 可选的 schema 固定原因码，不接受白名单外的任意 slug，也不保存错误消息。 | 状态转移、失败与取消原因。 |
+| `occurred_offset_ms` | 事件在该 `source` 本地 monotonic clock 域内相对会话开始的偏移。 | 同一泳道内延迟差分。 |
+| `received_at` | 数据库接收事件的墙钟时间，只用于跨泳道粗略对齐。 | Lab 显示、接收排序。 |
+| `payload` | 严格白名单的标量 JSON，只允许数值、布尔和受控枚举。 | 保存 latency、queue depth、generation ID、state 等内容无关指标。 |
+
+#### [realtime_turn_metrics](#table-realtime_turn_metrics)
+
+- 表职责
+  - 以 turn/generation 为单位保存阶段延迟、打断结果、播放队列和 pacer 计数。
+- 表协作
+  - `(observation_id, turn_seq)` 和 `(observation_id, generation_id)` 各自唯一；客户端首个非静音/打断估计与服务端 pipeline/pacer 指标可幂等 upsert 到同一行。
+  - `(user_id, created_at)` 索引支持按用户回溯 turn 指标。
+- 当前地位
+  - 语音交互优化的 turn 级核心指标表，只保存字符/单词数而不保存输入输出文本。
+
+| 字段 | 业务语义 | 典型读写场景 |
+| --- | --- | --- |
+| `id` | 服务端自增主键。 | 详情响应和稳定排序。 |
+| `observation_id` / `user_id` | turn 指标所属 observation 和 RLS 用户。 | 复合外键与详情查询。 |
+| `turn_seq` | observation 内的 turn 序号。 | 一次通话的 turn 顺序。 |
+| `generation_id` | 后端 generation fencing 的非负整数 ID。 | 关联服务端事件、防止旧 generation 回写。 |
+| `outcome` | `completed/interrupted/failed/cancelled` 之一。 | 区分正常播放、打断和失败 turn。 |
+| `failure_stage` / `error_code` | 失败阶段和固定安全错误码，不保存错误正文。 | turn 失败定类。 |
+| `speech_duration_ms` | 已确认用户 utterance 的语音时长。 | 区分短噪声、普通语句和慢速说话。 |
+| `endpointing_latency_ms` | 同一服务端时钟域中，VAD speech stop 到 end-of-turn 确认的延迟。 | 调整慢语者 endpointing。 |
+| `stt_first_partial_latency_ms` / `stt_final_latency_ms` | STT 首个 partial 与 final 的阶段延迟。 | 分解 STT 响应成本。 |
+| `llm_ttft_ms` | LLM request 到首 token 的同时钟域延迟。 | 模型首 token 性能。 |
+| `first_speakable_chunk_latency_ms` | end-of-turn 确认到首个可安全送 TTS 语句块的延迟。 | 量化 sentence/clause aggregation 等待。 |
+| `tts_ttfb_ms` | 同一服务端 monotonic 时钟域内，`tts_request_start` 到 `tts_first_audio` 的延迟。 | 语音网关首包性能。 |
+| `first_audio_enqueued_latency_ms` | generation 开始到首个音频写入 pacer 的服务端延迟。 | 区分 TTS 产出与队列写入。 |
+| `server_first_audio_read_latency_ms` | generation 开始到 WebRTC RTP source 首次读出该 generation 音频的服务端延迟。 | 定位服务端 playout source 等待。 |
+| `client_first_audio_played_latency_ms` | 浏览器在远端 MediaStream 检测到首个非静音能量的 playout 估计；不证明操作系统扬声器已实际出声。 | 客户端首个可闻音频近似值。 |
+| `ttfa_ms` | 客户端同一 monotonic 时钟域内，收到服务端 `input_audio_buffer.speech_stopped` 到远端首个非静音能量的时间。 | 用户体感首音频延迟。 |
+| `barge_in_stop_latency_ms` | 客户端同一时钟域内，打断 candidate 到服务端确认旧音频停止且远端能量降下的延迟估计。 | 打断体感优化。 |
+| `playout_queue_peak_ms` / `playout_queue_final_ms` | 该 generation 的 pacer 队列峰值和最终深度。 | 监测音频积压和排空。 |
+| `server_playout_drained_latency_ms` | generation 开始到服务端 RTP source 完成排空的延迟。 | 判断 response 何时在服务端真正播完。 |
+| `pacer_underrun_count` | 读音频时队列无可用音频的次数。 | 诊断 TTS 断供或节奏不稳。 |
+| `pacer_partial_pad_count` | 不足整帧时使用静音 pad 的次数。 | 诊断 chunk 对齐。 |
+| `pacer_frames_read` / `pacer_silence_frames` | RTP source 读取的总帧数与其中静音帧数。 | 分析输出节奏与空转。 |
+| `pacer_rejected_write_count` | generation fencing 拒绝旧 generation 音频写入的次数。 | 验证打断后不会重放旧音频。 |
+| `pacer_fadeout_count` | 对该 generation 执行 fadeout 的次数。 | 打断尾音与重复 fade 诊断。 |
+| `input_char_count` / `input_word_count` | 用户输入的字符/单词数，不包含转写正文。 | 按 utterance 规模分组。 |
+| `output_char_count` / `output_word_count` | assistant 输出的字符/单词数，不包含 LLM/TTS 正文。 | 按回复长度分析延迟。 |
+| `created_at` / `updated_at` | turn 指标首次写入和最后 upsert 时间。 | 客户端/服务端分阶段补齐指标。 |
+
+#### [realtime_webrtc_stats_samples](#table-realtime_webrtc_stats_samples)
+
+- 表职责
+  - 保存经过归一化、去地址化的浏览器 `RTCPeerConnection.getStats()` 样本。
+- 表协作
+  - 客户端默认 1Hz 采样，`(observation_id, sample_seq)` 唯一以支持批量重试。
+  - 只保存 candidate type/protocol/address family，不保存 candidate IP、hostname、port 或 URL。
+  - `(observation_id, sampled_offset_ms, id)` 支撑单 observation 样本时间线；`received_at` 索引用于按服务端接收时间回溯。
+- 当前地位
+  - 网络、jitter buffer、丢包、concealment 和 DataChannel 排队的生产级诊断数据。
+
+| 字段 | 业务语义 | 典型读写场景 |
+| --- | --- | --- |
+| `id` | 服务端自增样本主键。 | 详情响应和稳定排序。 |
+| `observation_id` / `user_id` | 样本所属 observation 和 RLS 用户。 | 复合外键与会话样本查询。 |
+| `sample_seq` | observation 内单调递增的幂等样本序号。 | 批量上报去重。 |
+| `sampled_offset_ms` | 浏览器 monotonic clock 域内的采样偏移。 | 客户端时间线排序。 |
+| `connection_state` / `ice_connection_state` / `data_channel_state` | 归一化的 PeerConnection、ICE 和 DataChannel 状态。 | 区分 signaling 成功与媒体/控制面实际就绪。 |
+| `local_candidate_type` / `remote_candidate_type` | `host/srflx/prflx/relay/unknown` 之一，不包含地址。 | TURN 覆盖和 candidate pair 类型分析。 |
+| `candidate_protocol` / `address_family` | 受控的 UDP/TCP/TLS 与 IPv4/IPv6 枚举，不包含具体网络地址。 | 传输路径分组。 |
+| `rtt_ms` | selected candidate pair 优先的当前 RTT 毫秒值。 | 网络往返延迟趋势。 |
+| `inbound_jitter_ms` / `packet_loss_ratio` | 服务端到浏览器下行音频的 jitter 和区间丢包比。 | 下行媒体质量诊断。 |
+| `remote_inbound_fraction_lost` / `remote_inbound_jitter_ms` / `remote_inbound_rtt_ms` | 来自 `remote-inbound-rtp` 的上行麦克风流丢包、jitter 和 RTT 报告。 | 浏览器到服务端的上行质量诊断。 |
+| `remote_inbound_packets_lost_delta` | 上行远端报告的区间丢包数。 | 上行丢包趋势与 counter reset 判断。 |
+| `inbound_packets_received_delta` / `inbound_packets_lost_delta` / `inbound_bytes_received_delta` | 下行 RTP 自上个样本以来的收包、丢包和字节增量。 | 区间丢包比、流量与断流诊断。 |
+| `outbound_packets_sent_delta` / `outbound_bytes_sent_delta` | 上行 RTP 自上个样本以来的发包和字节增量。 | 麦克风上行是否持续。 |
+| `jitter_buffer_delay_ms` | 用 `delta(jitterBufferDelay) / delta(jitterBufferEmittedCount)` 计算的区间平均 jitter buffer 延迟。 | 诊断“包到了但播放仍延迟”。 |
+| `concealed_ratio` / `concealed_samples_delta` / `silent_concealed_samples_delta` | 当前区间解码器隐藏的样本比例、总隐藏样本增量和静音隐藏样本增量。 | 诊断丢包补偿和听感断裂风险。 |
+| `audio_level` | 归一化入站音频能量 `0..1`，不包含音频样本。 | 首个非静音和远端是否有声的诊断。 |
+| `codec_mime_type` / `codec_clock_rate` | 受控音频 codec 类型与时钟频率。 | 确认 Opus/PCMU/PCMA 协商结果。 |
+| `control_queue_size` / `data_channel_buffered_amount` | 前端控制事件 FIFO 长度与 DataChannel 待发字节数。 | 控制面积压诊断。 |
+| `counter_reset` | 是否检测到 WebRTC 累计计数器回退；为 true 的样本不用旧 baseline 计算 delta。 | track/transport 变化后重置基线。 |
+| `available_outgoing_bitrate_bps` | selected candidate pair 报告的可用上行码率。 | 网络容量趋势。 |
+| `received_at` | 数据库接收样本的墙钟时间。 | 详情展示和粗略对齐。 |
+
 ### 成长系统域
 
 #### [growth_user_stats](#table-growth_user_stats)
@@ -839,6 +1003,85 @@ sequenceDiagram
 | `created_at` | 创建时间。 | 审计。 |
 | `updated_at` | 最后更新时间。 | 状态变化审计。 |
 
+### 评测域
+
+该数据域的共同约束：
+
+- 两张表均开启 `ENABLE ROW LEVEL SECURITY` 与 `FORCE ROW LEVEL SECURITY`，policy 为 system-only：只有 `app.current_user_id = 'system'` 的会话可读写；普通用户上下文读写均为空/被拒绝。
+- 仅供进程外评测 CLI（phase18）使用：离线 chat replay、Judge 评分、聚合指标与结果持久化；在线 API 与 FastAPI lifespan 不读不写。
+- `content_mode=none` 时数据库不落任何 case 原文（`input_text`/`actual_output_text` 必须为 NULL）；`redacted` 只允许已批准脱敏 sidecar 文本；`full` 仅限 synthetic/人工批准的非生产样本，生产环境拒绝。
+- 评测只引用业务事实（`source_candidate_id`/`character_id`），外键均为 `ON DELETE SET NULL`，不阻塞业务数据清理；删除 run 时结果行级联删除。
+
+#### [eval_runs](#table-eval_runs)
+
+- 表职责
+  - 保存一次评测运行的完整契约快照：数据集身份/指纹、锁定的 Judge route、rubric/prompt 版本与 hash、内容模式、运行状态与计数。
+- 表协作
+  - CLI 启动前解析并锁定唯一 Judge route（fail-closed），随后以 `status=running` 建 run；结束时写入 `summary_json` 与终态。
+  - `run_kind='case'` 处理数据集 case 并关联 `eval_results`；`run_kind='aggregate'` 只写 `summary_json`/报告，case 计数恒为 0，反之 case run 的 metric 计数恒为 0。
+  - `(status, created_at DESC)` 支撑状态巡检与保留期清理；`(dataset_fingerprint, effective_judge_provider, effective_judge_model, rubric_version, created_at DESC)` 支撑同数据集跨 run 比较。
+- 当前地位
+  - 评测可复现性的根记录；相同配置允许重复建 run 以观察模型随机性，`--resume` 才复用同一 run。
+
+| 字段 | 业务语义 | 典型读写场景 |
+| --- | --- | --- |
+| `id` | run 全局主键。 | CLI 创建/恢复/清理。 |
+| `name` | 人类可读运行名。 | CLI 报告与列表。 |
+| `dataset_id` / `dataset_version` / `dataset_fingerprint` | 数据集身份与规范字节指纹；aggregate run 使用规范化 metric/scenario/window/scope identity。 | 复现校验、跨 run 对齐。 |
+| `dataset_path` | 本机路径审计提示，不参与相等比较。 | 排障。 |
+| `runner_version` / `git_revision` | harness 版本与代码版本。 | 版本漂移归因。 |
+| `owner_user_id` | 预留未来受控 UI 属主；CLI 阶段为 NULL。 | 未来 owner policy。 |
+| `run_kind` | `case` 或 `aggregate`，决定计数语义与状态判定。 | 状态机分支。 |
+| `judge_route` | `locked`（case run 必填有效 Judge route）或 `none`（aggregate 不调用 Judge）。 | route 审计。 |
+| `requested_judge_provider` / `requested_judge_model` | CLI 请求的 Judge route。 | 与 effective 对比审计。 |
+| `effective_judge_provider` / `effective_judge_model` | 实际锁定的 Judge route；`judge_route='none'` 时为 NULL。 | 结果归因、比较索引。 |
+| `rubric_version` / `prompt_template_version` / `prompt_hash` | 评分 rubric 与 prompt 模板版本及 SHA-256。 | rubric 漂移检测。 |
+| `content_mode` | `none/redacted/full`，只描述结果持久化策略，不代表 Judge 是否见到文本。 | 隐私边界审计。 |
+| `artifact_dir` | 本地报告目录提示。 | 排障。 |
+| `status` | `running/completed/partial/failed/cancelled/no_data`。 | 状态机与退出码映射。 |
+| `case_count` / `completed_case_count` / `failed_case_count` / `cancelled_case_count` | case run 的分母与各终态计数；aggregate run 恒 0。 | 状态判定与报告。 |
+| `metric_count` / `metric_error_count` / `cancelled_metric_count` | aggregate run 的 metric 计数；case run 恒 0。 | aggregate 状态判定。 |
+| `retention_until` | 保留期限，供清理命令使用。 | prune。 |
+| `seed` / `generation_params` | 生成参数快照；不支持确定性 seed 时必须在 `generation_params` 标记 `determinism=best_effort`。 | 复现审计。 |
+| `selection_json` | 只读生产抽样的 query/window/filter 摘要（不含用户文本/secret）。 | approved source mode 审计。 |
+| `config_json` | 白名单脱敏运行配置。 | 复现审计。 |
+| `summary_json` | 运行级聚合结果（wins/ties/valid 分母、metric 状态、no_data 计数等）。 | 报告与比较。 |
+| `started_at` / `finished_at` / `created_at` | 运行生命周期时间。 | 列表、保留期计算。 |
+
+#### [eval_results](#table-eval_results)
+
+- 表职责
+  - 保存 case run 中每个 case 的一条最新评测结果：结构化分数、规则指标、Judge/生成 route 元数据与安全错误摘要。
+- 表协作
+  - `UNIQUE(run_id, case_id, runner)` + 幂等 upsert：重试只递增 `attempt` 并覆盖最新状态；取消写入不得覆盖 `completed` 行。
+  - `status` 描述 runner 是否完成该 case，`response_status` 描述生成/Judge 响应是否构成有效分数（`judge_inconsistency` 属于后者，不是前者）。
+  - pairwise 结果额外保存 `pairwise_winner`/`swap_consistent` 与两侧生成 route/`variant_ref`；其余 runner 这些列必须为 NULL。
+- 当前地位
+  - 评测结果事实表；aggregate run 不写本表。
+
+| 字段 | 业务语义 | 典型读写场景 |
+| --- | --- | --- |
+| `id` | 结果行主键。 | upsert 定位。 |
+| `run_id` | 所属 run，`ON DELETE CASCADE`。 | run 级联清理。 |
+| `case_id` / `runner` | 数据集 case 身份与 runner 类型；与 `run_id` 组成唯一键。 | 幂等 upsert、resume 校验。 |
+| `source_candidate_id` / `character_id` | 评测引用的业务事实；删除业务行时置 NULL。 | candidate_replay 归因。 |
+| `owner_user_id` | 与 run 一致的属主预留。 | 未来 owner policy。 |
+| `status` | `completed/failed/skipped/no_data/cancelled`。 | run 计数汇总。 |
+| `response_status` | `valid/runner_error/judge_timeout/judge_error/judge_parse_failed/judge_inconsistency/skipped/no_data/cancelled`。 | 有效分母判定。 |
+| `attempt` | 该 case 的累计尝试次数。 | resume 审计。 |
+| `started_at` / `finished_at` / `duration_ms` | case 执行耗时。 | 性能观察。 |
+| `content_mode` | 与所属 run 一致的内容模式。 | 隐私边界审计。 |
+| `input_ref` / `output_ref` | opaque case/source ID 或指纹，不是路径/URL；`none` 模式下仍必填以便审计。 | 溯源。 |
+| `input_text` / `actual_output_text` | 仅 `redacted/full` 写入；`none` 时必须为 NULL（数据库 check 强制）。 | 脱敏回看。 |
+| `dimension_scores_json` / `rule_metrics_json` | 五维/OOC 分数与规则指标（repetition、memory trace、swap 摘要等）。 | 聚合与报告。 |
+| `judge_rationale` | 经 allowlist sanitizer 的评分理由（≤4000 字符）；`none` 模式为 NULL 或不可逆 hash。 | 人工复核。 |
+| `judge_provider` / `judge_model` / `rubric_version` / `prompt_hash` | 该 result 实际使用的 Judge 与 rubric 身份。 | 漂移审计。 |
+| `generation_provider` / `generation_model` / `generation_model_type` | replay 生成的实际 route（chat_replay/pairwise_replay 必填）。 | 质量归因。 |
+| `pairwise_winner` / `swap_consistent` | 规范化 winner（`a/b/tie`）与两次 order-swap 是否一致。 | Pairwise Win Rate 聚合。 |
+| `variant_a_ref` / `variant_b_ref` / `variant_a_generation_provider` / `variant_a_generation_model` / `variant_a_generation_model_type` / `variant_b_generation_provider` / `variant_b_generation_model` / `variant_b_generation_model_type` | pairwise 两侧匿名 ref 与生成 route 元数据（仅 pairwise_replay）。 | 分桶比较。 |
+| `error_code` / `error_detail_safe` | 复用现有错误码与固定模板安全摘要（≤1000 字符），不保存异常原文。 | 失败分类。 |
+| `created_at` | 行创建时间。 | 索引排序。 |
+
 ### 基础设施域
 
 #### [alembic_version](#table-alembic_version)
@@ -863,6 +1106,7 @@ sequenceDiagram
   - 成长看 [`growth_daily_stats`](#table-growth_daily_stats) 与 [`growth_character_stats`](#table-growth_character_stats)
   - 订阅与一次性权益看 [`users`](#table-users)、[`subscription_webhook_events`](#table-subscription_webhook_events)、[`payment_orders`](#table-payment_orders) 与 [`user_access_passes`](#table-user_access_passes)
   - 音色看 [`voice_profiles`](#table-voice_profiles) 与 [`characters`](#table-characters)
+  - realtime 通话诊断看 [`realtime_call_sessions`](#table-realtime_call_sessions)、[`realtime_call_events`](#table-realtime_call_events)、[`realtime_turn_metrics`](#table-realtime_turn_metrics) 与 [`realtime_webrtc_stats_samples`](#table-realtime_webrtc_stats_samples)
 - 如果你想核对真实结构：
   - 直接往下看“实时结构快照”部分，它来自当前真实数据库。
 
@@ -877,6 +1121,8 @@ sequenceDiagram
 | [`candidates`](#table-candidates) | BASE TABLE |
 | [`characters`](#table-characters) | BASE TABLE |
 | [`chats`](#table-chats) | BASE TABLE |
+| [`eval_results`](#table-eval_results) | BASE TABLE |
+| [`eval_runs`](#table-eval_runs) | BASE TABLE |
 | [`growth_character_daily_stats`](#table-growth_character_daily_stats) | BASE TABLE |
 | [`growth_character_stats`](#table-growth_character_stats) | BASE TABLE |
 | [`growth_daily_stats`](#table-growth_daily_stats) | BASE TABLE |
@@ -887,6 +1133,10 @@ sequenceDiagram
 | [`payment_webhook_events`](#table-payment_webhook_events) | BASE TABLE |
 | [`proactive_character_preferences`](#table-proactive_character_preferences) | BASE TABLE |
 | [`proactive_message_dispatches`](#table-proactive_message_dispatches) | BASE TABLE |
+| [`realtime_call_events`](#table-realtime_call_events) | BASE TABLE |
+| [`realtime_call_sessions`](#table-realtime_call_sessions) | BASE TABLE |
+| [`realtime_turn_metrics`](#table-realtime_turn_metrics) | BASE TABLE |
+| [`realtime_webrtc_stats_samples`](#table-realtime_webrtc_stats_samples) | BASE TABLE |
 | [`saved_items`](#table-saved_items) | BASE TABLE |
 | [`session`](#table-session) | BASE TABLE |
 | [`subscription_webhook_events`](#table-subscription_webhook_events) | BASE TABLE |
@@ -1019,6 +1269,8 @@ sequenceDiagram
 
 ### 被其他表引用
 
+- `public.eval_results` 通过 `eval_results_source_candidate_fkey` 引用本表
+  定义: `FOREIGN KEY (source_candidate_id) REFERENCES candidates(id) ON DELETE SET NULL`
 - `public.turns` 通过 `fk_turns_primary_candidate_belongs` 引用本表
   定义: `FOREIGN KEY (id, primary_candidate_id) REFERENCES candidates(turn_id, id)`
 
@@ -1095,6 +1347,8 @@ sequenceDiagram
 
 - `public.chats` 通过 `chats_character_id_fkey` 引用本表
   定义: `FOREIGN KEY (character_id) REFERENCES characters(id)`
+- `public.eval_results` 通过 `eval_results_character_fkey` 引用本表
+  定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE SET NULL`
 - `public.growth_character_daily_stats` 通过 `growth_character_daily_stats_character_id_fkey` 引用本表
   定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE`
 - `public.growth_character_stats` 通过 `growth_character_stats_character_id_fkey` 引用本表
@@ -1103,6 +1357,8 @@ sequenceDiagram
   定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE`
 - `public.proactive_message_dispatches` 通过 `proactive_message_dispatches_selected_character_id_fkey` 引用本表
   定义: `FOREIGN KEY (selected_character_id) REFERENCES characters(id) ON DELETE SET NULL`
+- `public.realtime_call_sessions` 通过 `realtime_call_sessions_character_id_fkey` 引用本表
+  定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE SET NULL`
 - `public.turns` 通过 `turns_author_character_id_fkey` 引用本表
   定义: `FOREIGN KEY (author_character_id) REFERENCES characters(id)`
 
@@ -1173,6 +1429,8 @@ sequenceDiagram
 
 ### 被其他表引用
 
+- `public.realtime_call_sessions` 通过 `realtime_call_sessions_chat_id_fkey` 引用本表
+  定义: `FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE SET NULL`
 - `public.turns` 通过 `turns_chat_id_fkey` 引用本表
   定义: `FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE`
 
@@ -1196,6 +1454,238 @@ sequenceDiagram
 - `idx_chats_user_state_last`
   大小: `16 kB`
   定义: `CREATE INDEX idx_chats_user_state_last ON public.chats USING btree (user_id, state, last_turn_at DESC NULLS LAST)`
+
+## Table `eval_results`
+
+<a id="table-eval_results"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `已启用`（强制执行）
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `uuid` | NOT NULL | - | - | - |
+| `run_id` | `uuid` | NOT NULL | - | - | - |
+| `case_id` | `character varying(120)` | NOT NULL | - | - | - |
+| `runner` | `character varying(40)` | NOT NULL | - | - | - |
+| `source_candidate_id` | `uuid` | NULL | - | - | - |
+| `character_id` | `uuid` | NULL | - | - | - |
+| `owner_user_id` | `uuid` | NULL | - | - | - |
+| `status` | `character varying(16)` | NOT NULL | - | - | - |
+| `response_status` | `character varying(24)` | NOT NULL | - | - | - |
+| `attempt` | `integer` | NOT NULL | 1 | - | - |
+| `started_at` | `timestamp with time zone` | NULL | - | - | - |
+| `finished_at` | `timestamp with time zone` | NULL | - | - | - |
+| `duration_ms` | `integer` | NULL | - | - | - |
+| `content_mode` | `character varying(12)` | NOT NULL | - | - | - |
+| `input_ref` | `character varying(200)` | NOT NULL | - | - | - |
+| `output_ref` | `character varying(200)` | NOT NULL | - | - | - |
+| `input_text` | `text` | NULL | - | - | - |
+| `actual_output_text` | `text` | NULL | - | - | - |
+| `dimension_scores_json` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+| `rule_metrics_json` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+| `judge_rationale` | `text` | NULL | - | - | - |
+| `judge_provider` | `character varying(40)` | NULL | - | - | - |
+| `judge_model` | `character varying(120)` | NULL | - | - | - |
+| `rubric_version` | `character varying(80)` | NULL | - | - | - |
+| `prompt_hash` | `character varying(64)` | NULL | - | - | - |
+| `generation_provider` | `character varying(40)` | NULL | - | - | - |
+| `generation_model` | `character varying(120)` | NULL | - | - | - |
+| `generation_model_type` | `character varying(120)` | NULL | - | - | - |
+| `pairwise_winner` | `character varying(4)` | NULL | - | - | - |
+| `swap_consistent` | `boolean` | NULL | - | - | - |
+| `variant_a_ref` | `character varying(200)` | NULL | - | - | - |
+| `variant_b_ref` | `character varying(200)` | NULL | - | - | - |
+| `variant_a_generation_provider` | `character varying(40)` | NULL | - | - | - |
+| `variant_a_generation_model` | `character varying(120)` | NULL | - | - | - |
+| `variant_a_generation_model_type` | `character varying(120)` | NULL | - | - | - |
+| `variant_b_generation_provider` | `character varying(40)` | NULL | - | - | - |
+| `variant_b_generation_model` | `character varying(120)` | NULL | - | - | - |
+| `variant_b_generation_model_type` | `character varying(120)` | NULL | - | - | - |
+| `error_code` | `character varying(64)` | NULL | - | - | - |
+| `error_detail_safe` | `character varying(1000)` | NULL | - | - | - |
+| `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+
+### 约束
+
+- `eval_results_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (id)`
+- `eval_results_run_case_runner_uniq` [UNIQUE]
+  定义: `UNIQUE (run_id, case_id, runner)`
+- `eval_results_character_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE SET NULL`
+- `eval_results_run_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (run_id) REFERENCES eval_runs(id) ON DELETE CASCADE`
+- `eval_results_source_candidate_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (source_candidate_id) REFERENCES candidates(id) ON DELETE SET NULL`
+- `eval_results_attempt_check` [CHECK]
+  定义: `CHECK (attempt >= 1)`
+- `eval_results_content_mode_check` [CHECK]
+  定义: `CHECK (content_mode::text = ANY (ARRAY['none'::character varying, 'redacted'::character varying, 'full'::character varying]::text[]))`
+- `eval_results_duration_check` [CHECK]
+  定义: `CHECK (duration_ms IS NULL OR duration_ms >= 0)`
+- `eval_results_error_detail_len_check` [CHECK]
+  定义: `CHECK (char_length(error_detail_safe::text) <= 1000)`
+- `eval_results_json_object_check` [CHECK]
+  定义: `CHECK (jsonb_typeof(dimension_scores_json) = 'object'::text AND jsonb_typeof(rule_metrics_json) = 'object'::text)`
+- `eval_results_none_mode_no_text_check` [CHECK]
+  定义: `CHECK (content_mode::text <> 'none'::text OR input_text IS NULL AND actual_output_text IS NULL)`
+- `eval_results_pairwise_fields_runner_check` [CHECK]
+  定义: `CHECK (runner::text = 'pairwise_replay'::text OR pairwise_winner IS NULL AND swap_consistent IS NULL AND variant_a_ref IS NULL AND variant_b_ref IS NULL AND variant_a_generation_provider IS NULL AND variant_b_generation_provider IS NULL)`
+- `eval_results_pairwise_winner_check` [CHECK]
+  定义: `CHECK (pairwise_winner IS NULL OR (pairwise_winner::text = ANY (ARRAY['a'::character varying, 'b'::character varying, 'tie'::character varying]::text[])))`
+- `eval_results_rationale_len_check` [CHECK]
+  定义: `CHECK (char_length(judge_rationale) <= 4000)`
+- `eval_results_response_status_check` [CHECK]
+  定义: `CHECK (response_status::text = ANY (ARRAY['valid'::character varying, 'runner_error'::character varying, 'judge_timeout'::character varying, 'judge_error'::character varying, 'judge_parse_failed'::character varying, 'judge_inconsistency'::character varying, 'skipped'::character varying, 'no_data'::character varying, 'cancelled'::character varying]::text[]))`
+- `eval_results_runner_check` [CHECK]
+  定义: `CHECK (runner::text = ANY (ARRAY['chat_replay'::character varying, 'candidate_replay'::character varying, 'pairwise_replay'::character varying, 'realtime_functional'::character varying]::text[]))`
+- `eval_results_status_check` [CHECK]
+  定义: `CHECK (status::text = ANY (ARRAY['completed'::character varying, 'failed'::character varying, 'skipped'::character varying, 'no_data'::character varying, 'cancelled'::character varying]::text[]))`
+
+### 外键出站引用
+
+- `eval_results_character_fkey` -> `public.characters`
+  定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE SET NULL`
+- `eval_results_run_fkey` -> `public.eval_runs`
+  定义: `FOREIGN KEY (run_id) REFERENCES eval_runs(id) ON DELETE CASCADE`
+- `eval_results_source_candidate_fkey` -> `public.candidates`
+  定义: `FOREIGN KEY (source_candidate_id) REFERENCES candidates(id) ON DELETE SET NULL`
+
+### 被其他表引用
+
+- 无
+
+### 索引
+
+- `eval_results_character_created_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX eval_results_character_created_idx ON public.eval_results USING btree (character_id, created_at DESC)`
+- `eval_results_pkey` [PRIMARY / UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX eval_results_pkey ON public.eval_results USING btree (id)`
+- `eval_results_run_case_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX eval_results_run_case_idx ON public.eval_results USING btree (run_id, case_id)`
+- `eval_results_run_case_runner_uniq` [UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX eval_results_run_case_runner_uniq ON public.eval_results USING btree (run_id, case_id, runner)`
+- `eval_results_status_created_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX eval_results_status_created_idx ON public.eval_results USING btree (status, created_at DESC)`
+
+## Table `eval_runs`
+
+<a id="table-eval_runs"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `已启用`（强制执行）
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `uuid` | NOT NULL | - | - | - |
+| `name` | `character varying(200)` | NOT NULL | - | - | - |
+| `dataset_id` | `character varying(120)` | NOT NULL | - | - | - |
+| `dataset_version` | `character varying(40)` | NOT NULL | - | - | - |
+| `dataset_fingerprint` | `character varying(64)` | NOT NULL | - | - | - |
+| `dataset_path` | `text` | NULL | - | - | - |
+| `runner_version` | `character varying(80)` | NOT NULL | - | - | - |
+| `git_revision` | `character varying(64)` | NULL | - | - | - |
+| `owner_user_id` | `uuid` | NULL | - | - | - |
+| `run_kind` | `character varying(10)` | NOT NULL | - | - | - |
+| `judge_route` | `character varying(8)` | NOT NULL | - | - | - |
+| `requested_judge_provider` | `character varying(40)` | NULL | - | - | - |
+| `requested_judge_model` | `character varying(120)` | NULL | - | - | - |
+| `effective_judge_provider` | `character varying(40)` | NULL | - | - | - |
+| `effective_judge_model` | `character varying(120)` | NULL | - | - | - |
+| `rubric_version` | `character varying(80)` | NULL | - | - | - |
+| `prompt_template_version` | `character varying(80)` | NULL | - | - | - |
+| `prompt_hash` | `character varying(64)` | NULL | - | - | - |
+| `content_mode` | `character varying(12)` | NOT NULL | - | - | - |
+| `artifact_dir` | `text` | NULL | - | - | - |
+| `status` | `character varying(16)` | NOT NULL | - | - | - |
+| `case_count` | `integer` | NOT NULL | 0 | - | - |
+| `completed_case_count` | `integer` | NOT NULL | 0 | - | - |
+| `failed_case_count` | `integer` | NOT NULL | 0 | - | - |
+| `cancelled_case_count` | `integer` | NOT NULL | 0 | - | - |
+| `metric_count` | `integer` | NOT NULL | 0 | - | - |
+| `metric_error_count` | `integer` | NOT NULL | 0 | - | - |
+| `cancelled_metric_count` | `integer` | NOT NULL | 0 | - | - |
+| `retention_until` | `timestamp with time zone` | NULL | - | - | - |
+| `seed` | `bigint` | NULL | - | - | - |
+| `generation_params` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+| `selection_json` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+| `config_json` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+| `summary_json` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+| `started_at` | `timestamp with time zone` | NULL | - | - | - |
+| `finished_at` | `timestamp with time zone` | NULL | - | - | - |
+| `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+
+### 约束
+
+- `eval_runs_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (id)`
+- `eval_runs_aggregate_no_case_counts_check` [CHECK]
+  定义: `CHECK (run_kind::text <> 'aggregate'::text OR case_count = 0 AND completed_case_count = 0 AND failed_case_count = 0 AND cancelled_case_count = 0)`
+- `eval_runs_cancelled_case_count_check` [CHECK]
+  定义: `CHECK (cancelled_case_count >= 0)`
+- `eval_runs_cancelled_metric_count_check` [CHECK]
+  定义: `CHECK (cancelled_metric_count >= 0)`
+- `eval_runs_case_count_check` [CHECK]
+  定义: `CHECK (case_count >= 0)`
+- `eval_runs_case_no_metric_counts_check` [CHECK]
+  定义: `CHECK (run_kind::text <> 'case'::text OR metric_count = 0 AND metric_error_count = 0 AND cancelled_metric_count = 0)`
+- `eval_runs_completed_case_count_check` [CHECK]
+  定义: `CHECK (completed_case_count >= 0)`
+- `eval_runs_content_mode_check` [CHECK]
+  定义: `CHECK (content_mode::text = ANY (ARRAY['none'::character varying, 'redacted'::character varying, 'full'::character varying]::text[]))`
+- `eval_runs_dataset_fingerprint_check` [CHECK]
+  定义: `CHECK (dataset_fingerprint::text ~ '^[0-9a-f]{64}$'::text)`
+- `eval_runs_failed_case_count_check` [CHECK]
+  定义: `CHECK (failed_case_count >= 0)`
+- `eval_runs_json_object_check` [CHECK]
+  定义: `CHECK (jsonb_typeof(selection_json) = 'object'::text AND jsonb_typeof(config_json) = 'object'::text AND jsonb_typeof(summary_json) = 'object'::text AND jsonb_typeof(generation_params) = 'object'::text)`
+- `eval_runs_judge_route_check` [CHECK]
+  定义: `CHECK (judge_route::text = ANY (ARRAY['locked'::character varying, 'none'::character varying]::text[]))`
+- `eval_runs_locked_route_fields_check` [CHECK]
+  定义: `CHECK (judge_route::text <> 'locked'::text OR effective_judge_provider IS NOT NULL AND effective_judge_model IS NOT NULL AND rubric_version IS NOT NULL AND prompt_hash IS NOT NULL)`
+- `eval_runs_metric_count_check` [CHECK]
+  定义: `CHECK (metric_count >= 0)`
+- `eval_runs_metric_error_count_check` [CHECK]
+  定义: `CHECK (metric_error_count >= 0)`
+- `eval_runs_no_route_fields_check` [CHECK]
+  定义: `CHECK (judge_route::text <> 'none'::text OR effective_judge_provider IS NULL AND effective_judge_model IS NULL)`
+- `eval_runs_prompt_hash_check` [CHECK]
+  定义: `CHECK (prompt_hash IS NULL OR prompt_hash::text ~ '^[0-9a-f]{64}$'::text)`
+- `eval_runs_run_kind_check` [CHECK]
+  定义: `CHECK (run_kind::text = ANY (ARRAY['case'::character varying, 'aggregate'::character varying]::text[]))`
+- `eval_runs_status_check` [CHECK]
+  定义: `CHECK (status::text = ANY (ARRAY['running'::character varying, 'completed'::character varying, 'partial'::character varying, 'failed'::character varying, 'cancelled'::character varying, 'no_data'::character varying]::text[]))`
+
+### 外键出站引用
+
+- 无
+
+### 被其他表引用
+
+- `public.eval_results` 通过 `eval_results_run_fkey` 引用本表
+  定义: `FOREIGN KEY (run_id) REFERENCES eval_runs(id) ON DELETE CASCADE`
+
+### 索引
+
+- `eval_runs_compare_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX eval_runs_compare_idx ON public.eval_runs USING btree (dataset_fingerprint, effective_judge_provider, effective_judge_model, rubric_version, created_at DESC)`
+- `eval_runs_pkey` [PRIMARY / UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX eval_runs_pkey ON public.eval_runs USING btree (id)`
+- `eval_runs_status_created_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX eval_runs_status_created_idx ON public.eval_runs USING btree (status, created_at DESC)`
 
 ## Table `growth_character_daily_stats`
 
@@ -1754,6 +2244,408 @@ sequenceDiagram
   大小: `16 kB`
   定义: `CREATE UNIQUE INDEX proactive_message_dispatches_user_slot_uniq ON public.proactive_message_dispatches USING btree (user_id, slot_at)`
 
+## Table `realtime_call_events`
+
+<a id="table-realtime_call_events"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `已启用`（强制执行）
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `bigint` | NOT NULL | - | IDENTITY BY DEFAULT | - |
+| `observation_id` | `uuid` | NOT NULL | - | - | - |
+| `user_id` | `uuid` | NOT NULL | - | - | - |
+| `source` | `character varying(12)` | NOT NULL | - | - | - |
+| `seq` | `bigint` | NOT NULL | - | - | - |
+| `event_type` | `character varying(80)` | NOT NULL | - | - | - |
+| `stage` | `character varying(24)` | NULL | - | - | - |
+| `reason_code` | `character varying(64)` | NULL | - | - | - |
+| `occurred_offset_ms` | `bigint` | NOT NULL | - | - | - |
+| `received_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `payload` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+
+### 约束
+
+- `realtime_call_events_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (id)`
+- `realtime_call_events_session_source_seq_uniq` [UNIQUE]
+  定义: `UNIQUE (observation_id, source, seq)`
+- `realtime_call_events_session_user_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (observation_id, user_id) REFERENCES realtime_call_sessions(observation_id, user_id) ON DELETE CASCADE`
+- `realtime_call_events_event_type_check` [CHECK]
+  定义: `CHECK (event_type::text ~ '^[a-z0-9][a-z0-9._-]{0,63}$'::text)`
+- `realtime_call_events_offset_check` [CHECK]
+  定义: `CHECK (occurred_offset_ms >= 0)`
+- `realtime_call_events_payload_object_check` [CHECK]
+  定义: `CHECK (jsonb_typeof(payload) = 'object'::text)`
+- `realtime_call_events_reason_code_check` [CHECK]
+  定义: `CHECK (reason_code IS NULL OR reason_code::text ~ '^[a-z0-9][a-z0-9._-]{0,63}$'::text)`
+- `realtime_call_events_seq_check` [CHECK]
+  定义: `CHECK (seq >= 0)`
+- `realtime_call_events_source_check` [CHECK]
+  定义: `CHECK (source::text = ANY (ARRAY['client'::character varying, 'server'::character varying]::text[]))`
+- `realtime_call_events_stage_check` [CHECK]
+  定义: `CHECK (stage IS NULL OR (stage::text = ANY (ARRAY['session'::character varying, 'signaling'::character varying, 'ice'::character varying, 'media'::character varying, 'vad'::character varying, 'endpointing'::character varying, 'stt'::character varying, 'llm'::character varying, 'tts'::character varying, 'persistence'::character varying, 'playout'::character varying, 'server_rtp_source'::character varying, 'server_playout_queue'::character varying, 'interruption'::character varying, 'state_machine'::character varying, 'client'::character varying, 'unknown'::character varying]::text[])))`
+
+### 外键出站引用
+
+- `realtime_call_events_session_user_fkey` -> `public.realtime_call_sessions`
+  定义: `FOREIGN KEY (observation_id, user_id) REFERENCES realtime_call_sessions(observation_id, user_id) ON DELETE CASCADE`
+
+### 被其他表引用
+
+- 无
+
+### 索引
+
+- `realtime_call_events_pkey` [PRIMARY / UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX realtime_call_events_pkey ON public.realtime_call_events USING btree (id)`
+- `realtime_call_events_received_at_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_call_events_received_at_idx ON public.realtime_call_events USING btree (received_at)`
+- `realtime_call_events_session_source_seq_uniq` [UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX realtime_call_events_session_source_seq_uniq ON public.realtime_call_events USING btree (observation_id, source, seq)`
+- `realtime_call_events_session_timeline_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_call_events_session_timeline_idx ON public.realtime_call_events USING btree (observation_id, occurred_offset_ms, id)`
+
+## Table `realtime_call_sessions`
+
+<a id="table-realtime_call_sessions"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `已启用`（强制执行）
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `observation_id` | `uuid` | NOT NULL | - | - | - |
+| `user_id` | `uuid` | NOT NULL | - | - | - |
+| `chat_id` | `uuid` | NULL | - | - | - |
+| `character_id` | `uuid` | NULL | - | - | - |
+| `rtc_session_id` | `character varying(64)` | NULL | - | - | - |
+| `mode` | `character varying(16)` | NOT NULL | 'chat'::character varying | - | - |
+| `scenario` | `character varying(32)` | NOT NULL | 'normal'::character varying | - | - |
+| `experiment_tag` | `character varying(64)` | NULL | - | - | - |
+| `client_build` | `character varying(80)` | NULL | - | - | - |
+| `server_build` | `character varying(80)` | NULL | - | - | - |
+| `browser_name` | `character varying(16)` | NOT NULL | 'unknown'::character varying | - | - |
+| `browser_version` | `character varying(32)` | NULL | - | - | - |
+| `os_name` | `character varying(16)` | NOT NULL | 'unknown'::character varying | - | - |
+| `os_version` | `character varying(32)` | NULL | - | - | - |
+| `status` | `character varying(20)` | NOT NULL | 'starting'::character varying | - | - |
+| `failure_stage` | `character varying(24)` | NULL | - | - | - |
+| `error_code` | `character varying(64)` | NULL | - | - | - |
+| `started_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `connected_at` | `timestamp with time zone` | NULL | - | - | - |
+| `ended_at` | `timestamp with time zone` | NULL | - | - | - |
+| `duration_ms` | `bigint` | NULL | - | - | - |
+| `turn_count` | `integer` | NOT NULL | 0 | - | - |
+| `interruption_count` | `integer` | NOT NULL | 0 | - | - |
+| `safe_config` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+| `summary` | `jsonb` | NOT NULL | '{}'::jsonb | - | - |
+| `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `updated_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+
+### 约束
+
+- `realtime_call_sessions_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (observation_id)`
+- `realtime_call_sessions_observation_user_uniq` [UNIQUE]
+  定义: `UNIQUE (observation_id, user_id)`
+- `realtime_call_sessions_rtc_session_uniq` [UNIQUE]
+  定义: `UNIQUE (rtc_session_id)`
+- `realtime_call_sessions_character_id_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE SET NULL`
+- `realtime_call_sessions_chat_id_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE SET NULL`
+- `realtime_call_sessions_user_id_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+- `realtime_call_sessions_browser_name_check` [CHECK]
+  定义: `CHECK (browser_name::text = ANY (ARRAY['chrome'::character varying, 'edge'::character varying, 'firefox'::character varying, 'safari'::character varying, 'other'::character varying, 'unknown'::character varying]::text[]))`
+- `realtime_call_sessions_duration_check` [CHECK]
+  定义: `CHECK (duration_ms IS NULL OR duration_ms >= 0)`
+- `realtime_call_sessions_error_code_check` [CHECK]
+  定义: `CHECK (error_code IS NULL OR error_code::text ~ '^[a-z0-9][a-z0-9._-]{0,63}$'::text)`
+- `realtime_call_sessions_failure_stage_check` [CHECK]
+  定义: `CHECK (failure_stage IS NULL OR (failure_stage::text = ANY (ARRAY['signaling'::character varying, 'ice'::character varying, 'media'::character varying, 'stt'::character varying, 'llm'::character varying, 'tts'::character varying, 'playout'::character varying, 'persistence'::character varying, 'client'::character varying, 'unknown'::character varying]::text[])))`
+- `realtime_call_sessions_interruption_count_check` [CHECK]
+  定义: `CHECK (interruption_count >= 0)`
+- `realtime_call_sessions_mode_check` [CHECK]
+  定义: `CHECK (mode::text = ANY (ARRAY['chat'::character varying, 'lab'::character varying]::text[]))`
+- `realtime_call_sessions_os_name_check` [CHECK]
+  定义: `CHECK (os_name::text = ANY (ARRAY['windows'::character varying, 'macos'::character varying, 'ios'::character varying, 'android'::character varying, 'linux'::character varying, 'chromeos'::character varying, 'other'::character varying, 'unknown'::character varying]::text[]))`
+- `realtime_call_sessions_rtc_session_id_check` [CHECK]
+  定义: `CHECK (rtc_session_id IS NULL OR rtc_session_id::text ~ '^rt_[a-z0-9]+$'::text)`
+- `realtime_call_sessions_safe_config_object_check` [CHECK]
+  定义: `CHECK (jsonb_typeof(safe_config) = 'object'::text)`
+- `realtime_call_sessions_scenario_check` [CHECK]
+  定义: `CHECK (scenario::text = ANY (ARRAY['normal'::character varying, 'slow_speaker'::character varying, 'barge_in'::character varying, 'network_switch'::character varying, 'mic_toggle'::character varying, 'background_tab'::character varying]::text[]))`
+- `realtime_call_sessions_status_check` [CHECK]
+  定义: `CHECK (status::text = ANY (ARRAY['starting'::character varying, 'connected'::character varying, 'completed'::character varying, 'failed'::character varying, 'cancelled'::character varying]::text[]))`
+- `realtime_call_sessions_summary_object_check` [CHECK]
+  定义: `CHECK (jsonb_typeof(summary) = 'object'::text)`
+- `realtime_call_sessions_turn_count_check` [CHECK]
+  定义: `CHECK (turn_count >= 0)`
+
+### 外键出站引用
+
+- `realtime_call_sessions_character_id_fkey` -> `public.characters`
+  定义: `FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE SET NULL`
+- `realtime_call_sessions_chat_id_fkey` -> `public.chats`
+  定义: `FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE SET NULL`
+- `realtime_call_sessions_user_id_fkey` -> `public.users`
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+
+### 被其他表引用
+
+- `public.realtime_call_events` 通过 `realtime_call_events_session_user_fkey` 引用本表
+  定义: `FOREIGN KEY (observation_id, user_id) REFERENCES realtime_call_sessions(observation_id, user_id) ON DELETE CASCADE`
+- `public.realtime_turn_metrics` 通过 `realtime_turn_metrics_session_user_fkey` 引用本表
+  定义: `FOREIGN KEY (observation_id, user_id) REFERENCES realtime_call_sessions(observation_id, user_id) ON DELETE CASCADE`
+- `public.realtime_webrtc_stats_samples` 通过 `realtime_webrtc_stats_session_user_fkey` 引用本表
+  定义: `FOREIGN KEY (observation_id, user_id) REFERENCES realtime_call_sessions(observation_id, user_id) ON DELETE CASCADE`
+
+### 索引
+
+- `realtime_call_sessions_character_id_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_call_sessions_character_id_idx ON public.realtime_call_sessions USING btree (character_id)`
+- `realtime_call_sessions_chat_id_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_call_sessions_chat_id_idx ON public.realtime_call_sessions USING btree (chat_id)`
+- `realtime_call_sessions_ended_at_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_call_sessions_ended_at_idx ON public.realtime_call_sessions USING btree (ended_at)`
+- `realtime_call_sessions_observation_user_uniq` [UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX realtime_call_sessions_observation_user_uniq ON public.realtime_call_sessions USING btree (observation_id, user_id)`
+- `realtime_call_sessions_pkey` [PRIMARY / UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX realtime_call_sessions_pkey ON public.realtime_call_sessions USING btree (observation_id)`
+- `realtime_call_sessions_rtc_session_uniq` [UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX realtime_call_sessions_rtc_session_uniq ON public.realtime_call_sessions USING btree (rtc_session_id)`
+- `realtime_call_sessions_user_failed_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_call_sessions_user_failed_idx ON public.realtime_call_sessions USING btree (user_id, started_at) WHERE ((status)::text = 'failed'::text)`
+  谓词: `status::text = 'failed'::text`
+- `realtime_call_sessions_user_mode_started_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_call_sessions_user_mode_started_idx ON public.realtime_call_sessions USING btree (user_id, mode, started_at, observation_id)`
+- `realtime_call_sessions_user_started_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_call_sessions_user_started_idx ON public.realtime_call_sessions USING btree (user_id, started_at, observation_id)`
+
+## Table `realtime_turn_metrics`
+
+<a id="table-realtime_turn_metrics"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `已启用`（强制执行）
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `bigint` | NOT NULL | - | IDENTITY BY DEFAULT | - |
+| `observation_id` | `uuid` | NOT NULL | - | - | - |
+| `user_id` | `uuid` | NOT NULL | - | - | - |
+| `turn_seq` | `integer` | NOT NULL | - | - | - |
+| `generation_id` | `bigint` | NOT NULL | - | - | - |
+| `outcome` | `character varying(20)` | NOT NULL | 'completed'::character varying | - | - |
+| `failure_stage` | `character varying(24)` | NULL | - | - | - |
+| `error_code` | `character varying(64)` | NULL | - | - | - |
+| `speech_duration_ms` | `integer` | NULL | - | - | - |
+| `endpointing_latency_ms` | `integer` | NULL | - | - | - |
+| `stt_first_partial_latency_ms` | `integer` | NULL | - | - | - |
+| `stt_final_latency_ms` | `integer` | NULL | - | - | - |
+| `llm_ttft_ms` | `integer` | NULL | - | - | - |
+| `first_speakable_chunk_latency_ms` | `integer` | NULL | - | - | - |
+| `tts_ttfb_ms` | `integer` | NULL | - | - | - |
+| `first_audio_enqueued_latency_ms` | `integer` | NULL | - | - | - |
+| `server_first_audio_read_latency_ms` | `integer` | NULL | - | - | - |
+| `client_first_audio_played_latency_ms` | `integer` | NULL | - | - | - |
+| `ttfa_ms` | `integer` | NULL | - | - | - |
+| `barge_in_stop_latency_ms` | `integer` | NULL | - | - | - |
+| `playout_queue_peak_ms` | `integer` | NULL | - | - | - |
+| `pacer_underrun_count` | `integer` | NOT NULL | 0 | - | - |
+| `input_char_count` | `integer` | NOT NULL | 0 | - | - |
+| `input_word_count` | `integer` | NOT NULL | 0 | - | - |
+| `output_char_count` | `integer` | NOT NULL | 0 | - | - |
+| `output_word_count` | `integer` | NOT NULL | 0 | - | - |
+| `created_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `updated_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `playout_queue_final_ms` | `integer` | NULL | - | - | - |
+| `server_playout_drained_latency_ms` | `integer` | NULL | - | - | - |
+| `pacer_partial_pad_count` | `integer` | NOT NULL | 0 | - | - |
+| `pacer_frames_read` | `integer` | NOT NULL | 0 | - | - |
+| `pacer_silence_frames` | `integer` | NOT NULL | 0 | - | - |
+| `pacer_rejected_write_count` | `integer` | NOT NULL | 0 | - | - |
+| `pacer_fadeout_count` | `integer` | NOT NULL | 0 | - | - |
+
+### 约束
+
+- `realtime_turn_metrics_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (id)`
+- `realtime_turn_metrics_session_generation_uniq` [UNIQUE]
+  定义: `UNIQUE (observation_id, generation_id)`
+- `realtime_turn_metrics_session_turn_seq_uniq` [UNIQUE]
+  定义: `UNIQUE (observation_id, turn_seq)`
+- `realtime_turn_metrics_session_user_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (observation_id, user_id) REFERENCES realtime_call_sessions(observation_id, user_id) ON DELETE CASCADE`
+- `realtime_turn_metrics_counts_check` [CHECK]
+  定义: `CHECK (pacer_underrun_count >= 0 AND input_char_count >= 0 AND input_word_count >= 0 AND output_char_count >= 0 AND output_word_count >= 0 AND pacer_partial_pad_count >= 0 AND pacer_frames_read >= 0 AND pacer_silence_frames >= 0 AND pacer_rejected_write_count >= 0 AND pacer_fadeout_count >= 0)`
+- `realtime_turn_metrics_error_code_check` [CHECK]
+  定义: `CHECK (error_code IS NULL OR error_code::text ~ '^[a-z0-9][a-z0-9._-]{0,63}$'::text)`
+- `realtime_turn_metrics_failure_stage_check` [CHECK]
+  定义: `CHECK (failure_stage IS NULL OR (failure_stage::text = ANY (ARRAY['signaling'::character varying, 'ice'::character varying, 'media'::character varying, 'stt'::character varying, 'llm'::character varying, 'tts'::character varying, 'playout'::character varying, 'persistence'::character varying, 'client'::character varying, 'unknown'::character varying]::text[])))`
+- `realtime_turn_metrics_generation_id_check` [CHECK]
+  定义: `CHECK (generation_id >= 0)`
+- `realtime_turn_metrics_outcome_check` [CHECK]
+  定义: `CHECK (outcome::text = ANY (ARRAY['completed'::character varying, 'interrupted'::character varying, 'failed'::character varying, 'cancelled'::character varying]::text[]))`
+- `realtime_turn_metrics_turn_seq_check` [CHECK]
+  定义: `CHECK (turn_seq >= 0)`
+
+### 外键出站引用
+
+- `realtime_turn_metrics_session_user_fkey` -> `public.realtime_call_sessions`
+  定义: `FOREIGN KEY (observation_id, user_id) REFERENCES realtime_call_sessions(observation_id, user_id) ON DELETE CASCADE`
+
+### 被其他表引用
+
+- 无
+
+### 索引
+
+- `realtime_turn_metrics_pkey` [PRIMARY / UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX realtime_turn_metrics_pkey ON public.realtime_turn_metrics USING btree (id)`
+- `realtime_turn_metrics_session_generation_uniq` [UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX realtime_turn_metrics_session_generation_uniq ON public.realtime_turn_metrics USING btree (observation_id, generation_id)`
+- `realtime_turn_metrics_session_turn_seq_uniq` [UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX realtime_turn_metrics_session_turn_seq_uniq ON public.realtime_turn_metrics USING btree (observation_id, turn_seq)`
+- `realtime_turn_metrics_user_created_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_turn_metrics_user_created_idx ON public.realtime_turn_metrics USING btree (user_id, created_at)`
+
+## Table `realtime_webrtc_stats_samples`
+
+<a id="table-realtime_webrtc_stats_samples"></a>
+
+- 类型: `BASE TABLE`
+- 行级安全: `已启用`（强制执行）
+
+### 列
+
+| 字段 | 类型 | 可空 | 默认值 | 额外属性 | 注释 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | `bigint` | NOT NULL | - | IDENTITY BY DEFAULT | - |
+| `observation_id` | `uuid` | NOT NULL | - | - | - |
+| `user_id` | `uuid` | NOT NULL | - | - | - |
+| `sample_seq` | `bigint` | NOT NULL | - | - | - |
+| `sampled_offset_ms` | `bigint` | NOT NULL | - | - | - |
+| `connection_state` | `character varying(16)` | NOT NULL | - | - | - |
+| `ice_connection_state` | `character varying(16)` | NOT NULL | - | - | - |
+| `data_channel_state` | `character varying(12)` | NULL | - | - | - |
+| `local_candidate_type` | `character varying(12)` | NULL | - | - | - |
+| `remote_candidate_type` | `character varying(12)` | NULL | - | - | - |
+| `candidate_protocol` | `character varying(12)` | NULL | - | - | - |
+| `address_family` | `character varying(12)` | NULL | - | - | - |
+| `rtt_ms` | `double precision` | NULL | - | - | - |
+| `inbound_jitter_ms` | `double precision` | NULL | - | - | - |
+| `packet_loss_ratio` | `double precision` | NULL | - | - | - |
+| `inbound_packets_received_delta` | `bigint` | NULL | - | - | - |
+| `inbound_packets_lost_delta` | `bigint` | NULL | - | - | - |
+| `inbound_bytes_received_delta` | `bigint` | NULL | - | - | - |
+| `outbound_packets_sent_delta` | `bigint` | NULL | - | - | - |
+| `outbound_bytes_sent_delta` | `bigint` | NULL | - | - | - |
+| `jitter_buffer_delay_ms` | `double precision` | NULL | - | - | - |
+| `concealed_ratio` | `double precision` | NULL | - | - | - |
+| `concealed_samples_delta` | `bigint` | NULL | - | - | - |
+| `silent_concealed_samples_delta` | `bigint` | NULL | - | - | - |
+| `audio_level` | `double precision` | NULL | - | - | - |
+| `codec_mime_type` | `character varying(40)` | NULL | - | - | - |
+| `codec_clock_rate` | `integer` | NULL | - | - | - |
+| `control_queue_size` | `integer` | NULL | - | - | - |
+| `data_channel_buffered_amount` | `bigint` | NULL | - | - | - |
+| `counter_reset` | `boolean` | NOT NULL | false | - | - |
+| `available_outgoing_bitrate_bps` | `double precision` | NULL | - | - | - |
+| `received_at` | `timestamp with time zone` | NOT NULL | now() | - | - |
+| `remote_inbound_fraction_lost` | `double precision` | NULL | - | - | - |
+| `remote_inbound_jitter_ms` | `double precision` | NULL | - | - | - |
+| `remote_inbound_rtt_ms` | `double precision` | NULL | - | - | - |
+| `remote_inbound_packets_lost_delta` | `bigint` | NULL | - | - | - |
+
+### 约束
+
+- `realtime_webrtc_stats_samples_pkey` [PRIMARY KEY]
+  定义: `PRIMARY KEY (id)`
+- `realtime_webrtc_stats_session_sample_seq_uniq` [UNIQUE]
+  定义: `UNIQUE (observation_id, sample_seq)`
+- `realtime_webrtc_stats_session_user_fkey` [FOREIGN KEY]
+  定义: `FOREIGN KEY (observation_id, user_id) REFERENCES realtime_call_sessions(observation_id, user_id) ON DELETE CASCADE`
+- `realtime_webrtc_stats_address_family_check` [CHECK]
+  定义: `CHECK (address_family IS NULL OR (address_family::text = ANY (ARRAY['ipv4'::character varying, 'ipv6'::character varying, 'unknown'::character varying]::text[])))`
+- `realtime_webrtc_stats_audio_level_check` [CHECK]
+  定义: `CHECK (audio_level IS NULL OR audio_level >= 0::double precision AND audio_level <= 1::double precision)`
+- `realtime_webrtc_stats_concealed_ratio_check` [CHECK]
+  定义: `CHECK (concealed_ratio IS NULL OR concealed_ratio >= 0::double precision AND concealed_ratio <= 1::double precision)`
+- `realtime_webrtc_stats_connection_state_check` [CHECK]
+  定义: `CHECK (connection_state::text = ANY (ARRAY['new'::character varying, 'connecting'::character varying, 'connected'::character varying, 'disconnected'::character varying, 'failed'::character varying, 'closed'::character varying, 'unknown'::character varying]::text[]))`
+- `realtime_webrtc_stats_data_channel_state_check` [CHECK]
+  定义: `CHECK (data_channel_state IS NULL OR (data_channel_state::text = ANY (ARRAY['connecting'::character varying, 'open'::character varying, 'closing'::character varying, 'closed'::character varying, 'unknown'::character varying]::text[])))`
+- `realtime_webrtc_stats_ice_state_check` [CHECK]
+  定义: `CHECK (ice_connection_state::text = ANY (ARRAY['new'::character varying, 'checking'::character varying, 'connected'::character varying, 'completed'::character varying, 'failed'::character varying, 'disconnected'::character varying, 'closed'::character varying, 'unknown'::character varying]::text[]))`
+- `realtime_webrtc_stats_local_candidate_check` [CHECK]
+  定义: `CHECK (local_candidate_type IS NULL OR (local_candidate_type::text = ANY (ARRAY['host'::character varying, 'srflx'::character varying, 'prflx'::character varying, 'relay'::character varying, 'unknown'::character varying]::text[])))`
+- `realtime_webrtc_stats_nonnegative_check` [CHECK]
+  定义: `CHECK ((rtt_ms IS NULL OR rtt_ms >= 0::double precision) AND (inbound_jitter_ms IS NULL OR inbound_jitter_ms >= 0::double precision) AND (jitter_buffer_delay_ms IS NULL OR jitter_buffer_delay_ms >= 0::double precision) AND (remote_inbound_jitter_ms IS NULL OR remote_inbound_jitter_ms >= 0::double precision) AND (remote_inbound_rtt_ms IS NULL OR remote_inbound_rtt_ms >= 0::double precision) AND (remote_inbound_packets_lost_delta IS NULL OR remote_inbound_packets_lost_delta >= 0) AND (concealed_samples_delta IS NULL OR concealed_samples_delta >= 0) AND (silent_concealed_samples_delta IS NULL OR silent_concealed_samples_delta >= 0) AND (control_queue_size IS NULL OR control_queue_size >= 0) AND (data_channel_buffered_amount IS NULL OR data_channel_buffered_amount >= 0))`
+- `realtime_webrtc_stats_offset_check` [CHECK]
+  定义: `CHECK (sampled_offset_ms >= 0)`
+- `realtime_webrtc_stats_packet_loss_ratio_check` [CHECK]
+  定义: `CHECK (packet_loss_ratio IS NULL OR packet_loss_ratio >= 0::double precision AND packet_loss_ratio <= 1::double precision)`
+- `realtime_webrtc_stats_protocol_check` [CHECK]
+  定义: `CHECK (candidate_protocol IS NULL OR (candidate_protocol::text = ANY (ARRAY['udp'::character varying, 'tcp'::character varying, 'tls'::character varying, 'unknown'::character varying]::text[])))`
+- `realtime_webrtc_stats_remote_candidate_check` [CHECK]
+  定义: `CHECK (remote_candidate_type IS NULL OR (remote_candidate_type::text = ANY (ARRAY['host'::character varying, 'srflx'::character varying, 'prflx'::character varying, 'relay'::character varying, 'unknown'::character varying]::text[])))`
+- `realtime_webrtc_stats_remote_loss_ratio_check` [CHECK]
+  定义: `CHECK (remote_inbound_fraction_lost IS NULL OR remote_inbound_fraction_lost >= 0::double precision AND remote_inbound_fraction_lost <= 1::double precision)`
+- `realtime_webrtc_stats_sample_seq_check` [CHECK]
+  定义: `CHECK (sample_seq >= 0)`
+
+### 外键出站引用
+
+- `realtime_webrtc_stats_session_user_fkey` -> `public.realtime_call_sessions`
+  定义: `FOREIGN KEY (observation_id, user_id) REFERENCES realtime_call_sessions(observation_id, user_id) ON DELETE CASCADE`
+
+### 被其他表引用
+
+- 无
+
+### 索引
+
+- `realtime_webrtc_stats_received_at_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_webrtc_stats_received_at_idx ON public.realtime_webrtc_stats_samples USING btree (received_at)`
+- `realtime_webrtc_stats_samples_pkey` [PRIMARY / UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX realtime_webrtc_stats_samples_pkey ON public.realtime_webrtc_stats_samples USING btree (id)`
+- `realtime_webrtc_stats_session_sample_seq_uniq` [UNIQUE]
+  大小: `8192 bytes`
+  定义: `CREATE UNIQUE INDEX realtime_webrtc_stats_session_sample_seq_uniq ON public.realtime_webrtc_stats_samples USING btree (observation_id, sample_seq)`
+- `realtime_webrtc_stats_session_timeline_idx`
+  大小: `8192 bytes`
+  定义: `CREATE INDEX realtime_webrtc_stats_session_timeline_idx ON public.realtime_webrtc_stats_samples USING btree (observation_id, sampled_offset_ms, id)`
+
 ## Table `saved_items`
 
 <a id="table-saved_items"></a>
@@ -1994,7 +2886,7 @@ sequenceDiagram
   定义: `CREATE UNIQUE INDEX turns_parent_candidate_uniq ON public.turns USING btree (parent_candidate_id) WHERE (parent_candidate_id IS NOT NULL)`
   谓词: `parent_candidate_id IS NOT NULL`
 - `turns_pkey` [PRIMARY / UNIQUE]
-  大小: `72 kB`
+  大小: `80 kB`
   定义: `CREATE UNIQUE INDEX turns_pkey ON public.turns USING btree (id)`
 
 ## Table `user_access_passes`
@@ -2182,6 +3074,8 @@ sequenceDiagram
 - `public.proactive_character_preferences` 通过 `proactive_character_preferences_user_id_fkey` 引用本表
   定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
 - `public.proactive_message_dispatches` 通过 `proactive_message_dispatches_user_id_fkey` 引用本表
+  定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
+- `public.realtime_call_sessions` 通过 `realtime_call_sessions_user_id_fkey` 引用本表
   定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
 - `public.saved_items` 通过 `saved_items_user_id_fkey` 引用本表
   定义: `FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`
