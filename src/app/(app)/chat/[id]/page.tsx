@@ -356,7 +356,8 @@ export default function ChatPage() {
     }, [messages, realtimeSession.isConnected, realtimeSession.subtitles.userRaw,
         realtimeSession.subtitles.assistantRaw, realtimeSession.isBotSpeaking]);
 
-    const isConversationReadOnly = character?.status === "UNPUBLISHED";
+    const isConversationReadOnly =
+        character?.status === "UNPUBLISHED" && character.creator_id !== user?.id;
     const readOnlyNotice = isConversationReadOnly
         ? "该角色已被作者下架，当前聊天仅支持查看历史记录。"
         : null;
@@ -478,7 +479,7 @@ export default function ChatPage() {
         if (recent?.chat?.id && recent.chat.id !== targetChatId) {
             router.push(`/chat/${recent.chat.id}`);
         } else {
-            if (character?.status === "UNPUBLISHED") {
+            if (isConversationReadOnly) {
                 router.push("/");
             } else {
                 try {
@@ -501,7 +502,7 @@ export default function ChatPage() {
             }
         }
 
-    }, [character?.status, characterId, chatId, queryClient, router, user?.id]);
+    }, [characterId, chatId, isConversationReadOnly, queryClient, router, user?.id]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesStartRef = useRef<HTMLDivElement | null>(null);

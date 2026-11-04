@@ -12,6 +12,7 @@ interface CharacterCardProps {
   character: Character;
   onClick: (character: Character) => void;
   showMenu?: boolean;
+  onChat?: (character: Character) => void;
   onEdit?: (character: Character) => void;
   onShare?: (character: Character) => void;
   onUnpublish?: (character: Character) => void;
@@ -22,6 +23,7 @@ export default function CharacterCard({
   character,
   onClick,
   showMenu = false,
+  onChat,
   onEdit,
   onShare,
   onUnpublish,
@@ -108,6 +110,15 @@ export default function CharacterCard({
               sideOffset={8}
               className="w-[128px] bg-(--cc-dropdown-bg) rounded-xl shadow-(--cc-dropdown-shadow) border border-(--cc-dropdown-border) p-1.5 flex-col gap-0.5 z-100"
             >
+              {onChat && (
+                <DropdownMenuItem
+                  onSelect={() => onChat(character)}
+                  className="w-full py-2 px-[10px] flex items-center gap-2 rounded-lg bg-transparent border-none cursor-pointer transition-colors duration-150 hover:bg-(--cc-dropdown-item-hover) focus:bg-(--cc-dropdown-item-hover) focus:outline-none"
+                >
+                  <SpriteIcon name="chat-bubble" size={16} />
+                  <span className="text-sm text-gray-700">聊天</span>
+                </DropdownMenuItem>
+              )}
               {onShare && (
                 <DropdownMenuItem
                   onSelect={() => onShare(character)}

@@ -32,6 +32,7 @@ import {
 } from "@/lib/voice-adapter";
 import {
     queryKeys,
+    useGetOrCreateChatMutation,
     useMyCharactersQuery,
     useMyVoicesInfiniteQuery,
 } from "@/lib/query";
@@ -76,6 +77,7 @@ export default function ProfilePage() {
             ),
         [charactersQuery.data],
     );
+    const openChatMutation = useGetOrCreateChatMutation(user?.id ?? null);
     const voices = useMemo<VoiceCardDisplay[]>(
         () =>
             voicesQuery.data?.pages
@@ -148,6 +150,16 @@ export default function ProfilePage() {
     const handleUnpublishClick = (character: Character) => {
         setCharacterToUnpublish(character);
         setIsUnpublishDialogOpen(true);
+    };
+
+    const handleChat = async (character: Character) => {
+        try {
+            const chatId = await openChatMutation.mutateAsync(character.id);
+            router.push(`/chat/${chatId}`);
+        } catch (err) {
+            console.error("Open chat failed:", err);
+            toast.error("打开聊天失败，请稍后重试");
+        }
     };
 
     const handleShare = async (character: Character) => {
@@ -286,6 +298,7 @@ export default function ProfilePage() {
                                     character={character}
                                     onClick={() => handleEdit(character)}
                                     showMenu={true}
+                                    onChat={handleChat}
                                     onEdit={handleEdit}
                                     onShare={character.status === "ACTIVE" ? handleShare : undefined}
                                     onUnpublish={handleUnpublishClick}
@@ -366,7 +379,7 @@ export default function ProfilePage() {
                 entityName={characterToUnpublish?.name || ""}
                 entityLabel="角色"
                 title="确认下架"
-                description={`下架角色 "${characterToUnpublish?.name || ""}" 后，它不会再出现在公开入口，已有聊天会保留为只读历史。`}
+                description={`下架角色 "${characterToUnpublish?.name || ""}" 后，它不会再出现在公开入口；你仍可继续与它聊天，其他用户的已有聊天会保留为只读历史。`}
                 confirmText="确认下架"
                 loadingText="下架中..."
                 onConfirm={handleConfirmUnpublish}

@@ -154,6 +154,8 @@ export function useChatSession({
   const queryClient = useQueryClient();
   const [chat, setChat] = useState<ChatResponse | null>(null);
   const [character, setCharacter] = useState<Character | null>(null);
+  const isConversationReadOnly =
+    character?.status === "UNPUBLISHED" && character.creator_id !== user?.id;
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -590,7 +592,7 @@ export function useChatSession({
 
   const handleRegenAssistant = useCallback(
     async (turnId: string) => {
-      if (isStreaming || character?.status === "UNPUBLISHED") return;
+      if (isStreaming || isConversationReadOnly) return;
       let hasStreamError = false;
       let resolvedAssistantCandidateId: string | undefined;
 
@@ -835,7 +837,7 @@ export function useChatSession({
     [
       applyReplySuggestions,
       beginStream,
-      character?.status,
+      isConversationReadOnly,
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
@@ -849,7 +851,7 @@ export function useChatSession({
 
   const handleContinue = useCallback(
     async () => {
-      if (isStreaming || character?.status === "UNPUBLISHED") return;
+      if (isStreaming || isConversationReadOnly) return;
 
       const lastAssistant = [...messagesRef.current].reverse().find(
         (message) => message.role === "assistant" && message.assistantTurnId,
@@ -1106,7 +1108,7 @@ export function useChatSession({
       applyReplySuggestions,
       autoReadAloudRef,
       beginStream,
-      character?.status,
+      isConversationReadOnly,
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
@@ -1120,7 +1122,7 @@ export function useChatSession({
 
   const handleEditUser = useCallback(
     async (turnId: string, newContent: string) => {
-      if (isStreaming || character?.status === "UNPUBLISHED") return;
+      if (isStreaming || isConversationReadOnly) return;
       let hasStreamError = false;
 
       ttsPlaybackManager?.interruptAll();
@@ -1423,7 +1425,7 @@ export function useChatSession({
     [
       applyReplySuggestions,
       beginStream,
-      character?.status,
+      isConversationReadOnly,
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
@@ -1437,7 +1439,7 @@ export function useChatSession({
 
   const handleSendMessage = useCallback(
     async (content: string, images?: ChatImageRef[]) => {
-      if (!character || !canSend || character.status === "UNPUBLISHED") return;
+      if (!character || !canSend || isConversationReadOnly) return;
 
       if (isStreaming) {
         abortActiveTextStream();
@@ -1819,6 +1821,7 @@ export function useChatSession({
       clearTrackedController,
       detachControllerToTail,
       finalizeStreamError,
+      isConversationReadOnly,
       isStreaming,
       reloadChatTurns,
       setCurrentChatTitle,
