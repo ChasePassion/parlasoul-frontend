@@ -1,0 +1,41 @@
+name: Feature request
+description: Propose a capability or design change
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the interaction, layout, or data flow you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Chat
+        - Real-time voice
+        - Characters
+        - Discovery
+        - Learning / saved items
+        - Growth
+        - Billing
+        - Authentication
+        - Design system
+    validations:
+      required: true

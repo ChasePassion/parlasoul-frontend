@@ -1,0 +1,8 @@
+{
+    "css.lint.unknownAtRules": "ignore",
+    "files.encoding": "utf8",
+    "files.autoGuessEncoding": false,
+    "files.eol": "\n",
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true
+}

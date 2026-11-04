@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>角色列表卡片 - 纯白背景适配版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+
+<body class="bg-white min-h-screen p-10 flex flex-col items-center gap-8">
+
+    <div
+        class="group relative flex w-full max-w-[500px] h-[200px] bg-white rounded-2xl border border-gray-100 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)] cursor-pointer overflow-hidden">
+
+        <div class="w-[35%] h-full relative overflow-hidden">
+            <img src="public/Xiaobai.jpg" alt="Avatar"
+                class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110">
+            <div
+                class="absolute top-3 left-3 flex items-center gap-1 bg-black/60 backdrop-blur-md px-2 py-1 rounded-full">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                <span class="text-[10px] text-white font-medium">Online</span>
+            </div>
+        </div>
+
+        <div class="flex-1 p-5 flex flex-col relative">
+
+            <div class="flex justify-between items-start mb-2">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+                        小白
+                    </h3>
+                    <p class="text-xs text-gray-400 mt-0.5">@MysticSnake • 2.4k 人正在聊</p>
+                </div>
+            </div>
+
+            <div class="flex gap-2 mb-3">
+                <span
+                    class="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded border border-blue-100">#温柔</span>
+                <span
+                    class="px-2 py-0.5 bg-pink-50 text-pink-600 text-[10px] font-bold rounded border border-pink-100">#养成</span>
+                <span
+                    class="px-2 py-0.5 bg-purple-50 text-purple-600 text-[10px] font-bold rounded border border-purple-100">#古风</span>
+            </div>
+
+            <p class="text-sm text-gray-600 leading-relaxed line-clamp-3 mb-4">
+                "恩人，是你唤醒了我吗？" <br>
+                遗落在人间的灵蛇，化作人形寻找前世的记忆。虽然法力被封印，但她依然会用生命守护你。
+            </p>
+
+            <div class="mt-auto flex justify-between items-center">
+                <span class="text-xs text-gray-400">上次活跃: 刚刚</span>
+
+                <div
+                    class="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 transition-all duration-300 group-hover:bg-blue-600 group-hover:text-white group-hover:scale-110 shadow-sm">
+                    <i class="ri-chat-smile-2-fill text-xl"></i>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</body>
+
+</html>

@@ -1,0 +1,62 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/.next-dev/
+/.next-prod/
+/out/
+
+# production
+/build
+
+# prototype
+src/app/prototype/
+
+# misc
+.DS_Store
+*.pem
+example/
+logs/
+!src/app/api/logs/
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.codex-*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# tmp (except module-review final report)
+tmp/
+!tmp/module-review/
+!tmp/module-review/final-report.md
+
+# Internal / non-public material
+.agent/
+AGENTS.md
+docs/dev/
+docs/plan/
+.github/workflows/configure-production-proxy.yml

@@ -1,0 +1,10 @@
+.git
+.next
+.next-dev
+.next-prod
+node_modules
+.env.local
+.env.production
+.vscode
+docs
+.codex-*

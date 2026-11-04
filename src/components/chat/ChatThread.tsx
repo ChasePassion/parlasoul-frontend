@@ -1,0 +1,1385 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useRouter } from "next/navigation";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { SpriteIcon } from "@/components/ui/sprite-icon";
+import { createPortal } from "react-dom";
+import {
+    useFloating,
+    offset,
+    flip,
+    shift,
+    autoUpdate,
+    type Placement,
+} from "@floating-ui/react";
+import ChatMessage, {
+    type Message,
+    type MessageActionProfile,
+    type MessageActionStatus,
+} from "@/components/ChatMessage";
+import ReplyCardPopover from "@/components/ReplyCardPopover";
+import WordCardPopover from "@/components/WordCardPopover";
+import FeedbackCardPopover from "@/components/FeedbackCardPopover";
+import type { Character } from "@/components/Sidebar";
+import { useUserSettings } from "@/lib/user-settings-context";
+import {
+  ApiError,
+  UnauthorizedError,
+  createSavedItem,
+  deleteSavedItem,
+  createWordCard,
+  createFeedbackCard,
+  createSavedItemPhase3,
+  type WordCard,
+  type FeedbackCard,
+  type SavedItemPayloadPhase3,
+  type SavedItemPayload,
+} from "@/lib/api";
+
+interface FeedbackCardState {
+    status: MessageActionStatus;
+    feedbackCard: FeedbackCard | null;
+    pendingOpen: boolean;
+    requestId: number;
+    errorCode?: string | null;
+}
+
+interface RectAnchor {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+    width: number;
+    height: number;
+}
+
+const getMessageVersionKey = (message: Message): string =>
+    `${message.id}:${message.candidateNo ?? 1}`;
+
+const deriveFeedbackErrorCode = (error: unknown): string => {
+    if (error instanceof ApiError) {
+        return error.code || `http_${error.status}`;
+    }
+    if (error instanceof UnauthorizedError) {
+        return "unauthorized";
+    }
+    return "feedback_card_request_failed";
+};
+
+interface ChatThreadProps {
+    character: Character | null;
+    messages: Message[];
+    isLoading: boolean;
+    error: string | null;
+    isStreaming: boolean;
+    userAvatar: string;
+    messagesEndRef: RefObject<HTMLDivElement | null>;
+    messagesStartRef?: RefObject<HTMLDivElement | null>;
+    chatId: string;
+    onSelectCandidate: (turnId: string, candidateNo: number) => void;
+    onRegenAssistant: (turnId: string) => void;
+    onRetrySend?: (errorMessageId: string) => void;
+    onEditUser: (turnId: string, newContent: string) => void;
+    onRetryReplyCard: (message: Message) => Promise<void>;
+    playingCandidateId?: string | null;
+    ttsLoadingCandidateId?: string | null;
+    isRecording?: boolean;
+    onPlayTts?: (candidateId: string) => void;
+    onStopTts?: (candidateId: string) => void;
+    isLoadingOlder?: boolean;
+    isConversationLocked?: boolean;
+    messageActionProfile?: MessageActionProfile;
+}
+
+export default function ChatThread({
+    character,
+    messages,
+    isLoading,
+    error,
+    isStreaming,
+    userAvatar,
+    messagesEndRef,
+    messagesStartRef,
+    chatId,
+    onSelectCandidate,
+    onRegenAssistant,
+    onRetrySend,
+    onEditUser,
+    onRetryReplyCard,
+    playingCandidateId,
+    ttsLoadingCandidateId,
+    isRecording,
+    onPlayTts,
+    onStopTts,
+    isLoadingOlder = false,
+    isConversationLocked = false,
+    messageActionProfile = "text",
+}: ChatThreadProps) {
+    const CARD_GAP = 12;
+    const VIEWPORT_PADDING = 12;
+    const feedbackCardFallbackPlacements: Placement[] = [
+        "bottom-end",
+        "top-end",
+        "right-start",
+    ];
+
+    const router = useRouter();
+    const { messageFontSize, displayMode, replyCardEnabled } = useUserSettings();
+    const isVoiceActiveProfile = messageActionProfile === "voice-active";
+
+    const [isMobile, setIsMobile] = useState(false);
+    useEffect(() => {
+        const mq = window.matchMedia("(max-width: 799px)");
+        setIsMobile(mq.matches);
+        const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, []);
+
+    // Reply card popover state
+    const [openReplyCardKey, setOpenReplyCardKey] = useState<string | null>(null);
+    const [pendingReplyCardKey, setPendingReplyCardKey] = useState<string | null>(null);
+    const cardAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+    const replyCardWrapperRef = useRef<HTMLDivElement | null>(null);
+    const [favoriteOverrides, setFavoriteOverrides] = useState<
+        Record<string, { isFavorited: boolean; savedItemId: string | null }>
+    >({});
+
+    // Phase 3: Word card popover state
+    const [wordCard, setWordCard] = useState<WordCard | null>(null);
+    const wordCardWrapperRef = useRef<HTMLDivElement | null>(null);
+    const [wordCardAnchorRect, setWordCardAnchorRect] = useState<RectAnchor | null>(null);
+    const [isWordCardLoading, setIsWordCardLoading] = useState(false);
+    const [wordCardFavoriteOverride, setWordCardFavoriteOverride] = useState<{
+        isFavorited: boolean;
+        savedItemId: string | null;
+    } | null>(null);
+    const selectionButtonRef = useRef<HTMLButtonElement | null>(null);
+    const selectionButtonDataRef = useRef<{
+        text: string;
+        contextText: string | null;
+        top: number;
+        left: number;
+        anchorRect: RectAnchor;
+    } | null>(null);
+
+    // Phase 3: Feedback card popover state
+    const [feedbackCard, setFeedbackCard] = useState<FeedbackCard | null>(null);
+    const [feedbackCardKey, setFeedbackCardKey] = useState<string | null>(null);
+    const feedbackCardWrapperRef = useRef<HTMLDivElement | null>(null);
+    const [feedbackCardStates, setFeedbackCardStates] = useState<
+        Record<string, FeedbackCardState>
+    >({});
+    const [feedbackFavoriteOverrides, setFeedbackFavoriteOverrides] = useState<
+        Record<string, { isFavorited: boolean; savedItemId: string | null }>
+    >({});
+    const feedbackAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+    const feedbackCardStatesRef = useRef<Record<string, FeedbackCardState>>({});
+    const feedbackRequestIdRef = useRef(0);
+    const feedbackPrefetchInitializedRef = useRef(false);
+    const previousUserVersionsRef = useRef<Map<string, { key: string; candidateCount: number }>>(
+        new Map()
+    );
+    const feedbackAbortControllerRef = useRef<AbortController | null>(null);
+
+    useEffect(() => {
+        feedbackCardStatesRef.current = feedbackCardStates;
+    }, [feedbackCardStates]);
+
+    useEffect(() => {
+        setOpenReplyCardKey(null);
+        setPendingReplyCardKey(null);
+        setFeedbackCard(null);
+        setFeedbackCardKey(null);
+    }, [messageActionProfile]);
+
+    useEffect(() => {
+        feedbackAbortControllerRef.current?.abort();
+        feedbackAbortControllerRef.current = new AbortController();
+        setOpenReplyCardKey(null);
+        setPendingReplyCardKey(null);
+        setFavoriteOverrides({});
+        setFeedbackCard(null);
+        setFeedbackCardKey(null);
+        setFeedbackCardStates({});
+        setFeedbackFavoriteOverrides({});
+        feedbackAnchorRefs.current.clear();
+        previousUserVersionsRef.current = new Map();
+        feedbackPrefetchInitializedRef.current = false;
+    }, [chatId]);
+
+    useEffect(() => {
+        setFavoriteOverrides((prev) => {
+            const validKeys = new Set(
+                messages
+                    .filter((message) => message.role === "assistant" && message.replyCard)
+                    .map(getMessageVersionKey)
+            );
+            const next: Record<string, { isFavorited: boolean; savedItemId: string | null }> = {};
+            let changed = false;
+
+            Object.entries(prev).forEach(([messageKey, value]) => {
+                if (validKeys.has(messageKey)) {
+                    next[messageKey] = value;
+                } else {
+                    changed = true;
+                }
+            });
+
+            return changed ? next : prev;
+        });
+    }, [messages]);
+
+    const handleOpenReplyCard = useCallback((message: Message) => {
+        const messageKey = getMessageVersionKey(message);
+        const replyCardStatus =
+            message.replyCardStatus ?? (message.replyCard ? "ready" : "idle");
+
+        if (message.replyCard) {
+            setPendingReplyCardKey(null);
+            setOpenReplyCardKey((prev) => (prev === messageKey ? null : messageKey));
+            return;
+        }
+
+        if (replyCardStatus === "loading") {
+            setPendingReplyCardKey(messageKey);
+            return;
+        }
+
+        if (
+            (replyCardStatus === "idle" || replyCardStatus === "error") &&
+            message.assistantCandidateId
+        ) {
+            setPendingReplyCardKey(messageKey);
+            void onRetryReplyCard(message).catch((err) => {
+                console.error("Failed to retry reply card:", err);
+            });
+        }
+    }, [onRetryReplyCard]);
+
+    const handleCloseReplyCard = useCallback(() => {
+        setOpenReplyCardKey(null);
+        setPendingReplyCardKey(null);
+    }, []);
+
+    const handleToggleFavorite = useCallback(
+        async (
+            isFavorited: boolean,
+            savedItemId: string | null | undefined,
+            message: Message
+        ): Promise<string | null> => {
+            if (!character || !message.replyCard) return null;
+            const messageKey = getMessageVersionKey(message);
+            const previous = favoriteOverrides[messageKey] ?? {
+                isFavorited: message.replyCard.favorite.is_favorited,
+                savedItemId: message.replyCard.favorite.saved_item_id ?? null,
+            };
+
+            // optimistic state
+            setFavoriteOverrides((prev) => ({
+                ...prev,
+                [messageKey]: {
+                    isFavorited,
+                    savedItemId: isFavorited
+                        ? previous.savedItemId
+                        : null,
+                },
+            }));
+
+            try {
+                if (isFavorited) {
+                    // Create saved item
+                    const payload: SavedItemPayload = {
+                        kind: "reply_card",
+                        display: {
+                            surface: message.replyCard.surface,
+                            zh: message.replyCard.zh,
+                        },
+                        card: message.replyCard,
+                        source: {
+                            role_id: character.id,
+                            chat_id: chatId,
+                            message_id: message.id,
+                            turn_id: message.assistantTurnId ?? null,
+                            candidate_id: message.assistantCandidateId ?? null,
+                        },
+                    };
+                    const created = await createSavedItem(payload);
+                    const nextSavedId = created.id ?? null;
+                    setFavoriteOverrides((prev) => ({
+                        ...prev,
+                        [messageKey]: {
+                            isFavorited: true,
+                            savedItemId: nextSavedId,
+                        },
+                    }));
+                    return nextSavedId;
+                } else {
+                    // Delete saved item
+                    const effectiveSavedItemId = savedItemId ?? previous.savedItemId;
+                    if (effectiveSavedItemId) {
+                        await deleteSavedItem(effectiveSavedItemId);
+                    }
+                    setFavoriteOverrides((prev) => ({
+                        ...prev,
+                        [messageKey]: {
+                            isFavorited: false,
+                            savedItemId: null,
+                        },
+                    }));
+                    return null;
+                }
+            } catch (err) {
+                console.error("Failed to toggle favorite:", err);
+                setFavoriteOverrides((prev) => ({
+                    ...prev,
+                    [messageKey]: previous,
+                }));
+                throw err;
+            }
+        },
+        [character, chatId, favoriteOverrides]
+    );
+
+    const hideSelectionButton = useCallback(() => {
+        selectionButtonDataRef.current = null;
+        const button = selectionButtonRef.current;
+        if (!button) return;
+        button.style.visibility = "hidden";
+        button.style.opacity = "0";
+        button.style.pointerEvents = "none";
+        button.style.transform = "translateX(-50%) scale(0.96)";
+    }, []);
+
+    const showSelectionButton = useCallback(
+        (buttonData: {
+            text: string;
+            contextText: string | null;
+            top: number;
+            left: number;
+            anchorRect: RectAnchor;
+        }) => {
+            selectionButtonDataRef.current = buttonData;
+            const button = selectionButtonRef.current;
+            if (!button) return;
+            button.style.top = `${buttonData.top}px`;
+            button.style.left = `${buttonData.left}px`;
+            button.style.visibility = "visible";
+            button.style.opacity = "1";
+            button.style.pointerEvents = "auto";
+            button.style.transform = "translateX(-50%) scale(1)";
+        },
+        []
+    );
+
+    // Phase 3: Text selection handling for word card
+    const handleTextSelection = useCallback(() => {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+            hideSelectionButton();
+            return;
+        }
+
+        const selectedText = selection.toString().trim();
+        if (selectedText.length < 2 || selectedText.length > 200) {
+            hideSelectionButton();
+            return;
+        }
+
+        // Only trigger on English text (basic check - contains letters)
+        if (!/[a-zA-Z]/.test(selectedText)) {
+            hideSelectionButton();
+            return;
+        }
+
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+
+        const messageEl = range.startContainer instanceof HTMLElement
+            ? range.startContainer.closest('[data-message-id]')
+            : range.startContainer.parentElement?.closest('[data-message-id]');
+        const messageId = messageEl?.getAttribute('data-message-id');
+        const matchedMessage = messageId
+            ? messages.find(m => m.id === messageId)
+            : null;
+
+        showSelectionButton({
+            text: selectedText,
+            contextText: matchedMessage?.content ?? null,
+            top: rect.bottom + 10,
+            left: rect.left + rect.width / 2,
+            anchorRect: {
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+            },
+        });
+    }, [hideSelectionButton, showSelectionButton, messages]);
+
+    const handleOpenWordCard = useCallback(async () => {
+        const selectionButton = selectionButtonDataRef.current;
+        if (!selectionButton) return;
+
+        setIsWordCardLoading(true);
+        setWordCardAnchorRect(selectionButton.anchorRect);
+        try {
+            const response = await createWordCard({
+                selected_text: selectionButton.text,
+                context_text: selectionButton.contextText,
+            });
+            setWordCard(response.word_card);
+            setWordCardFavoriteOverride(null);
+            hideSelectionButton();
+        } catch (err) {
+            console.error("Failed to create word card:", err);
+            setWordCard(null);
+            setWordCardFavoriteOverride(null);
+            hideSelectionButton();
+        } finally {
+            setIsWordCardLoading(false);
+        }
+    }, [hideSelectionButton]);
+
+    useEffect(() => {
+        document.addEventListener("mouseup", handleTextSelection);
+        return () => {
+            document.removeEventListener("mouseup", handleTextSelection);
+        };
+    }, [handleTextSelection]);
+
+    useEffect(() => {
+        const handlePointerDown = (e: MouseEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (target?.closest("[data-selection-word-trigger='true']")) {
+                return;
+            }
+            const selection = window.getSelection();
+            if (!selection || selection.isCollapsed) {
+                hideSelectionButton();
+            }
+        };
+
+        document.addEventListener("mousedown", handlePointerDown);
+        return () => {
+            document.removeEventListener("mousedown", handlePointerDown);
+        };
+    }, [hideSelectionButton]);
+
+    const handleCloseWordCard = useCallback(() => {
+        setWordCard(null);
+        setWordCardAnchorRect(null);
+        setWordCardFavoriteOverride(null);
+        hideSelectionButton();
+        window.getSelection()?.removeAllRanges();
+    }, [hideSelectionButton]);
+
+    const handleToggleWordCardFavorite = useCallback(
+        async (
+            isFavorited: boolean,
+            savedItemId: string | null | undefined,
+            wordCardData: WordCard
+        ): Promise<string | null> => {
+            if (!character) return null;
+
+            const previous = wordCardFavoriteOverride ?? {
+                isFavorited: wordCardData.favorite.is_favorited,
+                savedItemId: wordCardData.favorite.saved_item_id ?? null,
+            };
+
+            setWordCardFavoriteOverride({
+                isFavorited,
+                savedItemId: isFavorited ? previous.savedItemId : null,
+            });
+
+            try {
+                if (isFavorited) {
+                    const payload: SavedItemPayloadPhase3 = {
+                        kind: "word_card",
+                        display: {
+                            surface: wordCardData.surface,
+                            zh: wordCardData.pos_groups[0]?.senses[0]?.zh || "",
+                        },
+                        card: wordCardData,
+                        source: {
+                            role_id: character.id,
+                            chat_id: chatId,
+                            message_id: `word:${wordCardData.surface}`,
+                        },
+                    };
+                    const created = await createSavedItemPhase3(payload);
+                    const nextSavedItemId = created.id ?? null;
+                    setWordCardFavoriteOverride({
+                        isFavorited: true,
+                        savedItemId: nextSavedItemId,
+                    });
+                    return nextSavedItemId;
+                }
+
+                const effectiveSavedItemId = savedItemId ?? previous.savedItemId;
+                if (effectiveSavedItemId) {
+                    await deleteSavedItem(effectiveSavedItemId);
+                }
+                setWordCardFavoriteOverride({
+                    isFavorited: false,
+                    savedItemId: null,
+                });
+                return null;
+            } catch (err) {
+                console.error("Failed to toggle word favorite:", err);
+                setWordCardFavoriteOverride(previous);
+                throw err;
+            }
+        },
+        [character, chatId, wordCardFavoriteOverride]
+    );
+
+    // Phase 3: Feedback card handling
+    const ensureFeedbackCard = useCallback(
+        async (message: Message, openWhenReady = false) => {
+            const messageKey = getMessageVersionKey(message);
+            const current = feedbackCardStatesRef.current[messageKey];
+
+            if (current?.status === "ready" && current.feedbackCard) {
+                if (openWhenReady) {
+                    setFeedbackCard(current.feedbackCard);
+                    setFeedbackCardKey(messageKey);
+                }
+                return;
+            }
+
+            if (current?.status === "loading") {
+                if (openWhenReady && !current.pendingOpen) {
+                    setFeedbackCardStates((prev) => {
+                        const existing = prev[messageKey];
+                        if (!existing || existing.pendingOpen) return prev;
+                        return {
+                            ...prev,
+                            [messageKey]: {
+                                ...existing,
+                                pendingOpen: true,
+                            },
+                        };
+                    });
+                }
+                return;
+            }
+
+            const requestId = ++feedbackRequestIdRef.current;
+            const liveChatId = chatId;
+
+            setFeedbackCardStates((prev) => ({
+                ...prev,
+                [messageKey]: {
+                    status: "loading",
+                    feedbackCard: current?.feedbackCard ?? null,
+                    pendingOpen: openWhenReady,
+                    requestId,
+                    errorCode: null,
+                },
+            }));
+
+            try {
+                const response = await createFeedbackCard(message.id, {
+                    signal: feedbackAbortControllerRef.current?.signal,
+                });
+                setFeedbackCardStates((prev) => {
+                    const existing = prev[messageKey];
+                    if (!existing || existing.requestId !== requestId) return prev;
+                    if (chatId !== liveChatId) return prev;
+                    return {
+                        ...prev,
+                        [messageKey]: {
+                            ...existing,
+                            status: "ready",
+                            feedbackCard: response.feedback_card,
+                            errorCode: null,
+                        },
+                    };
+                });
+            } catch (err) {
+                if (err instanceof DOMException && err.name === "AbortError") {
+                    return;
+                }
+                console.error("Failed to create feedback card:", err);
+
+                if (openWhenReady) {
+                    const toastId = toast("思考中...", { duration: 2000 });
+                    await new Promise((resolve) => setTimeout(resolve, 800));
+
+                    try {
+                        const retryResponse = await createFeedbackCard(message.id, {
+                            signal: feedbackAbortControllerRef.current?.signal,
+                        });
+                        toast.dismiss(toastId);
+                        setFeedbackCardStates((prev) => {
+                            const existing = prev[messageKey];
+                            if (!existing || existing.requestId !== requestId) return prev;
+                            if (chatId !== liveChatId) return prev;
+                            return {
+                                ...prev,
+                                [messageKey]: {
+                                    ...existing,
+                                    status: "ready",
+                                    feedbackCard: retryResponse.feedback_card,
+                                    errorCode: null,
+                                },
+                            };
+                        });
+                        return;
+                    } catch (retryErr) {
+                        toast.dismiss(toastId);
+                        if (retryErr instanceof DOMException && retryErr.name === "AbortError") {
+                            return;
+                        }
+                        console.error("Retry failed to create feedback card:", retryErr);
+                        toast.error("生成失败，再试一次吧", { duration: 2500 });
+                        err = retryErr;
+                    }
+                }
+
+                const errorCode = deriveFeedbackErrorCode(err);
+                setFeedbackCardStates((prev) => {
+                    const existing = prev[messageKey];
+                    if (!existing || existing.requestId !== requestId) return prev;
+                    if (chatId !== liveChatId) return prev;
+                    return {
+                        ...prev,
+                        [messageKey]: {
+                            ...existing,
+                            status: "error",
+                            pendingOpen: false,
+                            errorCode,
+                        },
+                    };
+                });
+            }
+        },
+        [chatId]
+    );
+
+    useEffect(() => {
+        if (isVoiceActiveProfile) {
+            return;
+        }
+        if (isLoading) return;
+
+        const currentUsers = messages.filter(
+            (message) => message.role === "user" && !message.isTemp
+        );
+        const nextVersions = new Map(
+            currentUsers.map((message) => [
+                message.id,
+                {
+                    key: getMessageVersionKey(message),
+                    candidateCount: message.candidateCount ?? 1,
+                },
+            ])
+        );
+
+        if (!feedbackPrefetchInitializedRef.current) {
+            previousUserVersionsRef.current = nextVersions;
+            feedbackPrefetchInitializedRef.current = true;
+            return;
+        }
+
+        const previousVersions = previousUserVersionsRef.current;
+        previousUserVersionsRef.current = nextVersions;
+
+        currentUsers.forEach((message) => {
+            const previous = previousVersions.get(message.id);
+            const currentKey = getMessageVersionKey(message);
+            if (
+                !!previous &&
+                previous.key !== currentKey &&
+                (message.candidateCount ?? 1) > previous.candidateCount
+            ) {
+                // feedback card is triggered only by manual "improve" tap
+            }
+        });
+    }, [ensureFeedbackCard, isLoading, isVoiceActiveProfile, messages]);
+
+    useEffect(() => {
+        const readyEntry = Object.entries(feedbackCardStates).find(
+            ([, state]) =>
+                state.pendingOpen && state.status === "ready" && !!state.feedbackCard
+        );
+        if (!readyEntry) return;
+
+        const [messageKey, state] = readyEntry;
+        const targetMessage = messages.find(
+            (message) => getMessageVersionKey(message) === messageKey
+        );
+
+        setFeedbackCardStates((prev) => {
+            const existing = prev[messageKey];
+            if (!existing || !existing.pendingOpen) return prev;
+            return {
+                ...prev,
+                [messageKey]: {
+                    ...existing,
+                    pendingOpen: false,
+                },
+            };
+        });
+
+        if (!targetMessage || !state.feedbackCard) {
+            return;
+        }
+
+        setFeedbackCard(state.feedbackCard);
+        setFeedbackCardKey(messageKey);
+    }, [feedbackCardStates, messages]);
+
+    useEffect(() => {
+        if (!pendingReplyCardKey) return;
+
+        const targetMessage = messages.find(
+            (message) => getMessageVersionKey(message) === pendingReplyCardKey
+        );
+        if (!targetMessage) {
+            setPendingReplyCardKey(null);
+            return;
+        }
+
+        if (targetMessage.replyCard) {
+            setOpenReplyCardKey(pendingReplyCardKey);
+            setPendingReplyCardKey(null);
+            return;
+        }
+
+        if (
+            targetMessage.replyCardStatus === "error" ||
+            targetMessage.replyCardStatus === "idle"
+        ) {
+            setPendingReplyCardKey(null);
+        }
+    }, [messages, pendingReplyCardKey]);
+
+    useEffect(() => {
+        if (!feedbackCardKey) return;
+        const targetMessage = messages.find(
+            (message) => getMessageVersionKey(message) === feedbackCardKey
+        );
+        if (!targetMessage) {
+            setFeedbackCard(null);
+            setFeedbackCardKey(null);
+        }
+    }, [feedbackCardKey, messages]);
+
+    useEffect(() => {
+        setFeedbackFavoriteOverrides((prev) => {
+            const validKeys = new Set(
+                messages
+                    .filter((message) => message.role === "user" && !message.isTemp)
+                    .map(getMessageVersionKey)
+            );
+            const next: Record<string, { isFavorited: boolean; savedItemId: string | null }> = {};
+            let changed = false;
+
+            Object.entries(prev).forEach(([messageKey, value]) => {
+                if (validKeys.has(messageKey)) {
+                    next[messageKey] = value;
+                } else {
+                    changed = true;
+                }
+            });
+
+            return changed ? next : prev;
+        });
+    }, [messages]);
+
+    const handleRequestFeedback = useCallback(
+        (message: Message) => {
+            void ensureFeedbackCard(message, true);
+        },
+        [ensureFeedbackCard]
+    );
+
+    const handleCloseFeedbackCard = useCallback(() => {
+        setFeedbackCard(null);
+        setFeedbackCardKey(null);
+    }, []);
+
+    const feedbackCardMessage = feedbackCardKey
+        ? messages.find((message) => getMessageVersionKey(message) === feedbackCardKey) ?? null
+        : null;
+
+    const handleToggleFeedbackFavorite = useCallback(
+        async (
+            isFavorited: boolean,
+            savedItemId: string | null | undefined,
+            feedbackCardData: FeedbackCard
+        ): Promise<string | null> => {
+            if (!character || !feedbackCardKey || !feedbackCardMessage) return null;
+            const previous = feedbackFavoriteOverrides[feedbackCardKey] ?? {
+                isFavorited: feedbackCardData.favorite.is_favorited,
+                savedItemId: feedbackCardData.favorite.saved_item_id ?? null,
+            };
+
+            setFeedbackFavoriteOverrides((prev) => ({
+                ...prev,
+                [feedbackCardKey]: {
+                    isFavorited,
+                    savedItemId: isFavorited ? previous.savedItemId : null,
+                },
+            }));
+
+            try {
+                if (isFavorited) {
+                    const payload: SavedItemPayloadPhase3 = {
+                        kind: "feedback_card",
+                        display: {
+                            surface: feedbackCardData.surface,
+                            zh: feedbackCardData.zh,
+                        },
+                        card: feedbackCardData,
+                        source: {
+                            role_id: character.id,
+                            chat_id: chatId,
+                            message_id: feedbackCardMessage.id,
+                            turn_id: feedbackCardMessage.id,
+                            candidate_id: null,
+                        },
+                    };
+                    const created = await createSavedItemPhase3(payload);
+                    setFeedbackFavoriteOverrides((prev) => ({
+                        ...prev,
+                        [feedbackCardKey]: {
+                            isFavorited: true,
+                            savedItemId: created.id,
+                        },
+                    }));
+                    return created.id;
+                } else {
+                    const effectiveSavedItemId = savedItemId ?? previous.savedItemId;
+                    if (effectiveSavedItemId) {
+                        await deleteSavedItem(effectiveSavedItemId);
+                    }
+                    setFeedbackFavoriteOverrides((prev) => ({
+                        ...prev,
+                        [feedbackCardKey]: {
+                            isFavorited: false,
+                            savedItemId: null,
+                        },
+                    }));
+                    return null;
+                }
+            } catch (err) {
+                console.error("Failed to toggle feedback favorite:", err);
+                setFeedbackFavoriteOverrides((prev) => ({
+                    ...prev,
+                    [feedbackCardKey]: previous,
+                }));
+                throw err;
+            }
+        },
+        [character, chatId, feedbackCardKey, feedbackCardMessage, feedbackFavoriteOverrides]
+    );
+
+    const applyFavoriteOverride = useCallback(
+        (message: Message): Message => {
+            if (!message.replyCard) return message;
+            const override = favoriteOverrides[getMessageVersionKey(message)];
+            if (!override) return message;
+
+            return {
+                ...message,
+                replyCard: {
+                    ...message.replyCard,
+                    favorite: {
+                        ...message.replyCard.favorite,
+                        is_favorited: override.isFavorited,
+                        saved_item_id: override.savedItemId,
+                    },
+                },
+            };
+        },
+        [favoriteOverrides]
+    );
+
+    const openCardMessage = openReplyCardKey
+        ? messages
+            .map(applyFavoriteOverride)
+            .find((message) => getMessageVersionKey(message) === openReplyCardKey)
+        : null;
+    const replyCardMessage = openCardMessage?.replyCard ? openCardMessage : null;
+    const visibleMessages = messages.filter(
+        (message) =>
+            !(
+                message.role === "assistant" &&
+                message.isTemp &&
+                message.content.trim().length === 0 &&
+                message.messageStreamStatus !== "error"
+            )
+    );
+    const floatingCardMiddleware = [
+        offset(CARD_GAP),
+        flip(),
+        shift({ padding: VIEWPORT_PADDING }),
+    ];
+    const feedbackCardMiddleware = [
+        offset({
+            mainAxis: CARD_GAP,
+            crossAxis: 4,
+        }),
+        flip({
+            fallbackPlacements: feedbackCardFallbackPlacements,
+            padding: VIEWPORT_PADDING,
+        }),
+        shift({ padding: VIEWPORT_PADDING }),
+    ];
+    const {
+        refs: replyCardRefs,
+        floatingStyles: replyCardStyles,
+        placement: replyCardPlacement,
+        x: replyCardX,
+        y: replyCardY,
+    } = useFloating({
+        open: Boolean(openReplyCardKey && openCardMessage?.replyCard),
+        placement: "left",
+        strategy: "fixed",
+        middleware: floatingCardMiddleware,
+        whileElementsMounted: autoUpdate,
+    });
+    const {
+        refs: wordCardRefs,
+        floatingStyles: wordCardStyles,
+        placement: wordCardPlacement,
+        x: wordCardX,
+        y: wordCardY,
+    } = useFloating({
+        open: Boolean(wordCard && wordCardAnchorRect),
+        placement: "bottom",
+        strategy: "fixed",
+        middleware: floatingCardMiddleware,
+        whileElementsMounted: autoUpdate,
+    });
+    const {
+        refs: feedbackCardRefs,
+        floatingStyles: feedbackCardStyles,
+        placement: feedbackCardPlacement,
+        x: feedbackCardX,
+        y: feedbackCardY,
+    } = useFloating({
+        open: Boolean(feedbackCard && feedbackCardMessage),
+        placement: "left-start",
+        strategy: "fixed",
+        middleware: feedbackCardMiddleware,
+        whileElementsMounted: autoUpdate,
+    });
+
+    useEffect(() => {
+        if (!openCardMessage?.id) {
+            replyCardRefs.setReference(null);
+            return;
+        }
+
+        replyCardRefs.setReference(cardAnchorRefs.current.get(openCardMessage.id) ?? null);
+    }, [openCardMessage?.id, replyCardRefs]);
+
+    useEffect(() => {
+        if (!wordCardAnchorRect) {
+            wordCardRefs.setReference(null);
+            return;
+        }
+
+        wordCardRefs.setReference({
+            getBoundingClientRect: () =>
+                new DOMRect(
+                    wordCardAnchorRect.left,
+                    wordCardAnchorRect.top,
+                    wordCardAnchorRect.width,
+                    wordCardAnchorRect.height
+                ),
+        });
+    }, [wordCardAnchorRect, wordCardRefs]);
+
+    useEffect(() => {
+        if (!feedbackCardMessage?.id) {
+            feedbackCardRefs.setReference(null);
+            return;
+        }
+
+        feedbackCardRefs.setReference(
+            feedbackAnchorRefs.current.get(feedbackCardMessage.id) ?? null
+        );
+    }, [feedbackCardMessage?.id, feedbackCardRefs]);
+
+    const isReplyCardPositioned = replyCardX !== null && replyCardY !== null;
+    const isWordCardPositioned = wordCardX !== null && wordCardY !== null;
+    const isFeedbackCardPositioned = feedbackCardX !== null && feedbackCardY !== null;
+
+    const shouldRenderReplyCard =
+        Boolean(openReplyCardKey && replyCardMessage) &&
+        typeof document !== "undefined";
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-1 items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            </div>
+        );
+    }
+
+    if (error || !character) {
+        return (
+            <div className="flex flex-1 items-center justify-center">
+                <div className="text-center">
+                    <p className="text-red-500 mb-4">{error || "聊天未找到"}</p>
+                    <button
+                        onClick={() => router.push("/")}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                        返回首页
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <>
+            <div
+                ref={messagesStartRef}
+                className="h-px w-full"
+                aria-hidden="true"
+            />
+            {isLoadingOlder && (
+                <div className="flex justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                </div>
+            )}
+            {visibleMessages.map((message, index) => {
+                const renderedMessage = applyFavoriteOverride(message);
+                const messageKey = getMessageVersionKey(renderedMessage);
+                const feedbackStatus = feedbackCardStates[messageKey]?.status ?? "idle";
+                const replyCardStatus =
+                    renderedMessage.replyCardStatus ??
+                    (renderedMessage.replyCard ? "ready" : "idle");
+                const isUserTurn = message.role === "user";
+                const isErrorMessage = !isUserTurn && message.messageStreamStatus === "error";
+                const isLastTurn = index === visibleMessages.length - 1;
+                const prevMessage = index > 0 ? visibleMessages[index - 1] : null;
+                const isConsecutiveAssistant = !isUserTurn && prevMessage?.role === "assistant";
+                const topPaddingClass = message.isGreeting || message.isProactiveOutreach
+                    ? "pt-[36px]"
+                    : isUserTurn
+                        ? "pt-3"
+                        : isConsecutiveAssistant
+                            ? "pt-3"
+                            : "";
+
+                if (isErrorMessage) {
+                    const canRegen = message.assistantTurnId && onRegenAssistant;
+                    const canRetrySend = !message.assistantTurnId && message.retryContent && onRetrySend;
+                    const retryButtonClass = "ml-auto text-red-600 hover:text-red-800 rounded-lg disabled:opacity-50";
+                    return (
+                        <div key={message.id} className="w-full px-3 sm:px-4 lg:px-0">
+                            <div className="mx-auto w-full max-w-[44rem] lg:max-w-[calc(100%-320px)]">
+                                <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
+                                    <AlertCircle className="h-4 w-4 shrink-0" />
+                                    <span>{message.errorMessage ?? "操作失败，请稍后重试"}</span>
+                                    {canRegen && (
+                                        <button
+                                            type="button"
+                                            className={retryButtonClass}
+                                            onClick={() => void onRegenAssistant(message.assistantTurnId!)}
+                                            disabled={isConversationLocked}
+                                            aria-label="重新生成"
+                                        >
+                                            <span className="flex h-8 w-8 items-center justify-center">
+                                                <SpriteIcon name="refresh" size={16} className="text-red-600" />
+                                            </span>
+                                        </button>
+                                    )}
+                                    {canRetrySend && (
+                                        <button
+                                            type="button"
+                                            className={retryButtonClass}
+                                            onClick={() => onRetrySend!(message.id)}
+                                            aria-label="重试"
+                                        >
+                                            <span className="flex h-8 w-8 items-center justify-center">
+                                                <SpriteIcon name="refresh" size={16} className="text-red-600" />
+                                            </span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <article
+                        key={message.id}
+                        className={
+                            isUserTurn
+                                ? "text-token-text-primary w-full focus:outline-none [--shadow-height:45px] scroll-mt-(--header-height)"
+                                : "text-token-text-primary w-full focus:outline-none [--shadow-height:45px] scroll-mt-[calc(var(--header-height)+min(200px,max(70px,20svh)))]"
+                        }
+                        tabIndex={-1}
+                        dir="auto"
+                        data-turn-id={message.id}
+                        data-testid={`conversation-turn-${index + 1}`}
+                        data-scroll-anchor={isLastTurn ? "true" : "false"}
+                        data-turn={message.role}
+                    >
+                        {isUserTurn ? (
+                            <h5 className="sr-only">You said:</h5>
+                        ) : (
+                            <h6 className="sr-only">ChatGPT said:</h6>
+                        )}
+                        <div
+                            className={`text-base my-auto mx-auto px-3 sm:px-4 lg:px-0 ${topPaddingClass}`}
+                        >
+                            <div
+                                className={`mx-auto w-full max-w-[44rem] lg:max-w-[calc(100%-320px)] flex-1 group/turn-messages focus-visible:outline-hidden relative flex min-w-0 flex-col ${
+                                    isUserTurn ? "" : "agent-turn"
+                                }`}
+                                tabIndex={-1}
+                            >
+                                <div className="flex max-w-full flex-col grow">
+                                    <div
+                                        data-message-author-role={isUserTurn ? "user" : "assistant"}
+                                        data-message-id={message.id}
+                                        dir="auto"
+                                        className="min-h-8 text-message relative flex w-full flex-col items-end gap-2 text-start break-words whitespace-normal [.text-message+&]:mt-1"
+                                        ref={(el) => {
+                                            if (!isUserTurn) {
+                                                if (el) {
+                                                    cardAnchorRefs.current.set(message.id, el);
+                                                } else {
+                                                    cardAnchorRefs.current.delete(message.id);
+                                                }
+                                            }
+                                        }}
+                                    >
+                                        <ChatMessage
+                                            message={renderedMessage}
+                                            userAvatar={userAvatar}
+                                            assistantAvatar={character.avatar}
+                                            messageFontSize={messageFontSize}
+                                            actionsDisabled={false}
+                                            replyCardDisabled={false}
+                                            regenDisabled={isConversationLocked}
+                                            editDisabled={isConversationLocked}
+                                            replyCardStatus={replyCardStatus}
+                                            feedbackStatus={feedbackStatus}
+                                            displayMode={displayMode}
+                                            replyCardEnabled={replyCardEnabled}
+                                            playingCandidateId={playingCandidateId}
+                                            ttsLoadingCandidateId={ttsLoadingCandidateId}
+                                            isRecording={isRecording}
+                                            ttsStreamingDisabled={!message.isTemp && isStreaming}
+                                            onPlayTts={onPlayTts}
+                                            onStopTts={onStopTts}
+                                            onSelectCandidate={onSelectCandidate}
+                                            onRegenAssistant={onRegenAssistant}
+                                            onEditUser={onEditUser}
+                                            onOpenReplyCard={handleOpenReplyCard}
+                                            onRequestFeedback={handleRequestFeedback}
+                                            messageActionProfile={messageActionProfile}
+                                            feedbackAnchorRef={
+                                                isUserTurn
+                                                    ? (el) => {
+                                                          if (el) {
+                                                              feedbackAnchorRefs.current.set(
+                                                                  message.id,
+                                                                  el
+                                                              );
+                                                          } else {
+                                                              feedbackAnchorRefs.current.delete(
+                                                                  message.id
+                                                              );
+                                                          }
+                                                      }
+                                                    : undefined
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <span className="sr-only">
+                            <br />
+                        </span>
+                    </article>
+                );
+            })}
+            {shouldRenderReplyCard &&
+                createPortal(
+                    <div
+                        ref={(node) => {
+                            replyCardWrapperRef.current = node;
+                            replyCardRefs.setFloating(node);
+                        }}
+                        style={isMobile ? {
+                            position: "fixed",
+                            bottom: "16px",
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            zIndex: 60,
+                            visibility: isReplyCardPositioned ? "visible" : "hidden",
+                            pointerEvents: isReplyCardPositioned ? "auto" : "none",
+                        } : {
+                            ...replyCardStyles,
+                            zIndex: 60,
+                            visibility: isReplyCardPositioned ? "visible" : "hidden",
+                            pointerEvents: isReplyCardPositioned ? "auto" : "none",
+                        }}
+                    >
+                        <ReplyCardPopover
+                            replyCard={replyCardMessage!.replyCard!}
+                            onToggleFavorite={(isFavorited, savedItemId) =>
+                                handleToggleFavorite(
+                                    isFavorited,
+                                    savedItemId,
+                                    replyCardMessage!
+                                )
+                            }
+                            onClose={handleCloseReplyCard}
+                            placement={isMobile ? "bottom" : replyCardPlacement.split("-")[0] as "top" | "bottom" | "left" | "right"}
+                            mobileMode={isMobile}
+                        />
+                    </div>,
+                    document.body
+                )}
+
+            {wordCard && typeof document !== "undefined" && (
+                createPortal(
+                    <div
+                        ref={(node) => {
+                            wordCardWrapperRef.current = node;
+                            wordCardRefs.setFloating(node);
+                        }}
+                        style={isMobile ? {
+                            position: "fixed",
+                            bottom: "16px",
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            zIndex: 60,
+                            visibility: isWordCardPositioned ? "visible" : "hidden",
+                            pointerEvents: isWordCardPositioned ? "auto" : "none",
+                        } : {
+                            ...wordCardStyles,
+                            zIndex: 60,
+                            visibility: isWordCardPositioned ? "visible" : "hidden",
+                            pointerEvents: isWordCardPositioned ? "auto" : "none",
+                        }}
+                    >
+                        <WordCardPopover
+                            wordCard={{
+                                ...wordCard,
+                                favorite: {
+                                    ...wordCard.favorite,
+                                    is_favorited: wordCardFavoriteOverride?.isFavorited ?? wordCard.favorite.is_favorited,
+                                    saved_item_id: wordCardFavoriteOverride?.savedItemId ?? wordCard.favorite.saved_item_id,
+                                },
+                            }}
+                            onToggleFavorite={(isFavorited, savedItemId) =>
+                                handleToggleWordCardFavorite(isFavorited, savedItemId, wordCard)
+                            }
+                            onClose={handleCloseWordCard}
+                            placement={isMobile ? "bottom" : wordCardPlacement.split("-")[0] as "top" | "bottom" | "left" | "right"}
+                            mobileMode={isMobile}
+                        />
+                    </div>,
+                    document.body
+                )
+            )}
+
+            {typeof document !== "undefined" &&
+                createPortal(
+                    <button
+                        ref={selectionButtonRef}
+                        type="button"
+                        data-selection-word-trigger="true"
+                        onClick={() => {
+                            void handleOpenWordCard();
+                        }}
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                        }}
+                        disabled={isWordCardLoading}
+                        style={{
+                            position: "fixed",
+                            top: "0px",
+                            left: "0px",
+                            transform: "translateX(-50%) scale(0.96)",
+                            zIndex: 65,
+                            visibility: "hidden",
+                            opacity: 0,
+                            pointerEvents: "none",
+                            paddingLeft: isWordCardLoading ? "8px" : "4px",
+                            paddingRight: isWordCardLoading ? "8px" : "4px",
+                        }}
+                        className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white shadow-lg transition-[opacity,transform] duration-150 hover:scale-[1.03] disabled:pointer-events-auto disabled:cursor-not-allowed"
+                        aria-label="打开单词卡"
+                    >
+                        {isWordCardLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                        ) : (
+                            <SpriteIcon name="translate" size={24} />
+                        )}
+                    </button>,
+                    document.body
+                )
+            }
+
+            {feedbackCard && typeof document !== "undefined" && (
+                createPortal(
+                    <div
+                        ref={(node) => {
+                            feedbackCardWrapperRef.current = node;
+                            feedbackCardRefs.setFloating(node);
+                        }}
+                        style={isMobile ? {
+                            position: "fixed",
+                            bottom: "16px",
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            zIndex: 60,
+                            visibility: isFeedbackCardPositioned ? "visible" : "hidden",
+                            pointerEvents: isFeedbackCardPositioned ? "auto" : "none",
+                        } : {
+                            ...feedbackCardStyles,
+                            zIndex: 60,
+                            visibility: isFeedbackCardPositioned ? "visible" : "hidden",
+                            pointerEvents: isFeedbackCardPositioned ? "auto" : "none",
+                        }}
+                    >
+                        <FeedbackCardPopover
+                            feedbackCard={{
+                                ...feedbackCard,
+                                favorite: {
+                                    ...feedbackCard.favorite,
+                                    is_favorited:
+                                        feedbackFavoriteOverrides[feedbackCardKey || ""]?.isFavorited ??
+                                        feedbackCard.favorite.is_favorited,
+                                    saved_item_id:
+                                        feedbackFavoriteOverrides[feedbackCardKey || ""]?.savedItemId ??
+                                        feedbackCard.favorite.saved_item_id,
+                                },
+                            }}
+                            onToggleFavorite={(isFavorited, savedItemId) =>
+                                handleToggleFeedbackFavorite(isFavorited, savedItemId, feedbackCard)
+                            }
+                            onClose={handleCloseFeedbackCard}
+                            placement={isMobile ? "bottom" : feedbackCardPlacement.split("-")[0] as "top" | "bottom" | "left" | "right"}
+                            mobileMode={isMobile}
+                        />
+                    </div>,
+                    document.body
+                )
+            )}
+
+            <div ref={messagesEndRef} />
+        </>
+    );
+}
