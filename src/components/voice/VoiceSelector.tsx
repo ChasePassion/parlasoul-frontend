@@ -49,7 +49,7 @@ export default function VoiceSelector({
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-        <span className="ml-2 text-sm text-gray-500">加载音色列表...</span>
+        <span className="ml-2 text-sm text-gray-500">Loading voices...</span>
       </div>
     );
   }
@@ -66,7 +66,7 @@ export default function VoiceSelector({
             void voicesQuery.refetch();
           }}
         >
-          重试
+          Retry
         </Button>
       </div>
     );
@@ -75,7 +75,7 @@ export default function VoiceSelector({
   if (voicesQuery.isSuccess && voiceGroups.length === 0) {
     return (
       <div className="rounded-lg bg-gray-50 p-4 text-center">
-        <p className="text-sm text-gray-500">暂无可用音色</p>
+        <p className="text-sm text-gray-500">No voices available</p>
       </div>
     );
   }

@@ -98,11 +98,11 @@ export function groupVoicesBySource(
   const groups: VoiceGroup[] = [];
 
   if (systemVoices.length > 0) {
-    groups.push({ label: "系统音色", voices: systemVoices });
+    groups.push({ label: "System voices", voices: systemVoices });
   }
 
   if (myCloneVoices.length > 0) {
-    groups.push({ label: "我的克隆", voices: myCloneVoices });
+    groups.push({ label: "My clones", voices: myCloneVoices });
   }
 
   return groups;
