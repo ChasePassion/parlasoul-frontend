@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { CharacterResponse } from "@/lib/api-service";
 
-import { selectHeroCharacters } from "./discover-data";
+import { DEFAULT_DISCOVER_CTA_TEXT, selectHeroCharacters } from "./discover-data";
 
 function character(id: string, name: string): CharacterResponse {
   return {
@@ -30,7 +30,7 @@ test("selects hero characters in config order with configured image urls", () =>
         character_id: "character-1",
         image_key: "images/discover/heroes/elon-21-9.jpg",
         image_url: "/media/images/discover/heroes/elon-21-9.jpg",
-        cta_text: " 开始对话 ",
+        cta_text: " Start chatting ",
       },
       {
         character_id: "missing-character",
@@ -56,12 +56,12 @@ test("selects hero characters in config order with configured image urls", () =>
       {
         characterId: "character-1",
         imageUrl: "/media/images/discover/heroes/elon-21-9.jpg",
-        ctaText: "开始对话",
+        ctaText: "Start chatting",
       },
       {
         characterId: "character-2",
         imageUrl: "/media/images/discover/heroes/gork-21-9.jpg",
-        ctaText: "开始对话",
+        ctaText: DEFAULT_DISCOVER_CTA_TEXT,
       },
     ],
   );

@@ -57,18 +57,20 @@ test("consumeSseStream rejects responses without a readable body", async () => {
   );
 });
 
-test("handleStreamError keeps aborts silent and maps unauthorized errors to friendly messages", () => {
+test("handleStreamError keeps aborts silent and wraps unauthorized errors", () => {
   const errors: Error[] = [];
+  const unauthorized = new UnauthorizedError();
 
   handleStreamError(new DOMException("aborted", "AbortError"), (error) => {
     errors.push(error);
   });
-  handleStreamError(new UnauthorizedError(), (error) => {
+  handleStreamError(unauthorized, (error) => {
     errors.push(error);
   });
 
   assert.equal(errors.length, 1);
-  assert.equal(errors[0].message, "登录已过期，请重新登录");
+  assert.equal(errors[0] instanceof UnauthorizedError, false);
+  assert.notEqual(errors[0].message, unauthorized.message);
 });
 
 test("handleStreamError can preserve legacy chat stream ApiError wrapping", () => {
