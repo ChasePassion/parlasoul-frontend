@@ -82,23 +82,27 @@ function getPool() {
   return pool;
 }
 
-function getPurelymailConfig() {
-  const host = process.env.PURELYMAIL_SMTP_HOST?.trim() || "smtp.purelymail.com";
-  const port = Number(process.env.PURELYMAIL_SMTP_PORT || "465");
-  const user = process.env.PURELYMAIL_SMTP_USER?.trim();
-  const password = process.env.PURELYMAIL_SMTP_PASSWORD?.trim();
-  const from = process.env.PURELYMAIL_FROM_EMAIL?.trim();
+function getSmtpConfig() {
+  const host = process.env.SMTP_HOST?.trim();
+  const port = Number(process.env.SMTP_PORT || "465");
+  const user = process.env.SMTP_USER?.trim();
+  const password = process.env.SMTP_PASSWORD?.trim();
+  const from = process.env.EMAILS_FROM_EMAIL?.trim();
+
+  if (!host) {
+    throw new Error("Missing SMTP_HOST for Better Auth email OTP.");
+  }
 
   if (!user) {
-    throw new Error("Missing PURELYMAIL_SMTP_USER for Better Auth email OTP.");
+    throw new Error("Missing SMTP_USER for Better Auth email OTP.");
   }
 
   if (!password) {
-    throw new Error("Missing PURELYMAIL_SMTP_PASSWORD for Better Auth email OTP.");
+    throw new Error("Missing SMTP_PASSWORD for Better Auth email OTP.");
   }
 
   if (!from) {
-    throw new Error("Missing PURELYMAIL_FROM_EMAIL for Better Auth email OTP.");
+    throw new Error("Missing EMAILS_FROM_EMAIL for Better Auth email OTP.");
   }
 
   return {
@@ -111,12 +115,12 @@ function getPurelymailConfig() {
   };
 }
 
-function getPurelymailTransporter() {
+function getSmtpTransporter() {
   if (emailTransporter) {
     return emailTransporter;
   }
 
-  const config = getPurelymailConfig();
+  const config = getSmtpConfig();
 
   emailTransporter = nodemailer.createTransport({
     host: config.host,
@@ -153,8 +157,8 @@ function queueEmailOtpDelivery(params: {
   html: string;
 }) {
   const { email, otpType, subject, html } = params;
-  const config = getPurelymailConfig();
-  const transporter = getPurelymailTransporter();
+  const config = getSmtpConfig();
+  const transporter = getSmtpTransporter();
   const startedAt = Date.now();
 
   void logEmailOtpEvent({
@@ -314,8 +318,8 @@ function createAuth() {
         expiresIn: 300,
         async sendVerificationOTP({ email, otp, type }) {
           const normalizedEmail = email.trim().toLowerCase();
-          getPurelymailConfig();
-          getPurelymailTransporter();
+          getSmtpConfig();
+          getSmtpTransporter();
 
           const subject =
             type === "email-verification"
