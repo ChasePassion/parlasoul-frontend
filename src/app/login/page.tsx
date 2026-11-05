@@ -8,7 +8,11 @@ import {
   isProfileComplete,
   isProfileStatusIncomplete,
 } from "@/lib/auth-context";
-import { getCurrentUser, sendVerificationCode } from "@/lib/api";
+import {
+  getCurrentUser,
+  sendVerificationCode,
+  watchEmailOtpDelivery,
+} from "@/lib/api";
 // Google 登录已撤销；恢复时取消下一行 import 注释。
 // import { signInWithGoogle } from "@/lib/api";
 import {
@@ -20,6 +24,9 @@ import {
 
 import { toast } from "sonner";
 
+import { AlertCircle, Info } from "lucide-react";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +43,7 @@ function getAuthActionErrorMessage(error: unknown, fallback: string): string {
       error.message.includes("Could not connect") ||
       error.message.includes("ECONNECTION")
     ) {
-      return "邮件服务配置有误，请检查 Purelymail SMTP 配置";
+      return "邮件服务暂时不可用，请稍后重试";
     }
     if (error.message.includes("invalid") || error.message.includes("expired")) {
       return "验证码错误或已过期";
@@ -82,13 +89,21 @@ function useCountdown(seconds = 60) {
     }, 1000);
   }, [remaining, seconds]);
 
+  const reset = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setRemaining(0);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
 
-  return { remaining, start };
+  return { remaining, start, reset };
 }
 
 /* ── logo ── */
@@ -143,8 +158,10 @@ function LoginPageContent() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
 
   const countdown = useCountdown(60);
+  const deliveryWatchRef = useRef<AbortController | null>(null);
   const {
     login,
     logout,
@@ -156,6 +173,12 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = normalizeNextPath(searchParams.get("next"));
+
+  useEffect(() => {
+    return () => {
+      deliveryWatchRef.current?.abort();
+    };
+  }, []);
 
   /* redirect if already logged in */
   useEffect(() => {
@@ -215,17 +238,28 @@ function LoginPageContent() {
 
   /* send verification code */
   const handleSendCode = async () => {
-    if (!email.trim()) return;
+    if (!email.trim() || isSendingCode) return;
     setError("");
     setInfo("");
-    setIsLoading(true);
+    setIsSendingCode(true);
+    deliveryWatchRef.current?.abort();
     try {
       await sendVerificationCode(email);
       countdown.start();
+
+      const controller = new AbortController();
+      deliveryWatchRef.current = controller;
+      void watchEmailOtpDelivery(email, { signal: controller.signal }).then(
+        (result) => {
+          if (result.outcome !== "failed" || controller.signal.aborted) return;
+          countdown.reset();
+          setError(result.message);
+        },
+      );
     } catch (err) {
       setError(getAuthActionErrorMessage(err, "验证码发送失败，请稍后重试"));
     } finally {
-      setIsLoading(false);
+      setIsSendingCode(false);
     }
   };
 
@@ -284,14 +318,20 @@ function LoginPageContent() {
 
           {/* Error / Info */}
           {error && (
-            <div className="mb-5 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
-            </div>
+            <Alert className="mb-5 items-center gap-x-1.5 border-0 bg-transparent p-0 text-[13px] leading-5 text-red-600 [&>svg]:translate-y-0">
+              <AlertCircle className="size-3.5" />
+              <AlertDescription className="text-[13px] leading-5 text-red-600">
+                {error}
+              </AlertDescription>
+            </Alert>
           )}
           {!error && info && (
-            <div className="mb-5 rounded-lg border border-orange-100 bg-orange-50 px-4 py-3 text-sm text-orange-600">
-              {info}
-            </div>
+            <Alert className="mb-5 items-center gap-x-1.5 border-0 bg-transparent p-0 text-[13px] leading-5 text-gray-500 [&>svg]:translate-y-0">
+              <Info className="size-3.5" />
+              <AlertDescription className="text-[13px] leading-5 text-gray-500">
+                {info}
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* ── Email code form ── */}
@@ -305,7 +345,7 @@ function LoginPageContent() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
-                disabled={isLoading}
+                disabled={isLoading || isSendingCode}
                 className="h-12 rounded-lg border-gray-200 bg-white text-[15px] focus-visible:border-gray-400 focus-visible:ring-0"
               />
             </div>
@@ -321,19 +361,21 @@ function LoginPageContent() {
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="6-digit code"
                   maxLength={6}
-                  disabled={isLoading}
+                  disabled={isLoading || isSendingCode}
                   className="h-12 rounded-lg border-gray-200 bg-white text-[15px] focus-visible:border-gray-400 focus-visible:ring-0"
                 />
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={isLoading || countdown.remaining > 0}
+                  disabled={isLoading || isSendingCode || countdown.remaining > 0}
                   onClick={handleSendCode}
                   className="h-12 shrink-0 rounded-lg border-gray-200 px-5 text-[13px] font-medium text-gray-500 hover:border-gray-400 hover:text-black max-sm:w-full"
                 >
-                  {countdown.remaining > 0
-                    ? `Resend in ${countdown.remaining}s`
-                    : "Send code"}
+                  {isSendingCode
+                    ? "Sending..."
+                    : countdown.remaining > 0
+                      ? `Resend in ${countdown.remaining}s`
+                      : "Send code"}
                 </Button>
               </div>
             </div>

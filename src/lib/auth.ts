@@ -11,6 +11,7 @@ import nodemailer from "nodemailer";
 import { Pool } from "pg";
 
 import { logEmailOtpEvent } from "./auth-email-otp-log";
+import { setEmailOtpDeliveryRecord } from "./auth-email-otp-delivery";
 import { isBillingCheckoutEnabled } from "./billing-flags";
 import { DODO_CHECKOUT_PRODUCTS } from "./billing-plans";
 import {
@@ -129,9 +130,10 @@ function getSmtpTransporter() {
     pool: true,
     maxConnections: 3,
     maxMessages: 100,
+    dnsTimeout: 5_000,
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
-    socketTimeout: 10_000,
+    socketTimeout: 20_000,
     auth: {
       user: config.user,
       pass: config.password,
@@ -150,55 +152,106 @@ function normalizeDeliveryError(error: unknown): string {
   return message || "邮件发送失败，请稍后重试";
 }
 
-function queueEmailOtpDelivery(params: {
+// SMTP 服务商返回的英文错误对用户没有意义，这里统一转换成可展示的中文提示。
+function describeDeliveryError(error: unknown): string {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+
+  if (
+    message.includes("550") ||
+    message.includes("non-existent") ||
+    message.includes("mailbox") ||
+    message.includes("recipient")
+  ) {
+    return "该邮箱地址不存在，请检查后重试";
+  }
+
+  if (
+    message.includes("econnreset") ||
+    message.includes("etimedout") ||
+    message.includes("esocket") ||
+    message.includes("econnection") ||
+    message.includes("timeout") ||
+    message.includes("greeting")
+  ) {
+    return "邮件服务暂时不可用，请稍后重试";
+  }
+
+  if (
+    message.includes("535") ||
+    message.includes("eauth") ||
+    message.includes("invalid login")
+  ) {
+    return "邮件服务暂时不可用，请联系管理员";
+  }
+
+  return "验证码发送失败，请稍后重试";
+}
+
+async function deliverEmailOtp(params: {
   email: string;
   otpType: string;
   subject: string;
   html: string;
-}) {
+}): Promise<void> {
   const { email, otpType, subject, html } = params;
-  const config = getSmtpConfig();
-  const transporter = getSmtpTransporter();
   const startedAt = Date.now();
 
-  void logEmailOtpEvent({
-    event: "email_otp.delivery_queued",
-    message: "OTP email queued for background delivery",
+  await setEmailOtpDeliveryRecord(email, {
+    status: "pending",
+    at: startedAt,
+  });
+
+  await logEmailOtpEvent({
+    event: "email_otp.delivery_started",
+    message: "OTP email delivery started",
     email,
     otpType,
   });
 
-  setTimeout(() => {
-    void (async () => {
-      try {
-        await transporter.sendMail({
-          from: config.from,
-          to: email,
-          subject,
-          html,
-        });
+  try {
+    const config = getSmtpConfig();
+    const transporter = getSmtpTransporter();
 
-        await logEmailOtpEvent({
-          event: "email_otp.delivery_sent",
-          message: "OTP email delivered to SMTP provider",
-          email,
-          otpType,
-          durationMs: Date.now() - startedAt,
-        });
-      } catch (error) {
-        const normalizedError = normalizeDeliveryError(error);
-        console.error("Failed to deliver OTP email:", normalizedError);
-        await logEmailOtpEvent({
-          event: "email_otp.delivery_failed",
-          message: "OTP email delivery failed",
-          email,
-          otpType,
-          durationMs: Date.now() - startedAt,
-          errorMessage: normalizedError,
-        });
-      }
-    })();
-  }, 0);
+    await transporter.sendMail({
+      from: config.from,
+      to: email,
+      subject,
+      html,
+    });
+  } catch (error) {
+    const normalizedError = normalizeDeliveryError(error);
+    console.error("Failed to deliver OTP email:", normalizedError);
+
+    await setEmailOtpDeliveryRecord(email, {
+      status: "failed",
+      message: describeDeliveryError(error),
+      at: Date.now(),
+    });
+
+    await logEmailOtpEvent({
+      event: "email_otp.delivery_failed",
+      message: "OTP email delivery failed",
+      email,
+      otpType,
+      durationMs: Date.now() - startedAt,
+      errorMessage: normalizedError,
+    });
+
+    return;
+  }
+
+  await setEmailOtpDeliveryRecord(email, {
+    status: "sent",
+    at: Date.now(),
+  });
+
+  await logEmailOtpEvent({
+    event: "email_otp.delivery_sent",
+    message: "OTP email delivered to SMTP provider",
+    email,
+    otpType,
+    durationMs: Date.now() - startedAt,
+  });
 }
 
 // Google 登录已撤销；恢复时取消整段注释。
@@ -318,8 +371,6 @@ function createAuth() {
         expiresIn: 300,
         async sendVerificationOTP({ email, otp, type }) {
           const normalizedEmail = email.trim().toLowerCase();
-          getSmtpConfig();
-          getSmtpTransporter();
 
           const subject =
             type === "email-verification"
@@ -340,11 +391,14 @@ function createAuth() {
             </div>
           `;
 
-          queueEmailOtpDelivery({
+          // 发信在后台完成，接口立即返回；投递结果写入状态记录，由页面自行查询。
+          void deliverEmailOtp({
             email: normalizedEmail,
             otpType: type,
             subject,
             html,
+          }).catch((error) => {
+            console.error("Failed to run OTP email delivery:", error);
           });
         },
       }),

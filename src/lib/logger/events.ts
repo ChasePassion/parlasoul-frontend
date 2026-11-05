@@ -16,7 +16,7 @@ export const CharacterEvent = {
 } as const;
 
 export const AuthEvent = {
-  EMAIL_OTP_DELIVERY_QUEUED: "email_otp.delivery_queued",
+  EMAIL_OTP_DELIVERY_STARTED: "email_otp.delivery_started",
   EMAIL_OTP_DELIVERY_SENT: "email_otp.delivery_sent",
   EMAIL_OTP_DELIVERY_FAILED: "email_otp.delivery_failed",
   LOGIN_STARTED: "auth.login.started",
