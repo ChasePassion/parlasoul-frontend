@@ -7,7 +7,7 @@ function maskEmail(email: string): string {
 }
 
 export async function logEmailOtpEvent(params: {
-  event: "email_otp.delivery_queued" | "email_otp.delivery_sent" | "email_otp.delivery_failed";
+  event: "email_otp.delivery_started" | "email_otp.delivery_sent" | "email_otp.delivery_failed";
   message: string;
   email: string;
   otpType: string;
@@ -17,8 +17,8 @@ export async function logEmailOtpEvent(params: {
   const { event, message, email, otpType, durationMs, errorMessage } = params;
   const email_hint = maskEmail(email);
 
-  if (event === "email_otp.delivery_queued") {
-    logger.info(Module.AUTH, AuthEvent.EMAIL_OTP_DELIVERY_QUEUED, message, {
+  if (event === "email_otp.delivery_started") {
+    logger.info(Module.AUTH, AuthEvent.EMAIL_OTP_DELIVERY_STARTED, message, {
       email_hint,
       otp_type: otpType,
     });

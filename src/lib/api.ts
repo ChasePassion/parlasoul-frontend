@@ -36,6 +36,47 @@ function requireAuthClientData<T>(
 }
 
 // 认证相关
+
+const EMAIL_OTP_STATUS_PATH = "/api/email-otp/status";
+const EMAIL_OTP_STATUS_POLL_INTERVAL_MS = 1000;
+const EMAIL_OTP_STATUS_WATCH_TIMEOUT_MS = 30_000;
+
+type EmailOtpDeliveryStatus = "pending" | "sent" | "failed" | "unknown";
+
+interface EmailOtpDeliveryStatusResponse {
+  status: EmailOtpDeliveryStatus;
+  message?: string | null;
+  at?: number;
+}
+
+export type EmailOtpDeliveryOutcome =
+  | { outcome: "sent" }
+  | { outcome: "failed"; message: string }
+  | { outcome: "unknown" };
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readEmailOtpDeliveryStatus(
+  email: string,
+): Promise<EmailOtpDeliveryStatusResponse | null> {
+  try {
+    const response = await fetch(
+      `${EMAIL_OTP_STATUS_PATH}?email=${encodeURIComponent(email)}`,
+      { cache: "no-store" },
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return (await response.json()) as EmailOtpDeliveryStatusResponse;
+  } catch {
+    return null;
+  }
+}
+
 export async function sendVerificationCode(email: string): Promise<void> {
   const response = await authClient.emailOtp.sendVerificationOtp({
     email,
@@ -45,6 +86,42 @@ export async function sendVerificationCode(email: string): Promise<void> {
   if (response.error) {
     throw new Error(response.error.message || "验证码发送失败");
   }
+}
+
+/**
+ * 后台等待真实投递结果。发信请求本身立即返回，SMTP 结果由服务端写入状态记录，
+ * 页面据此在失败时补一条提示。
+ */
+export async function watchEmailOtpDelivery(
+  email: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<EmailOtpDeliveryOutcome> {
+  const { signal } = options;
+  const deadline = Date.now() + EMAIL_OTP_STATUS_WATCH_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    // 先等一拍再读：服务端是先写 pending 再异步发信的，避免抢到上一次发送留下的旧结果。
+    await delay(EMAIL_OTP_STATUS_POLL_INTERVAL_MS);
+
+    if (signal?.aborted) {
+      return { outcome: "unknown" };
+    }
+
+    const delivery = await readEmailOtpDeliveryStatus(email);
+
+    if (delivery?.status === "sent") {
+      return { outcome: "sent" };
+    }
+
+    if (delivery?.status === "failed") {
+      return {
+        outcome: "failed",
+        message: delivery.message || "验证码发送失败，请稍后重试",
+      };
+    }
+  }
+
+  return { outcome: "unknown" };
 }
 
 export async function loginWithCode(
