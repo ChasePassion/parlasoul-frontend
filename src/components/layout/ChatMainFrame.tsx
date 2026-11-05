@@ -224,7 +224,10 @@ export default function ChatMainFrame({
                     <div id="thread-bottom" style={{ backgroundColor: "var(--workspace-bg)" }}>
                         {composer}
                     </div>
-                    <div aria-hidden="true" className="-mt-4 h-6 w-full bg-workspace-bg" />
+                    {/* Bottom breathing room. The composer has a 16px bottom margin;
+                        starting 8px below it keeps the rounded edge and its shadow
+                        visible while preserving the same total footer height. */}
+                    <div aria-hidden="true" className="-mt-2 h-4 w-full bg-workspace-bg" />
                 </div>
             </div>
         </div>
