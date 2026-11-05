@@ -906,6 +906,11 @@ export default function ChatInput({
                                                                 ) : (
                                                                     <button
                                                                         type="button"
+                                                                        data-tour={
+                                                                            !hasText && !isVoiceActive && !isVoiceConnecting
+                                                                                ? "chat-play"
+                                                                                : undefined
+                                                                        }
                                                                         aria-label={
                                                                             hasText
                                                                                 ? "发送消息"

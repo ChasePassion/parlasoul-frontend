@@ -29,6 +29,7 @@ import {
 import { UserSettingsProvider } from "@/lib/user-settings-context";
 import { GrowthProvider } from "@/lib/growth-context";
 import CheckInCalendarDialog from "@/components/growth/CheckInCalendarDialog";
+import OnboardingTour from "@/components/onboarding/OnboardingTour";
 import {
     useGetOrCreateChatMutation,
     useSidebarCharactersQuery,
@@ -261,6 +262,7 @@ export default function AppLayout({
                     </AppFrame>
                 </SidebarContext.Provider>
                 <CheckInCalendarDialog />
+                <OnboardingTour />
             </GrowthProvider>
         </UserSettingsProvider>
     );

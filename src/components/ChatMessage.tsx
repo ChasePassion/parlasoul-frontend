@@ -374,6 +374,7 @@ export default function ChatMessage({
                     <div
                         ref={isUser ? feedbackAnchorRef : undefined}
                         data-feedback-anchor={isUser ? "true" : undefined}
+                        data-tour={isUser ? "chat-user-bubble" : undefined}
                         className={`w-fit max-w-full min-h-9 flex items-center ${
                             isEditing
                                 ? "bg-background shadow-md ring-1 ring-border rounded-2xl w-full min-w-[280px] sm:min-w-[400px]"
@@ -542,6 +543,7 @@ export default function ChatMessage({
                                     <button
                                         type="button"
                                         className={actionButtonClass}
+                                        data-tour="chat-sentence-card"
                                         onClick={() => onOpenReplyCard?.(message)}
                                         disabled={replyCardDisabled}
                                         aria-label={
