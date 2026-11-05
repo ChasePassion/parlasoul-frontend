@@ -1,148 +1,84 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-// ── Inline helpers (mirrors route.ts logic for unit testing) ──────────────
+import { NextRequest } from "next/server";
 
-const LOG_DIR = path.join(process.cwd(), "logs");
-const RESOLVED_LOG_DIR = path.resolve(LOG_DIR);
+import { POST } from "./route";
 
-const ALLOWED_MODULES = new Set(["character", "realtime", "voice"]);
-const ALLOWED_LEVELS = new Set(["DEBUG", "INFO", "WARN", "ERROR"]);
+function withLogCwd(run: (logDir: string) => Promise<void>): Promise<void> {
+  const originalCwd = process.cwd();
+  const workDir = mkdtempSync(path.join(tmpdir(), "parlasoul-logs-"));
+  const logDir = path.join(workDir, "logs");
 
-const MAX_FIELD_LENGTH = 1000;
+  process.chdir(workDir);
 
-function sanitizeLogValue(value: unknown, maxLength = MAX_FIELD_LENGTH): string {
-  return String(value ?? "")
-    .replace(/[\r\n\t]/g, " ")
-    .replace(/[\u0000-\u001F\u007F]/g, "")
-    .slice(0, maxLength);
+  return run(logDir).finally(() => {
+    process.chdir(originalCwd);
+    rmSync(workDir, { recursive: true, force: true });
+  });
 }
 
-function resolveLogFile(module: string): string {
-  const logFile = path.resolve(RESOLVED_LOG_DIR, `${module}.log`);
-  const relative = path.relative(RESOLVED_LOG_DIR, logFile);
-
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error("Invalid log path");
-  }
-
-  return logFile;
+function postJson(payload: unknown): Promise<Response> {
+  return POST(
+    new NextRequest("http://localhost/api/logs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  );
 }
 
-function validateModule(module: unknown): boolean {
-  return typeof module === "string" && ALLOWED_MODULES.has(module);
-}
+test("rejects payloads above the body limit with 413", async () => {
+  await withLogCwd(async () => {
+    const response = await postJson({
+      module: "character",
+      event: "large",
+      message: "a".repeat(20 * 1024),
+    });
 
-function validateLevel(level: unknown): string {
-  return typeof level === "string" && ALLOWED_LEVELS.has(level) ? level : "INFO";
-}
-
-// ── Module allowlist ──────────────────────────────────────────────────────
-
-test("accepts allowed module: character", () => {
-  assert.equal(validateModule("character"), true);
+    assert.equal(response.status, 413);
+  });
 });
 
-test("accepts allowed module: realtime", () => {
-  assert.equal(validateModule("realtime"), true);
+test("writes sanitized single-line entries for allowed modules", async () => {
+  await withLogCwd(async (logDir) => {
+    const response = await postJson({
+      module: "character",
+      ts: "2026-01-01 00:00:00",
+      level: "HACK",
+      event: "line1\nline2",
+      message: "hello\r\nworld",
+      request_id: "req-1",
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { success: true, accepted: 1 });
+
+    const content = readFileSync(path.join(logDir, "character.log"), "utf8");
+    assert.equal(content.trimEnd().split("\n").length, 1);
+    assert.equal(content.includes("\r"), false);
+    assert.equal(content.includes("level=INFO"), true);
+    assert.equal(content.includes("event=line1 line2"), true);
+  });
 });
 
-test("rejects module with path traversal: ../../etc/passwd", () => {
-  assert.equal(validateModule("../../etc/passwd"), false);
-});
+test("drops entries whose module is not allowlisted", async () => {
+  await withLogCwd(async (logDir) => {
+    const response = await postJson({
+      module: "../../etc/passwd",
+      event: "traversal",
+      message: "ignored",
+    });
 
-test("rejects module with backslash traversal: ..\\..\\windows\\win.ini", () => {
-  assert.equal(validateModule("..\\..\\windows\\win.ini"), false);
-});
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { success: true, accepted: 0 });
 
-test("rejects absolute path module: /tmp/evil", () => {
-  assert.equal(validateModule("/tmp/evil"), false);
-});
-
-test("rejects module not in allowlist: auth", () => {
-  assert.equal(validateModule("auth"), false);
-});
-
-test("rejects empty module", () => {
-  assert.equal(validateModule(""), false);
-});
-
-test("rejects non-string module", () => {
-  assert.equal(validateModule(undefined), false);
-  assert.equal(validateModule(null), false);
-  assert.equal(validateModule(123), false);
-});
-
-// ── Path resolution defense-in-depth ──────────────────────────────────────
-
-test("resolveLogFile returns path inside LOG_DIR for valid module", () => {
-  const result = resolveLogFile("character");
-  assert.ok(result.startsWith(RESOLVED_LOG_DIR));
-  assert.ok(result.endsWith("character.log"));
-});
-
-test("resolveLogFile throws for path traversal attempt", () => {
-  assert.throws(() => resolveLogFile("../../etc/passwd"), /Invalid log path/);
-});
-
-test("resolveLogFile throws for absolute path attempt", () => {
-  assert.throws(() => resolveLogFile("/tmp/evil"), /Invalid log path/);
-});
-
-// ── Log injection sanitization ────────────────────────────────────────────
-
-test("sanitizeLogValue removes newlines", () => {
-  const result = sanitizeLogValue("line1\nline2\rline3");
-  assert.equal(result, "line1 line2 line3");
-  assert.ok(!result.includes("\n"));
-  assert.ok(!result.includes("\r"));
-});
-
-test("sanitizeLogValue removes tabs", () => {
-  const result = sanitizeLogValue("col1\tcol2");
-  assert.equal(result, "col1 col2");
-});
-
-test("sanitizeLogValue removes control characters", () => {
-  const result = sanitizeLogValue("test\u0000\u0001\u001F\u007Fvalue");
-  assert.equal(result, "testvalue");
-});
-
-test("sanitizeLogValue truncates to max length", () => {
-  const long = "a".repeat(2000);
-  const result = sanitizeLogValue(long, 100);
-  assert.equal(result.length, 100);
-});
-
-test("sanitizeLogValue handles null/undefined", () => {
-  assert.equal(sanitizeLogValue(null), "");
-  assert.equal(sanitizeLogValue(undefined), "");
-});
-
-test("sanitizeLogValue prevents log injection by removing newlines", () => {
-  const malicious = 'hello"\nlevel=ERROR event=fake message="pwned';
-  const result = sanitizeLogValue(malicious);
-  // Newlines must be removed — the injected content stays on the same line
-  assert.ok(!result.includes("\n"), "must not contain newlines");
-  assert.ok(!result.includes("\r"), "must not contain carriage returns");
-  // The sanitized result is a single safe line, not a multi-line injection
-  const lines = result.split("\n");
-  assert.equal(lines.length, 1);
-});
-
-// ── Level validation ─────────────────────────────────────────────────────
-
-test("validateLevel accepts valid levels", () => {
-  assert.equal(validateLevel("DEBUG"), "DEBUG");
-  assert.equal(validateLevel("INFO"), "INFO");
-  assert.equal(validateLevel("WARN"), "WARN");
-  assert.equal(validateLevel("ERROR"), "ERROR");
-});
-
-test("validateLevel falls back to INFO for invalid level", () => {
-  assert.equal(validateLevel("HACK"), "INFO");
-  assert.equal(validateLevel(""), "INFO");
-  assert.equal(validateLevel(undefined), "INFO");
-  assert.equal(validateLevel(123), "INFO");
+    if (existsSync(logDir)) {
+      const entries = readdirSync(logDir).filter((name) => name.endsWith(".log"));
+      assert.equal(entries.length, 0);
+    }
+  });
 });

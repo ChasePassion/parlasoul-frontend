@@ -5,8 +5,9 @@ import { SUMMARY_FIELDS } from "@/lib/logger/format";
 
 export const runtime = "nodejs";
 
-const LOG_DIR = path.join(process.cwd(), "logs");
-const RESOLVED_LOG_DIR = path.resolve(LOG_DIR);
+function resolveLogDir(): string {
+  return path.resolve(process.cwd(), "logs");
+}
 
 const ALLOWED_MODULES = new Set(["character", "realtime", "voice"]);
 const ALLOWED_LEVELS = new Set(["DEBUG", "INFO", "WARN", "ERROR"]);
@@ -24,8 +25,9 @@ function sanitizeLogValue(value: unknown, maxLength = MAX_FIELD_LENGTH): string 
 }
 
 function resolveLogFile(module: string): string {
-  const logFile = path.resolve(RESOLVED_LOG_DIR, `${module}.log`);
-  const relative = path.relative(RESOLVED_LOG_DIR, logFile);
+  const logDir = resolveLogDir();
+  const logFile = path.resolve(logDir, `${module}.log`);
+  const relative = path.relative(logDir, logFile);
 
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error("Invalid log path");
@@ -100,7 +102,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (accepted > 0) {
-      await mkdir(RESOLVED_LOG_DIR, { recursive: true });
+      await mkdir(resolveLogDir(), { recursive: true });
       for (const [mod, lines] of byModule) {
         const logFile = resolveLogFile(mod);
         await appendFile(logFile, `${lines.join("\n")}\n`, "utf8");

@@ -3,6 +3,8 @@ import { httpClient } from "./http-client";
 
 const DISCOVER_PAGE_SIZE = 100;
 
+export const DEFAULT_DISCOVER_CTA_TEXT = "开始对话";
+
 // Discover 配置类型
 export interface DiscoverHeroItem {
   character_id: string;
@@ -80,7 +82,7 @@ export function selectHeroCharacters(
       return {
         character,
         imageUrl: item.image_url,
-        ctaText: item.cta_text?.trim() || "开始对话",
+        ctaText: item.cta_text?.trim() || DEFAULT_DISCOVER_CTA_TEXT,
       };
     })
     .filter(
