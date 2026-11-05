@@ -252,7 +252,7 @@ export default function CreateCharacterModal({
                 throw charactersResult.error;
             }
             if (!voiceDetailResult.data) {
-                throw new Error("音色详情加载失败");
+                throw new Error("Could not load voice details");
             }
             const voiceDetail = voiceDetailResult.data;
             const nextCharacterIds = (voiceDetail.bound_character_ids ?? []).filter(
@@ -287,7 +287,7 @@ export default function CreateCharacterModal({
             return;
         }
         if (!selectedVoice) {
-            setError("请选择角色音色");
+            setError("Please select a voice");
             return;
         }
         setIsSubmitting(true);
@@ -319,7 +319,7 @@ export default function CreateCharacterModal({
             }
 
             if (!voiceModel) {
-                throw new Error("所选音色缺少模型信息，请重新选择");
+                throw new Error("The selected voice is missing model information; please pick another one");
             }
 
             logger.info(Module.CHARACTER, CharacterEvent.VOICE_RESOLVED, "Voice profile resolved", {
@@ -594,10 +594,10 @@ export default function CreateCharacterModal({
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
                                         <p className="text-sm font-medium text-gray-700">
-                                            管理使用该音色的角色
+                                            Manage characters using this voice
                                         </p>
                                         <p className="mt-1 text-xs text-gray-500">
-                                            在角色保存时同步更新其他使用该音色的角色。
+                                            Updating them happens together with this save.
                                         </p>
                                     </div>
                                     <Button
@@ -612,13 +612,13 @@ export default function CreateCharacterModal({
                                         ) : (
                                             <Users data-icon="inline-start" />
                                         )}
-                                        管理角色
+                                        Manage characters
                                     </Button>
                                 </div>
                                 <p className="mt-3 text-xs text-gray-500">
                                     {mode === 'edit'
-                                        ? `当前角色 ${character?.name ?? ""} 会在保存后自动使用这个音色，勾选列表只管理其他角色。`
-                                        : "新角色会在创建后自动使用这个音色，勾选列表只管理其他已存在角色。"}
+                                        ? `${character?.name ?? "This character"} will use this voice after saving; the list below only covers the other characters.`
+                                        : "The new character will use this voice after creation; the list below only covers existing characters."}
                                 </p>
                             </div>
                         )}
@@ -668,13 +668,13 @@ export default function CreateCharacterModal({
                 }}
                 characters={voiceUsageCharacters}
                 selectedCharacterIds={voiceUsageCharacterIds}
-                voiceName={selectedVoice?.display_name || "当前音色"}
+                voiceName={selectedVoice?.display_name || "Current voice"}
                 excludeCharacterId={mode === 'edit' && character ? character.id : undefined}
                 isLoading={isVoiceUsageLoading}
                 helperText={
                     mode === 'edit'
-                        ? `当前角色 ${character?.name ?? ""} 会在保存后自动使用该音色。`
-                        : "当前新角色会在创建后自动使用该音色。"
+                        ? `${character?.name ?? "This character"} will use this voice after saving.`
+                        : "The new character will use this voice after creation."
                 }
             />
         </Dialog>

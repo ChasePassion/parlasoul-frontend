@@ -57,7 +57,7 @@ export default function VoiceUsageManagerDialog({
       <DialogContent className="max-w-lg rounded-2xl p-0 overflow-hidden bg-white border-none shadow-2xl">
         <DialogHeader className="border-b border-gray-100 px-5 py-4">
           <DialogTitle className="text-lg font-semibold text-gray-900">
-            管理使用角色
+            Manage characters
           </DialogTitle>
         </DialogHeader>
 
@@ -65,7 +65,7 @@ export default function VoiceUsageManagerDialog({
           <div className="rounded-xl bg-blue-50 px-4 py-3">
             <p className="text-sm font-medium text-gray-900">{voiceName}</p>
             <p className="mt-1 text-xs text-gray-500">
-              勾选后这些角色会使用该音色，取消勾选后会退回默认音色。
+              Checked characters use this voice; unchecked characters fall back to the default voice.
             </p>
             {helperText && <p className="mt-2 text-xs text-gray-500">{helperText}</p>}
           </div>
@@ -74,11 +74,11 @@ export default function VoiceUsageManagerDialog({
             {isLoading ? (
               <div className="flex items-center justify-center py-12 text-sm text-gray-500">
                 <Loader2 className="mr-2 size-4 animate-spin" />
-                加载角色中...
+                Loading characters...
               </div>
             ) : filteredCharacters.length === 0 ? (
               <div className="py-10 text-center text-sm text-gray-500">
-                暂无可管理的角色
+                No characters to manage
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -135,14 +135,14 @@ export default function VoiceUsageManagerDialog({
             onClick={onClose}
             className="flex-1 rounded-lg border-gray-200 text-gray-700 hover:bg-gray-50"
           >
-            取消
+            Cancel
           </Button>
           <Button
             type="button"
             onClick={() => onSave(draftIds)}
             className="flex-1 rounded-lg bg-[#3964FE] text-white hover:bg-[#2a4fd6]"
           >
-            保存
+            Save
           </Button>
         </DialogFooter>
       </DialogContent>
