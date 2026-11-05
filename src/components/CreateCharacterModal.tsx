@@ -17,7 +17,7 @@ import {
 import AvatarCropper from "./AvatarCropper";
 import VoiceSelector from "./voice/VoiceSelector";
 import VoiceUsageManagerDialog from "./voice/VoiceUsageManagerDialog";
-import PresetSelector from "./PresetSelector";
+// import PresetSelector from "./PresetSelector";
 import DialogueStyleSelector from "./DialogueStyleSelector";
 import {
     DEFAULT_DIALOGUE_STYLE_ID,
@@ -81,7 +81,7 @@ export default function CreateCharacterModal({
     character,
     mode = 'create'
 }: CreateCharacterModalProps) {
-    const { user, isAuthed, entitlements } = useAuth();
+    const { user, isAuthed } = useAuth();
     const queryClient = useQueryClient();
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
@@ -567,7 +567,7 @@ export default function CreateCharacterModal({
                         </p>
                     </div>
 
-                    {/* 模型层级 */}
+                    {/* 模型层级：暂时注释掉模型选择入口
                     <div className="py-2 space-y-3">
                         <Label className="text-sm font-medium text-gray-700">模型选择</Label>
                         <PresetSelector
@@ -577,11 +577,12 @@ export default function CreateCharacterModal({
                             disabled={isSubmitting}
                         />
                     </div>
+                    */}
 
                     <div className="py-2 space-y-3">
                         <div className="flex items-center justify-between">
                             <Label className="text-sm font-medium text-gray-700">
-                                音色选择 <span className="text-red-500">*</span>
+                                Voice <span className="text-red-500">*</span>
                             </Label>
                         </div>
                         <VoiceSelector
