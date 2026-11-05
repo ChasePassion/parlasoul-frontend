@@ -248,6 +248,8 @@ export const listWechatPaymentOrders = apiService.listWechatPaymentOrders.bind(a
 export const uploadFile = apiService.uploadFile.bind(apiService);
 export const getMyProfile = apiService.getMyProfile.bind(apiService);
 export const updateUserProfile = apiService.updateUserProfile.bind(apiService);
+export const updateMyOnboardingStatus =
+  apiService.updateMyOnboardingStatus.bind(apiService);
 export const getMySettings = apiService.getMySettings.bind(apiService);
 export const updateMySettings = apiService.updateMySettings.bind(apiService);
 export const getMyEntitlements = apiService.getMyEntitlements.bind(apiService);
@@ -345,6 +347,7 @@ export type {
   MemorySearchRequest,
   UpdateProfileRequest,
   AvatarUrls,
+  OnboardingStatus,
   UploadImageResult,
   UserSettingsResponse,
   UpdateUserSettingsRequest,

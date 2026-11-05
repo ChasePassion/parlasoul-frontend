@@ -28,6 +28,7 @@ interface HorizontalSectionProps {
   hint?: string;
   characters: Character[];
   onSelectCharacter: (character: Character) => void;
+  tourId?: string;
 }
 
 export default function HorizontalSection({
@@ -35,6 +36,7 @@ export default function HorizontalSection({
   hint = "右滑查看全部",
   characters,
   onSelectCharacter,
+  tourId,
 }: HorizontalSectionProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -136,7 +138,7 @@ export default function HorizontalSection({
   return (
     <section className="relative mt-2">
       {/* 分区标题栏 */}
-      <div className="flex items-center justify-between mb-4 px-1">
+      <div className="flex items-center justify-between mb-4 px-1" data-tour={tourId}>
         <h2 className="text-lg font-semibold text-[#0d0d0d] flex items-center gap-2">
           <span className="text-base">✨</span>
           {title}

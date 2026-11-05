@@ -38,6 +38,12 @@ export interface MemorySearchRequest {
   query: string;
 }
 
+export type OnboardingStatus =
+  | "pending"
+  | "discover_done"
+  | "completed"
+  | "skipped";
+
 export interface User {
   id: string;
   email: string;
@@ -47,6 +53,7 @@ export interface User {
   avatar_urls?: AvatarUrls | null;
   created_at: string;
   last_login_at?: string;
+  onboarding_status?: OnboardingStatus;
 }
 
 export interface UpdateProfileRequest {
@@ -967,6 +974,17 @@ export class ApiService {
     options: ApiRequestOptions = {},
   ): Promise<User> {
     return httpClient.put<User>("/v1/users/me", data, options);
+  }
+
+  async updateMyOnboardingStatus(
+    status: Exclude<OnboardingStatus, "pending">,
+    options: ApiRequestOptions = {},
+  ): Promise<User> {
+    return httpClient.patch<User, { status: string }>(
+      "/v1/users/me/onboarding",
+      { status },
+      options,
+    );
   }
 
   async getMyProfile(options: ApiRequestOptions = {}): Promise<User> {

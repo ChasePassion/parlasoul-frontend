@@ -168,6 +168,7 @@ export default function DiscoverPage() {
                   title="陪伴"
                   characters={companionCharacters}
                   onSelectCharacter={handleSelectCharacter}
+                  tourId="discover-companion"
                 />
               )}
 
@@ -177,6 +178,7 @@ export default function DiscoverPage() {
                   title="剧情"
                   characters={storyCharacters}
                   onSelectCharacter={handleSelectCharacter}
+                  tourId="discover-story"
                 />
               )}
 
@@ -186,6 +188,7 @@ export default function DiscoverPage() {
                   title="职业"
                   characters={professionalCharacters}
                   onSelectCharacter={handleSelectCharacter}
+                  tourId="discover-professional"
                 />
               )}
             </div>
