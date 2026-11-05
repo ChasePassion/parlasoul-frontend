@@ -18,7 +18,7 @@ import type { BackendProfileStatus } from "./auth-profile-state";
 import { clearBetterAuthJwt } from "./better-auth-token";
 import { logger, Module, AuthEvent } from "./logger";
 import { queryKeys, useUserEntitlementsQuery, useUserProfileQuery } from "./query";
-import { useQueryClient } from "@tanstack/react-query";
+import { CancelledError, useQueryClient } from "@tanstack/react-query";
 
 interface AuthContextType {
     user: User | null;
@@ -162,7 +162,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             clearBetterAuthJwt();
-            await queryClient.cancelQueries();
+            try {
+                await queryClient.cancelQueries();
+            } catch (error) {
+                // 查询被取消时 React Query 会抛 CancelledError，这是登出流程中的正常情况，
+                // 不能因此跳过下面的缓存清理。
+                if (!(error instanceof CancelledError)) {
+                    console.error("Failed to cancel queries during logout:", error);
+                }
+            }
             queryClient.clear();
 
             logger.info(Module.AUTH, AuthEvent.LOGOUT_COMPLETED, "Logout completed");
