@@ -396,7 +396,6 @@ export type {
   VoiceProfileUpdate,
   // Phase 4 types
   LLMPresetId,
-  DialogueStyleId,
   // Phase 3 types
   LearningAssistantContextMessage,
   LearningAssistantStreamRequest,

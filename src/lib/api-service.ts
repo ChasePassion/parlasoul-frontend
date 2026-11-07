@@ -200,13 +200,6 @@ export type VoiceSourceType = "system" | "clone" | "designed" | "imported";
 export type VoiceStatus = "creating" | "processing" | "ready" | "failed" | "deleting" | "deleted";
 
 export type LLMPresetId = "free" | "flagship";
-export type DialogueStyleId =
-  | "true_nature"
-  | "spring_breeze"
-  | "free_spirit"
-  | "clear_inquiry"
-  | "poetic_reserve"
-  | "proud_resolve";
 
 export interface VoiceSelectableItem {
   id: string;
@@ -275,7 +268,6 @@ export interface CreateCharacterRequest {
   voice_provider_voice_id: string;
   voice_source_type: VoiceSourceType;
   llm_preset_id?: LLMPresetId | null;
-  dialogue_style_id?: DialogueStyleId | null;
 }
 export interface CharacterResponse {
   id: string;
@@ -291,7 +283,6 @@ export interface CharacterResponse {
   voice_source_type: VoiceSourceType;
   voice?: VoiceSelectableItem | null;
   llm_preset_id?: LLMPresetId | null;
-  dialogue_style_id?: DialogueStyleId | null;
   creator_id: string | null;
   creator_username?: string | null;
   status: CharacterStatus;
@@ -536,7 +527,6 @@ export interface UpdateCharacterRequest {
   voice_source_type?: VoiceSourceType;
   visibility?: CharacterVisibility;
   llm_preset_id?: LLMPresetId | null;
-  dialogue_style_id?: DialogueStyleId | null;
 }
 interface StreamChunkEvent {
   type: "chunk";
