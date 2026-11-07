@@ -114,21 +114,18 @@ export default function SetupPage() {
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         const file = e.dataTransfer.files?.[0];
-        if (file) {
-            if (fileInputRef.current) {
-                // Manually trigger check logic instead of modifying input directly
-                const validTypes = ["image/jpeg", "image/png", "image/webp"];
-                if (!validTypes.includes(file.type)) {
-                    setError("请选择 JPEG、PNG 或 WEBP 格式的图片");
-                    return;
-                }
-                if (file.size > 5 * 1024 * 1024) {
-                    setError("图片大小不能超过 5MB");
-                    return;
-                }
-                setCropperFile(file);
-            }
+        if (!file || !fileInputRef.current) return;
+        // Manually trigger check logic instead of modifying input directly
+        const validTypes = ["image/jpeg", "image/png", "image/webp"];
+        if (!validTypes.includes(file.type)) {
+            setError("请选择 JPEG、PNG 或 WEBP 格式的图片");
+            return;
         }
+        if (file.size > 5 * 1024 * 1024) {
+            setError("图片大小不能超过 5MB");
+            return;
+        }
+        setCropperFile(file);
     };
 
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {

@@ -170,7 +170,7 @@ export default function AvatarCropper({ file, onConfirm, onCancel }: AvatarCropp
         e.stopPropagation();
         setIsDragging(true);
         setDragType(type);
-        setStartPos(getClientPos(e.nativeEvent as MouseEvent | TouchEvent)); // React Type casting
+        setStartPos(getClientPos(e.nativeEvent));
         setStartRect(cropRect);
     };
 
@@ -190,13 +190,6 @@ export default function AvatarCropper({ file, onConfirm, onCancel }: AvatarCropp
             newRect.x = clamp(startRect.x + deltaX, bounds.left, bounds.right - newRect.width);
             newRect.y = clamp(startRect.y + deltaY, bounds.top, bounds.bottom - newRect.height);
         } else {
-            // Resize logic keeping aspect ratio 1:1
-            // This is simplified, usually implies complex math for each corner
-            // For 1:1, width change must equal height change
-
-            // Simplified approach: Just regular resize, then enforce square? 
-            // Better: Enforce 1:1 during delta calculation
-
             if (dragType === "se") {
                 // Bottom-right
                 const maxD = Math.min(bounds.right - startRect.x, bounds.bottom - startRect.y) - startRect.width;
@@ -348,11 +341,6 @@ export default function AvatarCropper({ file, onConfirm, onCancel }: AvatarCropp
                             transformOrigin: "center center",
                         }}
                     />
-
-                    {/* Dark overlay outside crop area */}
-                    {/* We can't easily do a pure css overlay with a hole in the middle for dynamic size without complex clip-path or 4 divs.
-                        Use 4 divs approach for simplicity over the image container
-                     */}
 
                     {cropRect.width > 0 && cropRect.height > 0 && (
                         <>

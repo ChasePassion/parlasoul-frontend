@@ -54,23 +54,6 @@ export interface Character {
     has_unread_proactive?: boolean;
 }
 
-function SidebarToggleIcon({ className = "" }: { className?: string }) {
-    return (
-        <svg
-            width="20"
-            height="20"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-            className={className}
-        >
-            <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
-    );
-}
-
-export { SidebarToggleIcon };
-
 interface SidebarProps {
     characters: Character[];
     selectedCharacterId: string | null;

@@ -142,10 +142,6 @@ export default function ChatHistorySidebar({
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !character) return;
-  }, [character, isOpen]);
-
-  useEffect(() => {
     if (!isOpen) {
       setRenamingChatId(null);
       setRenameValue("");
@@ -183,8 +179,7 @@ export default function ChatHistorySidebar({
 
       setIsSavingRename(true);
       try {
-        const updated = await onRenameChat(chatId, trimmedTitle);
-        void updated;
+        await onRenameChat(chatId, trimmedTitle);
         cancelRename();
       } catch (err) {
         toast.error(getErrorMessage(err));

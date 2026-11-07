@@ -29,7 +29,7 @@ import {
 
 import { toast } from "sonner";
 
-import { AlertCircle, Info } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -161,7 +161,6 @@ function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
 
@@ -273,7 +272,6 @@ function LoginPageContent() {
   const handleSendCode = async () => {
     if (!email.trim() || isSendingCode) return;
     setError("");
-    setInfo("");
     setIsSendingCode(true);
     deliveryWatchRef.current?.abort();
     try {
@@ -300,7 +298,6 @@ function LoginPageContent() {
   const handleOtpLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setInfo("");
     setIsLoading(true);
     beginProfileSetupLoginIntent();
     // 从这一刻起跳转只由 handlePostLoginRedirect 负责。
@@ -352,20 +349,12 @@ function LoginPageContent() {
             Sign in to your account to continue
           </p>
 
-          {/* Error / Info */}
+          {/* Error */}
           {error && (
             <Alert className="mb-5 items-center gap-x-1.5 border-0 bg-transparent p-0 text-[13px] leading-5 text-red-600 [&>svg]:translate-y-0">
               <AlertCircle className="size-3.5" />
               <AlertDescription className="text-[13px] leading-5 text-red-600">
                 {error}
-              </AlertDescription>
-            </Alert>
-          )}
-          {!error && info && (
-            <Alert className="mb-5 items-center gap-x-1.5 border-0 bg-transparent p-0 text-[13px] leading-5 text-gray-500 [&>svg]:translate-y-0">
-              <Info className="size-3.5" />
-              <AlertDescription className="text-[13px] leading-5 text-gray-500">
-                {info}
               </AlertDescription>
             </Alert>
           )}

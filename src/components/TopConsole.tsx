@@ -27,7 +27,6 @@ export default function TopConsole({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [activeResultIndex, setActiveResultIndex] = useState(-1);
   const searchContainerRef = useRef<HTMLDivElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const isDropdownOpen =
@@ -140,7 +139,6 @@ export default function TopConsole({
           {/* 搜索结果下拉面板 */}
           {isDropdownOpen && (
             <div
-              ref={dropdownRef}
               className="absolute top-[calc(100%+8px)] left-0 w-full bg-white rounded-xl shadow-xl border border-black/5 py-2 z-50 overflow-hidden"
             >
               {searchResults.length > 0 ? (

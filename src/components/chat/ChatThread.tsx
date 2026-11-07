@@ -128,7 +128,6 @@ export default function ChatThread({
 
     const router = useRouter();
     const { messageFontSize, displayMode, replyCardEnabled } = useUserSettings();
-    const isVoiceActiveProfile = messageActionProfile === "voice-active";
 
     const [isMobile, setIsMobile] = useState(false);
     useEffect(() => {
@@ -143,14 +142,12 @@ export default function ChatThread({
     const [openReplyCardKey, setOpenReplyCardKey] = useState<string | null>(null);
     const [pendingReplyCardKey, setPendingReplyCardKey] = useState<string | null>(null);
     const cardAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-    const replyCardWrapperRef = useRef<HTMLDivElement | null>(null);
     const [favoriteOverrides, setFavoriteOverrides] = useState<
         Record<string, { isFavorited: boolean; savedItemId: string | null }>
     >({});
 
     // Phase 3: Word card popover state
     const [wordCard, setWordCard] = useState<WordCard | null>(null);
-    const wordCardWrapperRef = useRef<HTMLDivElement | null>(null);
     const [wordCardAnchorRect, setWordCardAnchorRect] = useState<RectAnchor | null>(null);
     const [isWordCardLoading, setIsWordCardLoading] = useState(false);
     const [wordCardFavoriteOverride, setWordCardFavoriteOverride] = useState<{
@@ -169,7 +166,6 @@ export default function ChatThread({
     // Phase 3: Feedback card popover state
     const [feedbackCard, setFeedbackCard] = useState<FeedbackCard | null>(null);
     const [feedbackCardKey, setFeedbackCardKey] = useState<string | null>(null);
-    const feedbackCardWrapperRef = useRef<HTMLDivElement | null>(null);
     const [feedbackCardStates, setFeedbackCardStates] = useState<
         Record<string, FeedbackCardState>
     >({});
@@ -179,10 +175,6 @@ export default function ChatThread({
     const feedbackAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const feedbackCardStatesRef = useRef<Record<string, FeedbackCardState>>({});
     const feedbackRequestIdRef = useRef(0);
-    const feedbackPrefetchInitializedRef = useRef(false);
-    const previousUserVersionsRef = useRef<Map<string, { key: string; candidateCount: number }>>(
-        new Map()
-    );
     const feedbackAbortControllerRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
@@ -207,8 +199,6 @@ export default function ChatThread({
         setFeedbackCardStates({});
         setFeedbackFavoriteOverrides({});
         feedbackAnchorRefs.current.clear();
-        previousUserVersionsRef.current = new Map();
-        feedbackPrefetchInitializedRef.current = false;
     }, [chatId]);
 
     useEffect(() => {
@@ -662,47 +652,6 @@ export default function ChatThread({
         },
         [chatId]
     );
-
-    useEffect(() => {
-        if (isVoiceActiveProfile) {
-            return;
-        }
-        if (isLoading) return;
-
-        const currentUsers = messages.filter(
-            (message) => message.role === "user" && !message.isTemp
-        );
-        const nextVersions = new Map(
-            currentUsers.map((message) => [
-                message.id,
-                {
-                    key: getMessageVersionKey(message),
-                    candidateCount: message.candidateCount ?? 1,
-                },
-            ])
-        );
-
-        if (!feedbackPrefetchInitializedRef.current) {
-            previousUserVersionsRef.current = nextVersions;
-            feedbackPrefetchInitializedRef.current = true;
-            return;
-        }
-
-        const previousVersions = previousUserVersionsRef.current;
-        previousUserVersionsRef.current = nextVersions;
-
-        currentUsers.forEach((message) => {
-            const previous = previousVersions.get(message.id);
-            const currentKey = getMessageVersionKey(message);
-            if (
-                !!previous &&
-                previous.key !== currentKey &&
-                (message.candidateCount ?? 1) > previous.candidateCount
-            ) {
-                // feedback card is triggered only by manual "improve" tap
-            }
-        });
-    }, [ensureFeedbackCard, isLoading, isVoiceActiveProfile, messages]);
 
     useEffect(() => {
         const readyEntry = Object.entries(feedbackCardStates).find(
@@ -1214,7 +1163,6 @@ export default function ChatThread({
                 createPortal(
                     <div
                         ref={(node) => {
-                            replyCardWrapperRef.current = node;
                             replyCardRefs.setFloating(node);
                         }}
                         style={isMobile ? {
@@ -1253,7 +1201,6 @@ export default function ChatThread({
                 createPortal(
                     <div
                         ref={(node) => {
-                            wordCardWrapperRef.current = node;
                             wordCardRefs.setFloating(node);
                         }}
                         style={isMobile ? {
@@ -1334,7 +1281,6 @@ export default function ChatThread({
                 createPortal(
                     <div
                         ref={(node) => {
-                            feedbackCardWrapperRef.current = node;
                             feedbackCardRefs.setFloating(node);
                         }}
                         style={isMobile ? {

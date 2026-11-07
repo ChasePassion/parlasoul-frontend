@@ -115,7 +115,6 @@ export default function ChatPage() {
         [chatId],
     );
 
-    // Phase 2: TTS playback manager
     const ttsManagerRef = useRef<TtsPlaybackManager | null>(null);
     const [playingCandidateId, setPlayingCandidateId] = useState<string | null>(null);
     const [ttsLoadingCandidateId, setTtsLoadingCandidateId] = useState<string | null>(null);
@@ -133,7 +132,6 @@ export default function ChatPage() {
                 setTtsLoadingCandidateId(null);
             }
         };
-        manager.onAudioReady = () => {};
         ttsManagerRef.current = manager;
 
         return () => {
@@ -320,13 +318,10 @@ export default function ChatPage() {
                 return;
             }
 
-            if (event.type === "conversation.turn.updated" && event.is_final) {
-                scheduleRealtimeChatTurnsReload({
-                    requiredTurnIds: [event.assistant_turn_id],
-                });
-                return;
-            }
-            if (event.type === "conversation.turn.failed") {
+            if (
+                (event.type === "conversation.turn.updated" && event.is_final) ||
+                event.type === "conversation.turn.failed"
+            ) {
                 scheduleRealtimeChatTurnsReload({
                     requiredTurnIds: [event.assistant_turn_id],
                 });
@@ -707,7 +702,6 @@ export default function ChatPage() {
         return () => observer.disconnect();
     }, [pinToBottom]);
 
-    // Phase 2: Mic start → interrupt TTS + track recording state
     const handleMicStart = useCallback(() => {
         setIsRecording(true);
         ttsManagerRef.current?.interruptAll();
@@ -718,7 +712,6 @@ export default function ChatPage() {
     }, []);
 
 
-    // Phase 2: Speaker button handlers
     const handlePlayTts = useCallback(async (candidateId: string) => {
         if (isRecording) return;
         setTtsLoadingCandidateId(candidateId);
