@@ -84,9 +84,9 @@ export class RealtimeVoiceSessionClient {
   private audioElement: HTMLAudioElement | null = null;
   private sessionId: string | null = null;
   private handlers: RealtimeVoiceSessionClientHandlers;
+  private _isMicCaptureEnabled = true;
   /** Monotonic counter bumped by disconnect(). connect() checks this after each
    *  await to bail out early when an external disconnect() raced with it. */
-  private _isMicCaptureEnabled = true;
   private disconnectGeneration = 0;
 
   constructor(handlers: RealtimeVoiceSessionClientHandlers = {}) {

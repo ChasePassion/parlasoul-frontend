@@ -46,10 +46,6 @@ export class SttRecorder {
     return getMicPermissionState();
   }
 
-  private mapMicStartError(err: unknown): MicStartErrorCode {
-    return mapMicStartError(err);
-  }
-
   async startRecording(): Promise<void> {
     if (this.state !== "idle") {
       this.cleanup();
@@ -75,7 +71,7 @@ export class SttRecorder {
       });
     } catch (err) {
       console.error("[STT] Microphone access error:", err);
-      throw new Error(this.mapMicStartError(err));
+      throw new Error(mapMicStartError(err));
     }
 
     this.stream = mediaStream;

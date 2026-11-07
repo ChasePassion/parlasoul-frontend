@@ -145,18 +145,7 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
     const timezoneSyncRef = useRef<string | null>(null);
 
     // Track the latest values for sync without stale closure issues
-    const latestRef = useRef({
-        messageFontSize,
-        displayMode,
-        memoryEnabled,
-        replyCardEnabled,
-        mixedInputAutoTranslateEnabled,
-        autoReadAloudEnabled,
-        preferredExpressionBiasEnabled,
-        proactiveEnabled,
-        timezone,
-    });
-    latestRef.current = {
+    const latestSettings = {
         messageFontSize,
         displayMode,
         memoryEnabled,
@@ -167,6 +156,8 @@ export function UserSettingsProvider({ children }: { children: ReactNode }) {
         proactiveEnabled,
         timezone,
     };
+    const latestRef = useRef(latestSettings);
+    latestRef.current = latestSettings;
 
     const syncSettings = useCallback(async () => {
         const current = latestRef.current;

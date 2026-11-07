@@ -1,7 +1,5 @@
 import {
   useInfiniteQuery,
-  useMutation,
-  useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
 import {
@@ -116,17 +114,4 @@ export async function resolveChatId(
   });
 
   return created.chat.id;
-}
-
-/**
- * 兼容包装：仅供确实需要 react-query mutation 状态的场景使用。
- * 新代码一律走 useOpenCharacterChat()（统一入口）。
- */
-export function useGetOrCreateChatMutation(userId: string | null | undefined) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (characterId: string) =>
-      resolveChatId(queryClient, userId, characterId),
-  });
 }
