@@ -59,9 +59,9 @@ function getFirstDayOffset(monthStr: string): number {
 function buildCalendarGridDays(calendar: GrowthCalendarMonth): Array<GrowthCalendarDay | null> {
   const leadingEmptyDays = Array.from(
     { length: getFirstDayOffset(calendar.month) },
-    () => null as GrowthCalendarDay | null,
+    () => null,
   );
-  const monthDays = calendar.days.map((day) => day);
+  const monthDays = calendar.days;
   const trailingEmptyDays = Array.from(
     {
       length: Math.max(
@@ -69,7 +69,7 @@ function buildCalendarGridDays(calendar: GrowthCalendarMonth): Array<GrowthCalen
         CALENDAR_GRID_CELL_COUNT - leadingEmptyDays.length - monthDays.length,
       ),
     },
-    () => null as GrowthCalendarDay | null,
+    () => null,
   );
 
   return [...leadingEmptyDays, ...monthDays, ...trailingEmptyDays];

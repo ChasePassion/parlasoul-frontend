@@ -641,11 +641,7 @@ export default function MessageNavigator({
                   onMouseEnter={(event) => handleItemEnter(index, item, event)}
                   className={cn(
                     "group relative flex h-[30px] w-full items-center rounded-[14px] text-left outline-none transition-colors duration-150",
-                    isCurrent
-                      ? "bg-transparent"
-                      : showHoveredState
-                        ? "bg-transparent"
-                        : "bg-transparent",
+                    "bg-transparent",
                     "focus-visible:ring-2 focus-visible:ring-[#3964FE]/20"
                   )}
                 >

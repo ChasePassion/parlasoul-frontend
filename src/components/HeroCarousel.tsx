@@ -52,7 +52,6 @@ export default function HeroCarousel({
     [autoplay],
   );
 
-  const selectedIndexRef = useRef(0);
   const [slideCount, setSlideCount] = useState(0);
   const dotsContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -256,13 +255,12 @@ export default function HeroCarousel({
     });
   }, [isMobile]);
 
-  // 追踪当前选中 slide — slideCount 用 state 初始化渲染，selectedIndex 用 ref + DOM 避免 re-render
+  // 追踪当前选中 slide — slideCount 用 state 初始化渲染，选中态直接更新 DOM 避免 re-render
   useEffect(() => {
     if (!emblaApi) return;
 
     const updateDots = () => {
       const idx = emblaApi.selectedScrollSnap();
-      selectedIndexRef.current = idx;
       const container = dotsContainerRef.current;
       if (!container) return;
       const dots = container.children;

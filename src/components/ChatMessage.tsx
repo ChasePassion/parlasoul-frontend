@@ -17,8 +17,6 @@ export type MessageActionStatus = "idle" | "loading" | "ready" | "error";
 export type MessageStreamStatus = "idle" | "streaming" | "done" | "error";
 export type MessageActionProfile = "text" | "voice-active";
 
-export { ChatImageRef };
-
 export interface Message {
     id: string;
     role: "user" | "assistant";
