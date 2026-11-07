@@ -69,6 +69,24 @@ const deriveFeedbackErrorCode = (error: unknown): string => {
     return "feedback_card_request_failed";
 };
 
+function pruneOverrides(
+    prev: Record<string, { isFavorited: boolean; savedItemId: string | null }>,
+    validKeys: Set<string>,
+): Record<string, { isFavorited: boolean; savedItemId: string | null }> {
+    const next: Record<string, { isFavorited: boolean; savedItemId: string | null }> = {};
+    let changed = false;
+
+    Object.entries(prev).forEach(([messageKey, value]) => {
+        if (validKeys.has(messageKey)) {
+            next[messageKey] = value;
+        } else {
+            changed = true;
+        }
+    });
+
+    return changed ? next : prev;
+}
+
 interface ChatThreadProps {
     character: Character | null;
     messages: Message[];
@@ -208,18 +226,7 @@ export default function ChatThread({
                     .filter((message) => message.role === "assistant" && message.replyCard)
                     .map(getMessageVersionKey)
             );
-            const next: Record<string, { isFavorited: boolean; savedItemId: string | null }> = {};
-            let changed = false;
-
-            Object.entries(prev).forEach(([messageKey, value]) => {
-                if (validKeys.has(messageKey)) {
-                    next[messageKey] = value;
-                } else {
-                    changed = true;
-                }
-            });
-
-            return changed ? next : prev;
+            return pruneOverrides(prev, validKeys);
         });
     }, [messages]);
 
@@ -728,18 +735,7 @@ export default function ChatThread({
                     .filter((message) => message.role === "user" && !message.isTemp)
                     .map(getMessageVersionKey)
             );
-            const next: Record<string, { isFavorited: boolean; savedItemId: string | null }> = {};
-            let changed = false;
-
-            Object.entries(prev).forEach(([messageKey, value]) => {
-                if (validKeys.has(messageKey)) {
-                    next[messageKey] = value;
-                } else {
-                    changed = true;
-                }
-            });
-
-            return changed ? next : prev;
+            return pruneOverrides(prev, validKeys);
         });
     }, [messages]);
 

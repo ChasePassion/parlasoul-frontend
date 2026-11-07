@@ -351,6 +351,17 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
     window.history.replaceState(null, "", buildPricingPath({ period: selectedPeriod, mode }));
   }
 
+  function notifyTierBlocked(tier: "plus" | "pro"): boolean {
+    if (isTierBlocked(currentTier, tier)) {
+      const blockMessage = getTierBlockMessage(currentTier, tier);
+      if (blockMessage) {
+        toast.error(blockMessage);
+      }
+      return true;
+    }
+    return false;
+  }
+
   function handleSubscriptionPurchase(slug: string) {
     if (!checkoutEnabled) {
       toast.info("试跑期暂未开放支付");
@@ -362,13 +373,7 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
       toast.error("当前套餐暂时不可购买，请稍后重试");
       return;
     }
-    if (isTierBlocked(currentTier, plan.tier)) {
-      const blockMessage = getTierBlockMessage(currentTier, plan.tier);
-      if (blockMessage) {
-        toast.error(blockMessage);
-      }
-      return;
-    }
+    if (notifyTierBlocked(plan.tier)) return;
     const nextPath = buildPricingPath({ period: plan.period, checkout: plan.slug });
     if (!user) {
       router.push(`/login?next=${encodeURIComponent(nextPath)}`);
@@ -383,13 +388,7 @@ export default function PricingPageContent({ catalog }: PricingPageContentProps)
       return;
     }
 
-    if (isTierBlocked(currentTier, tier)) {
-      const blockMessage = getTierBlockMessage(currentTier, tier);
-      if (blockMessage) {
-        toast.error(blockMessage);
-      }
-      return;
-    }
+    if (notifyTierBlocked(tier)) return;
     const nextPath = buildPricingPath({ period: selectedPeriod, mode: "wechat", productId });
     if (!user) {
       router.push(`/login?next=${encodeURIComponent(nextPath)}`);

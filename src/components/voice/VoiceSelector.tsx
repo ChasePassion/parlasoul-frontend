@@ -22,6 +22,22 @@ interface VoiceSelectorProps {
   disabled?: boolean;
 }
 
+function toSelectableItem(voice: VoiceDisplayInfo): VoiceSelectableItem {
+  return {
+    id: voice.id,
+    display_name: voice.displayName,
+    source_type: voice.sourceType,
+    provider: voice.provider,
+    provider_model: voice.providerModel,
+    provider_voice_id: voice.providerVoiceId,
+    avatar_image_key: voice.avatarImageKey,
+    avatar_urls: voice.avatarUrls,
+    preview_text: voice.previewText,
+    preview_audio_url: voice.previewAudioUrl,
+    usage_hint: voice.description || null,
+  };
+}
+
 export default function VoiceSelector({
   selectedVoiceId,
   onSelectVoice,
@@ -93,37 +109,11 @@ export default function VoiceSelector({
                   key={voice.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() =>
-                    onSelectVoice({
-                      id: voice.id,
-                      display_name: voice.displayName,
-                      source_type: voice.sourceType,
-                      provider: voice.provider,
-                      provider_model: voice.providerModel,
-                      provider_voice_id: voice.providerVoiceId,
-                      avatar_image_key: voice.avatarImageKey,
-                      avatar_urls: voice.avatarUrls,
-                      preview_text: voice.previewText,
-                      preview_audio_url: voice.previewAudioUrl,
-                      usage_hint: voice.description || null,
-                    })
-                  }
+                  onClick={() => onSelectVoice(toSelectableItem(voice))}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      onSelectVoice({
-                        id: voice.id,
-                        display_name: voice.displayName,
-                        source_type: voice.sourceType,
-                        provider: voice.provider,
-                        provider_model: voice.providerModel,
-                        provider_voice_id: voice.providerVoiceId,
-                        avatar_image_key: voice.avatarImageKey,
-                        avatar_urls: voice.avatarUrls,
-                        preview_text: voice.previewText,
-                        preview_audio_url: voice.previewAudioUrl,
-                        usage_hint: voice.description || null,
-                      });
+                      onSelectVoice(toSelectableItem(voice));
                     }
                   }}
                   className={`flex items-center gap-3 rounded-xl border-[0.4px] p-3 text-left transition-all ${

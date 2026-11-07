@@ -70,6 +70,21 @@ function isAllowedRemoteSource(sourceUrl: string): boolean {
   }
 }
 
+function buildImageResponse(
+  body: ArrayBuffer,
+  contentType: string,
+  cacheState: "redis-hit" | "redis-miss",
+): NextResponse {
+  return new NextResponse(body, {
+    status: 200,
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": `public, max-age=${CACHE_TTL_SECONDS}, immutable`,
+      "X-Share-Card-Cache": cacheState,
+    },
+  });
+}
+
 export async function GET(request: NextRequest) {
   const sourceUrl = request.nextUrl.searchParams.get("src")?.trim();
 
@@ -87,14 +102,7 @@ export async function GET(request: NextRequest) {
   if (cachedPayload) {
     try {
       const parsed = JSON.parse(cachedPayload) as CachedShareCardImage;
-      return new NextResponse(decodeCachedBody(parsed), {
-        status: 200,
-        headers: {
-          "Content-Type": parsed.contentType,
-          "Cache-Control": `public, max-age=${CACHE_TTL_SECONDS}, immutable`,
-          "X-Share-Card-Cache": "redis-hit",
-        },
-      });
+      return buildImageResponse(decodeCachedBody(parsed), parsed.contentType, "redis-hit");
     } catch (error) {
       console.error("Failed to parse cached share card image:", error);
       await redis.del(cacheKey);
@@ -130,12 +138,5 @@ export async function GET(request: NextRequest) {
     EX: CACHE_TTL_SECONDS,
   });
 
-  return new NextResponse(toArrayBuffer(bytes), {
-    status: 200,
-    headers: {
-      "Content-Type": contentType,
-      "Cache-Control": `public, max-age=${CACHE_TTL_SECONDS}, immutable`,
-      "X-Share-Card-Cache": "redis-miss",
-    },
-  });
+  return buildImageResponse(toArrayBuffer(bytes), contentType, "redis-miss");
 }
