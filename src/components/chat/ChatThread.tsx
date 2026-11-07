@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
+import ChatMessagesSkeleton from "@/components/chat/ChatMessagesSkeleton";
 import { createPortal } from "react-dom";
 import {
     useFloating,
@@ -1019,11 +1020,8 @@ export default function ChatThread({
         typeof document !== "undefined";
 
     if (isLoading) {
-        return (
-            <div className="flex flex-1 items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            </div>
-        );
+        // 与加载视图共用同一套消息骨架：复刻真实消息 DOM，位置零位移。
+        return <ChatMessagesSkeleton />;
     }
 
     if (error || !character) {

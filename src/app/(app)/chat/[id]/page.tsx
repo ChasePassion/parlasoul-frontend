@@ -8,6 +8,7 @@ import { useUserSettings } from "@/lib/user-settings-context";
 import type { Message } from "@/components/ChatMessage";
 import ChatHeader from "@/components/ChatHeader";
 import ChatInput from "@/components/ChatInput";
+import ChatComposerPlaceholder from "@/components/chat/ChatComposerPlaceholder";
 import ChatHistorySidebar from "@/components/chat/ChatHistorySidebar";
 import ChatMainFrame from "@/components/layout/ChatMainFrame";
 import ChatThread from "@/components/chat/ChatThread";
@@ -27,6 +28,7 @@ import {
     type RealtimeIceConfigResponse,
 } from "@/lib/api";
 import { useGrowth } from "@/lib/growth-context";
+import { clearChatEntrySeed, readChatEntrySeed } from "@/lib/loading";
 import ShareCardDialog from "@/components/growth/ShareCardDialog";
 import { preloadPotentialShareCardBackgrounds } from "@/lib/share-card-assets";
 import { useRealtimeVoiceSession } from "@/hooks/useRealtimeVoiceSession";
@@ -107,6 +109,12 @@ export default function ChatPage() {
     } = useSidebar();
     const chatId = params.id as string;
 
+    // 首帧种子：/chat/new 迁移过来的角色信息。
+    const seedCharacter = useMemo(
+        () => readChatEntrySeed(chatId),
+        [chatId],
+    );
+
     // Phase 2: TTS playback manager
     const ttsManagerRef = useRef<TtsPlaybackManager | null>(null);
     const [playingCandidateId, setPlayingCandidateId] = useState<string | null>(null);
@@ -176,6 +184,14 @@ export default function ChatPage() {
         onGrowthDailyRefresh: handleGrowthDailyRefresh,
         onGrowthShareCardReady: enqueueShareCard,
     });
+
+    // 加载期间用种子渲染真实 header；数据到达后清掉种子，避免长期占用缓存。
+    const displayCharacter = character ?? (isLoading ? seedCharacter : null);
+    useEffect(() => {
+        if (!isLoading && seedCharacter) {
+            clearChatEntrySeed(chatId);
+        }
+    }, [isLoading, seedCharacter, chatId]);
 
     const realtimeReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const realtimeReloadInFlightRef = useRef<Promise<void> | null>(null);
@@ -356,15 +372,10 @@ export default function ChatPage() {
     }, [messages, realtimeSession.isConnected, realtimeSession.subtitles.userRaw,
         realtimeSession.subtitles.assistantRaw, realtimeSession.isBotSpeaking]);
 
-    const isConversationReadOnly =
-        character?.status === "UNPUBLISHED" && character.creator_id !== user?.id;
-    const readOnlyNotice = isConversationReadOnly
-        ? "该角色已被作者下架，当前聊天仅支持查看历史记录。"
-        : null;
     const learningAssistantContext = buildLearningAssistantContext(messages);
 
     const handleCreateNewChat = useCallback(async () => {
-        if (!characterId || isStreaming || isConversationReadOnly) {
+        if (!characterId || isStreaming) {
             return;
         }
 
@@ -387,7 +398,6 @@ export default function ChatPage() {
         router.push(`/chat/${created.chat.id}`);
     }, [
         characterId,
-        isConversationReadOnly,
         isStreaming,
         queryClient,
         router,
@@ -479,30 +489,26 @@ export default function ChatPage() {
         if (recent?.chat?.id && recent.chat.id !== targetChatId) {
             router.push(`/chat/${recent.chat.id}`);
         } else {
-            if (isConversationReadOnly) {
-                router.push("/");
-            } else {
-                try {
-                    const created = await createChatInstance({ character_id: characterId });
-                    queryClient.setQueryData(
-                        queryKeys.chats.recent(user?.id, characterId),
-                        {
-                            chat: created.chat,
-                            character: created.character,
-                        },
-                    );
-                    router.push(`/chat/${created.chat.id}`);
-                } catch (err) {
-                    if (err instanceof ApiError && err.code === "resource_conflict") {
-                        router.push("/");
-                        return;
-                    }
-                    throw err;
+            try {
+                const created = await createChatInstance({ character_id: characterId });
+                queryClient.setQueryData(
+                    queryKeys.chats.recent(user?.id, characterId),
+                    {
+                        chat: created.chat,
+                        character: created.character,
+                    },
+                );
+                router.push(`/chat/${created.chat.id}`);
+            } catch (err) {
+                if (err instanceof ApiError && err.code === "resource_conflict") {
+                    router.push("/");
+                    return;
                 }
+                throw err;
             }
         }
 
-    }, [characterId, chatId, isConversationReadOnly, queryClient, router, user?.id]);
+    }, [characterId, chatId, queryClient, router, user?.id]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesStartRef = useRef<HTMLDivElement | null>(null);
@@ -732,22 +738,21 @@ export default function ChatPage() {
     const headerContent = (
         <div className="w-full">
             <ChatHeader
-                character={character}
+                character={displayCharacter}
                 chatId={chatId}
                 onNewChat={() => void handleCreateNewChat()}
                 onToggleAssistant={() => setIsAssistantOpen((previous) => !previous)}
                 isAssistantOpen={isAssistantOpen}
                 onToggleHistory={() => setIsHistoryOpen((previous) => !previous)}
                 isHistoryOpen={isHistoryOpen}
-                isNewChatDisabled={!characterId || isStreaming || isConversationReadOnly}
-                isReadOnly={isConversationReadOnly}
+                isNewChatDisabled={!characterId || isStreaming}
                 onToggleSidebar={toggleSidebar}
             />
         </div>
     );
 
     const handleStartRealtimeCall = useCallback(() => {
-        if (!character?.id || isConversationReadOnly) return;
+        if (!character?.id) return;
         if (isStreaming) {
             interruptStream();
         }
@@ -755,7 +760,7 @@ export default function ChatPage() {
         realtimeSession.clearMicError();
         setMicDialogMessage(null);
         void realtimeSession.startCall();
-    }, [character?.id, interruptStream, isConversationReadOnly, isStreaming, realtimeSession]);
+    }, [character?.id, interruptStream, isStreaming, realtimeSession]);
 
     const handleCancelRealtimeConnect = useCallback(() => {
         void realtimeSession.cancelStart();
@@ -859,7 +864,6 @@ export default function ChatPage() {
                 onPlayTts={handlePlayTts}
                 onStopTts={handleStopTts}
                 isLoadingOlder={isLoadingOlder}
-                isConversationLocked={isConversationReadOnly}
                 messageActionProfile={realtimeSession.isConnected ? "voice-active" : "text"}
             />
             <MessageNavigator
@@ -870,55 +874,32 @@ export default function ChatPage() {
         </>
     );
 
-    const composerContent = character && !error ? (
-        isConversationReadOnly && readOnlyNotice ? (
-            <div
-                className="text-base mx-auto [--thread-content-margin:--spacing(4)] @w-sm/main:[--thread-content-margin:--spacing(6)] @w-lg/main:[--thread-content-margin:--spacing(16)] px-(--thread-content-margin)"
-                style={{ backgroundColor: "var(--workspace-bg)" }}
-            >
-                <div
-                    className="[--thread-content-max-width:40rem] @w-lg/main:[--thread-content-max-width:48rem] mx-auto max-w-(--thread-content-max-width) flex-1 mb-4"
-                    style={{ maxWidth: "48rem", width: "100%" }}
-                >
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                        {readOnlyNotice}
-                    </div>
-                </div>
-            </div>
-        ) : (
-            <ChatInput
-                onSend={handleSendMessage}
-                isStreaming={isStreaming}
-                onInterrupt={interruptStream}
-                onContinue={wrappedHandleContinue}
-                roleName={character.name}
-                chatId={chatId}
-                replySuggestions={realtimeSession.isConnected ? null : currentReplySuggestions}
-                onRegisterAddImages={(fn) => { chatInputAddImagesRef.current = fn; }}
-                onMicStart={handleMicStart}
-                onMicCancel={handleMicCancel}
-                voiceButtonState={voiceButtonState}
-                micCaptureState={micCaptureState}
-                onStartRealtimeVoice={handleStartRealtimeCall}
-                onCancelRealtimeVoiceStart={handleCancelRealtimeConnect}
-                onStopRealtimeVoice={handleEndRealtimeCall}
-                onToggleMicCapture={realtimeSession.toggleMicCapture}
-                getRealtimeMicAnalyserNode={realtimeSession.getMicAnalyserNode}
-            />
-        )
+    // 加载期间用与 /chat/new 完全相同的静态输入框占位（几何一致、按钮禁用），
+    // 不用 disabled 的真实 ChatInput：它的 placeholder 依赖 ProseMirror 伪元素，
+    // 禁用时文案会塌陷到底边。
+    const composerContent = isLoading ? (
+        <ChatComposerPlaceholder roleName={displayCharacter?.name} />
     ) : (
-        <div className="text-base mx-auto px-4 sm:px-6 lg:px-16">
-            <div className="mx-auto mb-4 w-full max-w-[768px]">
-                <div
-                    className="h-14 w-full"
-                    style={{
-                        borderRadius: "28px",
-                        backgroundColor: "var(--bg-primary)",
-                        boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
-                    }}
-                />
-            </div>
-        </div>
+        <ChatInput
+            onSend={handleSendMessage}
+            disabled={!!error || !character}
+            isStreaming={isStreaming}
+            onInterrupt={interruptStream}
+            onContinue={wrappedHandleContinue}
+            roleName={displayCharacter?.name}
+            chatId={chatId}
+            replySuggestions={realtimeSession.isConnected ? null : currentReplySuggestions}
+            onRegisterAddImages={(fn) => { chatInputAddImagesRef.current = fn; }}
+            onMicStart={handleMicStart}
+            onMicCancel={handleMicCancel}
+            voiceButtonState={voiceButtonState}
+            micCaptureState={micCaptureState}
+            onStartRealtimeVoice={handleStartRealtimeCall}
+            onCancelRealtimeVoiceStart={handleCancelRealtimeConnect}
+            onStopRealtimeVoice={handleEndRealtimeCall}
+            onToggleMicCapture={realtimeSession.toggleMicCapture}
+            getRealtimeMicAnalyserNode={realtimeSession.getMicAnalyserNode}
+        />
     );
 
     return (

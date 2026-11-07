@@ -6,6 +6,7 @@ import {
     useContext,
     useEffect,
     useMemo,
+    useRef,
     useState,
 } from "react";
 import { Loader2 } from "lucide-react";
@@ -13,27 +14,23 @@ import { usePathname, useRouter } from "next/navigation";
 import {
     useAuth,
     isProfileStatusComplete,
-    isProfileStatusIncomplete,
 } from "@/lib/auth-context";
 import Sidebar, { Character } from "@/components/Sidebar";
 import AppFrame from "@/components/layout/AppFrame";
 import { useSidebarShell } from "@/hooks/useSidebarShell";
 import { mapCharacterToSidebar } from "@/lib/character-adapter";
-import { isSetupBypassPath } from "@/lib/billing-plans";
-import { UnauthorizedError } from "@/lib/token-store";
+import { clearProfileSetupState } from "@/lib/profile-setup-session";
+import { markBrowserTourCompleted } from "@/lib/onboarding/tour-storage";
 import {
-    canContinueProfileSetup,
-    clearProfileSetupState,
-    markProfileSetupPending,
-} from "@/lib/profile-setup-session";
+    peekResumeCharacterId,
+    takeResumeCharacterId,
+} from "@/lib/pending-chat";
+import { useOpenCharacterChat } from "@/hooks/useOpenCharacterChat";
 import { UserSettingsProvider } from "@/lib/user-settings-context";
 import { GrowthProvider } from "@/lib/growth-context";
 import CheckInCalendarDialog from "@/components/growth/CheckInCalendarDialog";
 import OnboardingTour from "@/components/onboarding/OnboardingTour";
-import {
-    useGetOrCreateChatMutation,
-    useSidebarCharactersQuery,
-} from "@/lib/query";
+import { useSidebarCharactersQuery } from "@/lib/query";
 
 // Context for sidebar state
 interface SidebarContextType {
@@ -65,18 +62,18 @@ export default function AppLayout({
 }) {
     const {
         user,
-        logout,
         refreshUser,
         isInitialLoading: isAuthLoading,
         profileStatus,
-        profileError,
     } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
     const isProfileReady = isProfileStatusComplete(profileStatus, user);
-    const isProfileIncomplete = isProfileStatusIncomplete(profileStatus, user);
     const appUserId = isProfileReady ? user?.id : undefined;
     const shouldShowProfileError = Boolean(user && profileStatus === "error");
+    // 认证已解析但无登录用户 = 访客。访客可以直接停留在发现页。
+    const isGuest = !isAuthLoading && !user;
+    const isDiscoverPage = pathname === "/";
 
     const { isSidebarOpen, isOverlay, isMobile, toggle: toggleSidebar, close: closeSidebar } = useSidebarShell();
     const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
@@ -85,7 +82,7 @@ export default function AppLayout({
         data: sidebarApiCharacters,
         refetch: refetchSidebarCharacters,
     } = useSidebarCharactersQuery(appUserId);
-    const openChatMutation = useGetOrCreateChatMutation(appUserId);
+    const { open: openCharacterChat, prefetchOnIntent } = useOpenCharacterChat();
     const sidebarCharacters = useMemo<Character[]>(
         () =>
             (sidebarApiCharacters ?? []).map((character) =>
@@ -94,28 +91,27 @@ export default function AppLayout({
         [sidebarApiCharacters],
     );
 
-    const shouldBlockForRedirect =
-        !user || (isProfileIncomplete && !isSetupBypassPath(pathname));
+    // 访客可以停留在发现页（含新人导览）。其它受保护页面由 middleware 拦截，
+    // 客户端这里只做兜底跳转，避免把访客 / 资料未补全的用户登出并弹回验证码页。
+    const shouldBlockForRedirect = isGuest && !isDiscoverPage;
 
-    // Redirect if not authenticated or profile incomplete
     useEffect(() => {
         if (isAuthLoading) {
             return;
         }
 
-        if (!user) {
-            clearProfileSetupState();
-            router.replace("/login");
+        // 访客：发现页直接浏览；若通过客户端导航落到受保护页，引导去登录。
+        if (isGuest) {
+            if (!isDiscoverPage) {
+                clearProfileSetupState();
+                router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+            }
             return;
         }
 
+        // 已登录但资料未补全：不再 logout 弹回登录页，允许直接进入应用。
+        // 资料补全仍由 /setup 页面自行完成，profile 缓存由 setup 提交后写回，避免陈旧窗口。
         if (profileStatus === "error") {
-            clearProfileSetupState();
-            if (profileError instanceof UnauthorizedError) {
-                void logout().finally(() => {
-                    router.replace("/login");
-                });
-            }
             return;
         }
 
@@ -123,45 +119,47 @@ export default function AppLayout({
             return;
         }
 
-        if (isProfileReady || isSetupBypassPath(pathname)) {
-            clearProfileSetupState();
-            return;
-        }
-
-        if (isProfileIncomplete && canContinueProfileSetup(user.id)) {
-            markProfileSetupPending(user.id);
-            router.replace("/setup");
-            return;
-        }
-
-        void logout().finally(() => {
-            clearProfileSetupState();
-            router.replace("/login");
-        });
+        clearProfileSetupState();
     }, [
         user,
         isAuthLoading,
+        isGuest,
+        isDiscoverPage,
         profileStatus,
-        profileError,
-        isProfileReady,
-        isProfileIncomplete,
         pathname,
         router,
-        logout,
     ]);
+
+    // 兜底续接：登录页已经直接进聊天页；这里覆盖「资料未补全先去 /setup」、
+    // 以及登录页开聊天失败的场合。等 profile 就绪再做，导航真的发起才消费 id。
+    const resumeHandledRef = useRef(false);
+    useEffect(() => {
+        if (isAuthLoading || !isProfileReady || !user || resumeHandledRef.current) {
+            return;
+        }
+
+        const characterId = peekResumeCharacterId();
+        if (!characterId) {
+            return;
+        }
+        markBrowserTourCompleted();
+
+        const started = openCharacterChat(characterId);
+        if (started) {
+            resumeHandledRef.current = true;
+            takeResumeCharacterId();
+        }
+        // 被连点去抖拦下时不标记、不消费，下一次挂载会再试。
+    }, [isAuthLoading, isProfileReady, user, openCharacterChat]);
 
     const refreshSidebarCharacters = useCallback(async () => {
         if (!user) return;
         await refetchSidebarCharacters();
     }, [refetchSidebarCharacters, user]);
 
-    const handleSelectCharacter = async (character: Character) => {
-        try {
-            const chatId = await openChatMutation.mutateAsync(character.id);
-            router.push(`/chat/${chatId}`);
-            refetchSidebarCharacters();
-        } catch (err) {
-            console.error("Failed to open chat:", err);
+    const handleSelectCharacter = (character: Character) => {
+        if (openCharacterChat(character)) {
+            void refetchSidebarCharacters();
         }
     };
 
@@ -251,6 +249,7 @@ export default function AppLayout({
                                 onSelectCharacter={handleSelectCharacter}
                                 onToggle={toggleSidebar}
                                 isCollapsed={!isSidebarOpen}
+                                onPrefetchCharacter={prefetchOnIntent}
                             />
                         }
                         isSidebarOpen={isSidebarOpen}

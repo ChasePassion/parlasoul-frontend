@@ -28,7 +28,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { getErrorMessage } from "@/lib/error-map";
-import type { ChatHistoryItem, ChatResponse } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useChatHistoryInfiniteQuery } from "@/lib/query";
 import { toast } from "sonner";
@@ -40,8 +39,22 @@ interface ChatHistorySidebarProps {
   activeChatTitle: string;
   onClose: () => void;
   onSelectChat: (chatId: string) => void;
-  onRenameChat: (chatId: string, title: string) => Promise<ChatResponse>;
+  onRenameChat: (chatId: string, title: string) => Promise<unknown>;
   onDeleteChat: (chatId: string) => Promise<void>;
+  /** Supply rows from another source (e.g. character-forge sessions). When
+   *  provided, the built-in chat-history query is skipped. */
+  rows?: ChatHistoryRow[] | null;
+  loading?: boolean;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
+  loadError?: unknown | null;
+}
+
+export interface ChatHistoryRow {
+  id: string;
+  title: string;
+  timestamp?: string | null;
 }
 
 const PAGE_SIZE = 20;
@@ -89,26 +102,43 @@ export default function ChatHistorySidebar({
   onSelectChat,
   onRenameChat,
   onDeleteChat,
+  rows,
+  loading,
+  hasMore,
+  onLoadMore,
+  loadingMore,
+  loadError,
 }: ChatHistorySidebarProps) {
   const { user } = useAuth();
   const historyQuery = useChatHistoryInfiniteQuery(
     user?.id,
     character?.id,
-    isOpen,
+    isOpen && !rows,
     PAGE_SIZE,
   );
-  const items = useMemo(
-    () => historyQuery.data?.pages.flatMap((page) => page.items) ?? [],
+  const queryRows = useMemo<ChatHistoryRow[]>(
+    () =>
+      historyQuery.data?.pages.flatMap((page) =>
+        page.items.map((item) => ({
+          id: item.chat.id,
+          title: getChatTitle(item.chat.title),
+          timestamp: item.chat.last_turn_at ?? item.chat.created_at ?? null,
+        })),
+      ) ?? [],
     [historyQuery.data],
   );
-  const isLoading = historyQuery.isLoading;
-  const isLoadingMore = historyQuery.isFetchingNextPage;
+  const resolvedRows = rows ?? queryRows;
+  const isLoading = loading ?? historyQuery.isLoading;
+  const isLoadingMore = loadingMore ?? historyQuery.isFetchingNextPage;
+  const isError = loadError != null ? true : historyQuery.isError;
+  const errorValue = loadError ?? historyQuery.error;
+  const hasNextPage = hasMore ?? historyQuery.hasNextPage ?? false;
 
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [isSavingRename, setIsSavingRename] = useState(false);
 
-  const [deleteTarget, setDeleteTarget] = useState<ChatHistoryItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ChatHistoryRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
@@ -123,25 +153,19 @@ export default function ChatHistorySidebar({
     }
   }, [isOpen]);
 
-  const displayItems = useMemo(
+  const displayRows = useMemo(
     () =>
-      items.map((item) =>
-        item.chat.id === activeChatId
-          ? {
-              ...item,
-              chat: {
-                ...item.chat,
-                title: activeChatTitle || item.chat.title,
-              },
-            }
-          : item,
+      resolvedRows.map((row) =>
+        row.id === activeChatId
+          ? { ...row, title: activeChatTitle || row.title }
+          : row,
       ),
-    [activeChatId, activeChatTitle, items],
+    [activeChatId, activeChatTitle, resolvedRows],
   );
 
-  const beginRename = useCallback((item: ChatHistoryItem) => {
-    setRenamingChatId(item.chat.id);
-    setRenameValue(item.chat.title ?? "");
+  const beginRename = useCallback((row: ChatHistoryRow) => {
+    setRenamingChatId(row.id);
+    setRenameValue(row.title ?? "");
   }, []);
 
   const cancelRename = useCallback(() => {
@@ -176,8 +200,8 @@ export default function ChatHistorySidebar({
 
     setIsDeleting(true);
     try {
-      await onDeleteChat(deleteTarget.chat.id);
-      if (renamingChatId === deleteTarget.chat.id) {
+      await onDeleteChat(deleteTarget.id);
+      if (renamingChatId === deleteTarget.id) {
         cancelRename();
       }
       setDeleteTarget(null);
@@ -214,26 +238,26 @@ export default function ChatHistorySidebar({
               <ChatHistorySkeleton />
             ) : null}
 
-            {!isLoading && historyQuery.isError ? (
+            {!isLoading && isError ? (
               <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-sm text-red-600">
-                {getErrorMessage(historyQuery.error)}
+                {getErrorMessage(errorValue)}
               </div>
             ) : null}
 
-            {!isLoading && !historyQuery.isError && displayItems.length === 0 ? (
+            {!isLoading && !isError && displayRows.length === 0 ? (
               <div className="px-2 py-8 text-center text-sm text-gray-500">
                 还没有历史记录
               </div>
             ) : null}
 
             <div className="flex flex-col gap-1.5">
-              {displayItems.map((item) => {
-                const isActive = item.chat.id === activeChatId;
-                const isRenaming = renamingChatId === item.chat.id;
+              {displayRows.map((row) => {
+                const isActive = row.id === activeChatId;
+                const isRenaming = renamingChatId === row.id;
 
                 return (
                   <div
-                    key={item.chat.id}
+                    key={row.id}
                     className={`group relative chat-history-item rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-colors border-l-[2.5px] cursor-pointer ${
                       isActive
                         ? "bg-primary/[0.07] border-primary"
@@ -250,7 +274,7 @@ export default function ChatHistorySidebar({
                           onKeyDown={(event) => {
                             if (event.key === "Enter") {
                               event.preventDefault();
-                              void submitRename(item.chat.id);
+                              void submitRename(row.id);
                             }
                             if (event.key === "Escape") {
                               event.preventDefault();
@@ -274,7 +298,7 @@ export default function ChatHistorySidebar({
                           <Button
                             type="button"
                             size="sm"
-                            onClick={() => void submitRename(item.chat.id)}
+                            onClick={() => void submitRename(row.id)}
                             disabled={isSavingRename}
                           >
                             {isSavingRename ? "保存中..." : "保存"}
@@ -285,14 +309,14 @@ export default function ChatHistorySidebar({
                       <>
                         <button
                           type="button"
-                          onClick={() => onSelectChat(item.chat.id)}
+                          onClick={() => onSelectChat(row.id)}
                           className="min-w-0 flex-1 text-left flex flex-col justify-center"
                         >
                           <div className="min-w-0 history-title-fade text-[13.5px] font-normal text-foreground tracking-tight leading-tight">
-                            {getChatTitle(item.chat.title)}
+                            {getChatTitle(row.title)}
                           </div>
                           <div className={`mt-0.5 flex items-center text-[11px] font-normal leading-tight ${isActive ? "text-muted-foreground" : "text-muted-foreground/80"}`}>
-                            {formatTimestamp(item.chat.last_turn_at ?? item.chat.created_at)}
+                            {formatTimestamp(row.timestamp)}
                           </div>
                         </button>
 
@@ -307,14 +331,14 @@ export default function ChatHistorySidebar({
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" sideOffset={8} className="w-40">
-                            <DropdownMenuItem onClick={() => beginRename(item)} className="cursor-pointer">
+                            <DropdownMenuItem onClick={() => beginRename(row)} className="cursor-pointer">
                               <Pencil className="mr-2 h-4 w-4" />
                               重命名
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               variant="destructive"
                               className="cursor-pointer"
-                              onClick={() => setDeleteTarget(item)}
+                              onClick={() => setDeleteTarget(row)}
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
                               删除
@@ -328,7 +352,7 @@ export default function ChatHistorySidebar({
               })}
             </div>
 
-            {historyQuery.hasNextPage ? (
+            {hasNextPage ? (
               <div className="pt-3 pb-2 px-1">
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
@@ -336,7 +360,10 @@ export default function ChatHistorySidebar({
                       <button
                         type="button"
                         className="w-full py-2 rounded-lg border border-border/80 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
-                        onClick={() => void historyQuery.fetchNextPage()}
+                        onClick={() => {
+                          if (onLoadMore) void onLoadMore();
+                          else void historyQuery.fetchNextPage();
+                        }}
                         disabled={isLoadingMore}
                       >
                         {isLoadingMore ? "加载中..." : "加载更多"}
@@ -356,7 +383,7 @@ export default function ChatHistorySidebar({
       <DeleteConfirmDialog
         isOpen={!!deleteTarget}
         entityLabel="聊天"
-        entityName={getChatTitle(deleteTarget?.chat.title)}
+        entityName={getChatTitle(deleteTarget?.title)}
         onConfirm={() => void confirmDelete()}
         onCancel={() => setDeleteTarget(null)}
         isDeleting={isDeleting}

@@ -8,6 +8,11 @@ import {
   isProfileComplete,
   isProfileStatusIncomplete,
 } from "@/lib/auth-context";
+import { markBrowserTourCompleted } from "@/lib/onboarding/tour-storage";
+import {
+  peekResumeCharacterId,
+  takeResumeCharacterId,
+} from "@/lib/pending-chat";
 import {
   getCurrentUser,
   sendVerificationCode,
@@ -173,6 +178,9 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = normalizeNextPath(searchParams.get("next"));
+  // OTP 登录过程中的跳转统一由 handlePostLoginRedirect 负责，避免和下面的
+  // 「已登录重定向」effect 互相覆盖（登录成功后两者会同时触发）。
+  const redirectHandledRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -182,7 +190,14 @@ function LoginPageContent() {
 
   /* redirect if already logged in */
   useEffect(() => {
+    if (redirectHandledRef.current) return;
     if (isAuthLoading || !user || profileStatus !== "loaded") return;
+
+    // 会话还在时点角色也会落到登录页，这条路径同样视为导览已完成。
+    // handleOtpLogin 里也会标记，覆盖新输入验证码的路径。
+    if (peekResumeCharacterId()) {
+      markBrowserTourCompleted();
+    }
 
     if (isProfileStatusIncomplete(profileStatus, user)) {
       if (canContinueProfileSetup(user.id)) {
@@ -227,12 +242,30 @@ function LoginPageContent() {
     } else if (!didLoadBackendProfile) {
       clearProfileSetupState();
       setError("账号资料加载失败，请重试");
+      redirectHandledRef.current = false;
       return;
     } else if (!isProfileComplete(currentUser)) {
       markProfileSetupPending(currentUser.id);
     } else {
       clearProfileSetupState();
     }
+
+    // 点角色触发的登录：资料已补全时直接打开该角色的聊天页，不回发现页，
+    // 否则 onboarding / 签到弹窗会在中途抢占并把用户留在发现页。
+    const resumeCharacterId = peekResumeCharacterId();
+    if (resumeCharacterId) {
+      // 点角色才走到登录页，说明访客已经浏览过发现页并选中了角色：
+      // 这个浏览器视为导览已完成，登录后的账号不再重放 onboarding。
+      markBrowserTourCompleted();
+    }
+    if (resumeCharacterId && currentUser && isProfileComplete(currentUser)) {
+      // 乐观导航：登录完成后立即跳过渡页，chatId 由 /chat/new 后台解析。
+      // 种子在访客点击时已写入 localStorage，跨过 queryClient.clear()。
+      takeResumeCharacterId();
+      router.replace(`/chat/new?character=${encodeURIComponent(resumeCharacterId)}`);
+      return;
+    }
+
     router.replace(resolvePostAuthDestination(nextPath, currentUser));
   };
 
@@ -270,10 +303,13 @@ function LoginPageContent() {
     setInfo("");
     setIsLoading(true);
     beginProfileSetupLoginIntent();
+    // 从这一刻起跳转只由 handlePostLoginRedirect 负责。
+    redirectHandledRef.current = true;
     try {
       await login(email, code);
       await handlePostLoginRedirect();
     } catch (err) {
+      redirectHandledRef.current = false;
       clearProfileSetupState();
       setError(getAuthActionErrorMessage(err, "验证码错误或已过期"));
     } finally {

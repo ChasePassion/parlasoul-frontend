@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import type { Character } from "./Sidebar";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Upload } from "lucide-react";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -16,7 +16,11 @@ interface CharacterCardProps {
   onEdit?: (character: Character) => void;
   onShare?: (character: Character) => void;
   onUnpublish?: (character: Character) => void;
+  onPublish?: (character: Character) => void;
+  onDelete?: (character: Character) => void;
   disableHoverFloat?: boolean;
+  /** hover / focus 时预取，让点击命中热缓存；不产生任何可见加载态 */
+  onPrefetchIntent?: () => void;
 }
 
 export default function CharacterCard({
@@ -27,13 +31,18 @@ export default function CharacterCard({
   onEdit,
   onShare,
   onUnpublish,
+  onPublish,
+  onDelete,
   disableHoverFloat = false,
+  onPrefetchIntent,
 }: CharacterCardProps) {
-  const isUnpublished = character.status === "UNPUBLISHED";
+  const isPrivate = character.visibility === "PRIVATE";
 
   return (
     <Card
       onClick={() => onClick(character)}
+      onMouseEnter={onPrefetchIntent}
+      onFocus={onPrefetchIntent}
       className={cn(
         "group p-0 bg-transparent flex-row gap-0 relative block h-[130px] rounded-[20px] overflow-hidden no-underline shadow-none border border-white/10 transition-all duration-500 cursor-pointer hover:shadow-none"
       )}
@@ -68,9 +77,9 @@ export default function CharacterCard({
             <h3 className="text-base font-bold text-white m-0 whitespace-nowrap overflow-hidden text-ellipsis drop-shadow-(--cc-text-shadow) tracking-wide">
               {character.name}
             </h3>
-            {isUnpublished ? (
+            {isPrivate ? (
               <span className="shrink-0 rounded-md bg-amber-100/90 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-700">
-                已下架
+                未上架
               </span>
             ) : null}
           </div>
@@ -135,15 +144,38 @@ export default function CharacterCard({
                 <SpriteIcon name="edit" size={16} />
                 <span className="text-sm text-gray-700">编辑</span>
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  setTimeout(() => onUnpublish?.(character), 50);
-                }}
-                className="w-full py-2 px-[10px] flex items-center gap-2 rounded-lg bg-transparent border-none cursor-pointer transition-colors duration-150 hover:bg-(--cc-dropdown-item-danger-hover) focus:bg-(--cc-dropdown-item-danger-hover) focus:outline-none text-red-600 focus:text-red-600 data-highlighted:text-red-600 hover:text-red-600"
-              >
-                <SpriteIcon name="delete" size={16} className="text-red-600" />
-                <span className="text-sm">下架</span>
-              </DropdownMenuItem>
+              {isPrivate ? (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setTimeout(() => onPublish?.(character), 50);
+                  }}
+                  className="w-full py-2 px-[10px] flex items-center gap-2 rounded-lg bg-transparent border-none cursor-pointer transition-colors duration-150 hover:bg-(--cc-dropdown-item-hover) focus:bg-(--cc-dropdown-item-hover) focus:outline-none"
+                >
+                  <Upload size={16} />
+                  <span className="text-sm">上架</span>
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setTimeout(() => onUnpublish?.(character), 50);
+                  }}
+                  className="w-full py-2 px-[10px] flex items-center gap-2 rounded-lg bg-transparent border-none cursor-pointer transition-colors duration-150 hover:bg-(--cc-dropdown-item-danger-hover) focus:bg-(--cc-dropdown-item-danger-hover) focus:outline-none text-red-600 focus:text-red-600 data-highlighted:text-red-600 hover:text-red-600"
+                >
+                  <SpriteIcon name="out" size={16} className="text-red-600" />
+                  <span className="text-sm">下架</span>
+                </DropdownMenuItem>
+              )}
+              {onDelete && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setTimeout(() => onDelete?.(character), 50);
+                  }}
+                  className="w-full py-2 px-[10px] flex items-center gap-2 rounded-lg bg-transparent border-none cursor-pointer transition-colors duration-150 hover:bg-(--cc-dropdown-item-danger-hover) focus:bg-(--cc-dropdown-item-danger-hover) focus:outline-none text-red-600 focus:text-red-600 data-highlighted:text-red-600 hover:text-red-600"
+                >
+                  <SpriteIcon name="delete" size={16} className="text-red-600" />
+                  <span className="text-sm">删除</span>
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 import { isBillingCheckoutDisabled } from "./lib/billing-flags";
 
-const protectedMatchers = ["/", "/chat", "/favorites", "/profile", "/setup", "/stats"];
+// 发现页（/）对访客开放，访客无需登录即可浏览角色。
+// 其余应用页面仍需要 better-auth 会话 cookie。
+const protectedMatchers = [
+  "/create",
+  "/chat",
+  "/favorites",
+  "/profile",
+  "/setup",
+  "/stats",
+];
 const billingCheckoutMatchers = ["/pricing"];
 
 function isProtectedPath(pathname: string): boolean {
@@ -41,5 +50,14 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/chat/:path*", "/favorites", "/profile", "/setup", "/stats", "/pricing"],
+  matcher: [
+    "/",
+    "/create",
+    "/chat/:path*",
+    "/favorites",
+    "/profile",
+    "/setup",
+    "/stats",
+    "/pricing",
+  ],
 };

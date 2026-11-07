@@ -1,6 +1,5 @@
 import type { Character } from "@/components/Sidebar";
 import type {
-    CharacterStatus,
     CharacterVisibility,
     AvatarUrls,
     VoiceSelectableItem,
@@ -15,7 +14,6 @@ interface CharacterLike {
     greeting_message?: string;
     avatar_image_key?: string | null;
     avatar_urls?: AvatarUrls | null;
-    status?: CharacterStatus;
     unpublished_at?: string | null;
     visibility?: CharacterVisibility;
     creator_id?: string | null;
@@ -42,7 +40,6 @@ export function mapCharacterToSidebar(
         avatar_urls: source.avatar_urls ?? null,
         system_prompt: source.system_prompt,
         greeting_message: source.greeting_message,
-        status: source.status,
         unpublished_at: source.unpublished_at ?? null,
         visibility: source.visibility,
         creator_id: source.creator_id ?? null,

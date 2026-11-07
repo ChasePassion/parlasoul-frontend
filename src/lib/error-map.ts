@@ -258,15 +258,6 @@ export function mapApiError(error: unknown): MappedError {
       };
     }
 
-    if (error.detail?.includes("character is unpublished")) {
-      return {
-        code: "character_unpublished",
-        message: "该角色已被作者下架，当前仅支持查看历史记录",
-        severity: "warning",
-        rawMessage: error.detail,
-      };
-    }
-
     const parsed = error.detail ? parseAlibabaCloudError(error.detail) : null;
     if (parsed && parsed.upstream_code) {
       const upstreamMapped = ERROR_MESSAGE_MAP[parsed.upstream_code];
@@ -291,15 +282,6 @@ export function mapApiError(error: unknown): MappedError {
   }
 
   if (error instanceof Error) {
-    if (error.message.includes("character is unpublished")) {
-      return {
-        code: "character_unpublished",
-        message: "该角色已被作者下架，当前仅支持查看历史记录",
-        severity: "warning",
-        rawMessage: error.message,
-      };
-    }
-
     const parsed = parseAlibabaCloudError(error.message);
     if (parsed && parsed.upstream_code) {
       const upstreamMapped = ERROR_MESSAGE_MAP[parsed.upstream_code];

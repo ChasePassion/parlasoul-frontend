@@ -37,10 +37,24 @@ export function resolveTourEntry(args: {
   local: OnboardingLocalState | null;
   discoverFirstStepId: string;
   chatFirstStepId: string;
+  // 浏览器已经走过一遍导览时，无论当前账号的服务端状态是什么都不再重放。
+  browserCompleted?: boolean;
 }): TourEntry | null {
-  const { serverStatus, route, local, discoverFirstStepId, chatFirstStepId } = args;
+  const {
+    serverStatus,
+    route,
+    local,
+    discoverFirstStepId,
+    chatFirstStepId,
+    browserCompleted,
+  } = args;
 
-  if (!serverStatus || isTerminalServerStatus(serverStatus) || !route) {
+  if (
+    browserCompleted ||
+    !serverStatus ||
+    isTerminalServerStatus(serverStatus) ||
+    !route
+  ) {
     return null;
   }
 

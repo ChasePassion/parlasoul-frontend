@@ -659,7 +659,7 @@ export default function ChatMessage({
     );
 }
 
-function ImageGrid({ images, onImageClick, justifyEnd = false }: { images: ChatImageRef[]; onImageClick: (index: number) => void; justifyEnd?: boolean }) {
+export function ImageGrid({ images, onImageClick, justifyEnd = false }: { images: ChatImageRef[]; onImageClick: (index: number) => void; justifyEnd?: boolean }) {
     const isMobile = useIsMobile();
     const imgSize = isMobile ? "w-24 h-24" : "w-28 h-28";
 

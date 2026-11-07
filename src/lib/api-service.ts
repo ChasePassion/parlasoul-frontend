@@ -188,7 +188,6 @@ export interface PaymentOrderResponse {
 }
 
 export type CharacterVisibility = "PUBLIC" | "PRIVATE";
-export type CharacterStatus = "ACTIVE" | "UNPUBLISHED";
 export type ChatVisibility = CharacterVisibility;
 export type ChatState = "ACTIVE" | "ARCHIVED";
 export type ChatType = "ONE_ON_ONE" | "ROOM";
@@ -285,7 +284,6 @@ export interface CharacterResponse {
   llm_preset_id?: LLMPresetId | null;
   creator_id: string | null;
   creator_username?: string | null;
-  status: CharacterStatus;
   unpublished_at?: string | null;
   visibility: CharacterVisibility;
   identifier?: string;
@@ -304,7 +302,6 @@ export interface CharacterBrief {
   voice_provider_voice_id?: string;
   voice_source_type?: VoiceSourceType;
   voice?: VoiceSelectableItem | null;
-  status: CharacterStatus;
   unpublished_at?: string | null;
   visibility: CharacterVisibility;
   creator_id?: string | null;
@@ -915,6 +912,98 @@ export interface UploadImageResult extends CompleteUploadResponse {
   url: string;
 }
 
+export interface ForgeSessionSummary {
+  id: string;
+  title: string;
+  updated_at?: string | null;
+  active_character_id?: string | null;
+  character_name?: string | null;
+  character_avatar_url?: string | null;
+  last_message?: string | null;
+}
+
+export interface ForgeMessageItem {
+  id: string;
+  seq: number;
+  role: "user" | "assistant" | "tool";
+  content?: string | null;
+  ui_payloads: ForgeUiPayload[];
+  images?: ChatImageRef[];
+  created_at?: string | null;
+}
+
+export interface ForgeSessionDetail {
+  session: ForgeSessionSummary;
+  items: ForgeMessageItem[];
+}
+
+export interface ForgeSessionList {
+  items: ForgeSessionSummary[];
+  next_cursor?: string | null;
+}
+
+export interface ForgeVoicePreviewPayload {
+  type: "voice_preview";
+  preview_id: string;
+  preview_url: string;
+  base_voice_id: string;
+  display_name: string;
+  usage_hint?: string | null;
+  gender?: string | null;
+  speech_rate: number;
+  volume: number;
+  pitch_rate: number;
+  sample_text: string;
+}
+
+export interface ForgeCharacterPayload {
+  type: "character_created" | "character_updated";
+  character_id: string;
+  chat_id?: string | null;
+  name: string;
+  description: string;
+  avatar_image_key?: string | null;
+  visibility?: "PRIVATE" | "PUBLIC";
+  voice: {
+    provider_voice_id: string;
+    display_name: string;
+    usage_hint?: string | null;
+    gender?: string | null;
+    speech_rate?: number | null;
+    volume?: number | null;
+    pitch_rate?: number | null;
+  };
+}
+
+export type ForgeUiPayload =
+  | ForgeVoicePreviewPayload
+  | ForgeCharacterPayload;
+
+export interface ForgeSteerDrainedItem {
+  steer_id: string;
+  message_id: string;
+  content: string;
+}
+
+export interface ForgeSteerResult {
+  steer_id: string;
+  queue_length: number;
+}
+
+export type ForgeStreamEvent =
+  | { type: "meta"; session_id: string; user_message_id: string }
+  | { type: "chunk"; content: string }
+  | { type: "reasoning"; content: string }
+  | { type: "tool_started"; tool: string; label: string }
+  | { type: "tool_finished"; tool: string; ok: boolean; summary: string }
+  | { type: "steer_drained"; items: ForgeSteerDrainedItem[] }
+  | { type: "steer_discarded"; steer_ids: string[]; reason?: string }
+  | { type: "voice_preview"; payload: ForgeVoicePreviewPayload }
+  | { type: "character_created"; payload: ForgeCharacterPayload }
+  | { type: "character_updated"; payload: ForgeCharacterPayload }
+  | { type: "done"; assistant_message_id?: string | null }
+  | { type: "error"; code?: string; message?: string };
+
 export class ApiService {
   async uploadFile(
     file: File,
@@ -1125,6 +1214,10 @@ export class ApiService {
     return httpClient.post<CharacterResponse>(`/v1/characters/${id}/unpublish`, {});
   }
 
+  async publishCharacter(id: string): Promise<CharacterResponse> {
+    return httpClient.post<CharacterResponse>(`/v1/characters/${id}/publish`, {});
+  }
+
   async getRecentChat(
     characterId: string,
     options: ApiRequestOptions = {},
@@ -1170,6 +1263,10 @@ export class ApiService {
       `/v1/chats/${chatId}`,
       request,
     );
+  }
+
+  async deleteCharacter(id: string): Promise<void> {
+    await httpClient.delete(`/v1/characters/${id}`);
   }
 
   async deleteChat(chatId: string): Promise<void> {
@@ -2080,6 +2177,101 @@ export class ApiService {
     );
   }
 
+  async listForgeSessions(params?: {
+    limit?: number;
+    cursor?: string;
+  }): Promise<ForgeSessionList> {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return httpClient.get<ForgeSessionList>(`/v1/character-forge/sessions${suffix}`);
+  }
+
+  async createForgeSession(): Promise<ForgeSessionDetail> {
+    return httpClient.post<ForgeSessionDetail>("/v1/character-forge/sessions", {});
+  }
+
+  async getForgeSession(sessionId: string): Promise<ForgeSessionDetail> {
+    return httpClient.get<ForgeSessionDetail>(
+      `/v1/character-forge/sessions/${sessionId}`,
+    );
+  }
+
+  async deleteForgeSession(sessionId: string): Promise<void> {
+    await httpClient.delete(`/v1/character-forge/sessions/${sessionId}`);
+  }
+
+  async renameForgeSession(
+    sessionId: string,
+    title: string,
+  ): Promise<ForgeSessionSummary> {
+    return httpClient.patch<ForgeSessionSummary>(
+      `/v1/character-forge/sessions/${sessionId}`,
+      { title },
+    );
+  }
+
+  async streamForgeMessage(
+    sessionId: string,
+    content: string,
+    handlers: {
+      signal?: AbortSignal;
+      images?: ChatImageRef[];
+      onEvent: (event: ForgeStreamEvent) => void;
+      onError: (error: Error) => void;
+    },
+  ): Promise<void> {
+    try {
+      const response = await fetchWithBetterAuth(
+        `/v1/character-forge/sessions/${sessionId}/stream`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({ content, images: handlers.images ?? [] }),
+          signal: handlers.signal,
+        },
+      );
+
+      if (!response.ok) {
+        return throwApiErrorResponse(response);
+      }
+
+      await consumeSseStream<ForgeStreamEvent>(response, (data) => {
+        handlers.onEvent(data);
+      });
+    } catch (error) {
+      handleStreamError(error, handlers.onError);
+    }
+  }
+
+  async steerForgeMessage(
+    sessionId: string,
+    content: string,
+    steerId: string,
+  ): Promise<ForgeSteerResult> {
+    return httpClient.post<ForgeSteerResult, { content: string; steer_id: string }>(
+      `/v1/character-forge/sessions/${sessionId}/steer`,
+      { content, steer_id: steerId },
+    );
+  }
+
+  async getForgeVoicePreviewAudio(
+    previewUrl: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<ArrayBuffer> {
+    const response = await fetchWithBetterAuth(previewUrl, {
+      method: "GET",
+      signal: options?.signal,
+    });
+    if (!response.ok) {
+      return throwApiErrorResponse(response);
+    }
+    return response.arrayBuffer();
+  }
 }
 
 export const apiService = new ApiService();

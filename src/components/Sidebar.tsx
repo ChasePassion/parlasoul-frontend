@@ -4,11 +4,11 @@ import { useState } from "react";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CreditCard } from "lucide-react";
+import { CreditCard, LogIn, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { isBillingCheckoutEnabled } from "@/lib/billing-flags";
 import { useGrowth } from "@/lib/growth-context";
-import type { AvatarUrls, CharacterStatus, CharacterVisibility } from "@/lib/api";
+import type { AvatarUrls, CharacterVisibility } from "@/lib/api";
 
 import { SettingsModal } from "./SettingsModal";
 import {
@@ -29,13 +29,11 @@ export interface Character {
     avatar_urls?: AvatarUrls | null;
     system_prompt?: string;
     greeting_message?: string;
-    status?: CharacterStatus;
     unpublished_at?: string | null;
     visibility?: CharacterVisibility;
     creator_id?: string | null;
     creator_username?: string | null;
     llm_preset_id?: string | null;
-    dialogue_style_id?: string | null;
     voice_provider?: string;
     voice_model?: string;
     voice_provider_voice_id?: string;
@@ -79,6 +77,7 @@ interface SidebarProps {
     onSelectCharacter: (character: Character) => void;
     onToggle: () => void;
     isCollapsed?: boolean;
+    onPrefetchCharacter?: (characterId: string) => void;
 }
 
 export default function Sidebar({
@@ -87,6 +86,7 @@ export default function Sidebar({
     onSelectCharacter,
     onToggle,
     isCollapsed = false,
+    onPrefetchCharacter,
 }: SidebarProps) {
     const { user, logout } = useAuth();
     const { openEntryPopup } = useGrowth();
@@ -95,6 +95,8 @@ export default function Sidebar({
     const pathname = usePathname();
     const isDiscoverActive = pathname === "/";
     const billingCheckoutEnabled = isBillingCheckoutEnabled();
+    const isGuest = !user;
+    const goToLogin = () => router.push("/login?next=%2F");
 
     // ── 共用的用户菜单项，避免重复 ──
     const userMenuItems = (
@@ -200,7 +202,7 @@ export default function Sidebar({
                 <div className="px-2">
                     <button
                         type="button"
-                        onClick={() => void openEntryPopup()}
+                        onClick={() => (isGuest ? goToLogin() : void openEntryPopup())}
                         className={`flex items-center w-full px-1 rounded-lg hover:bg-sidebar-hover transition-all duration-300 ease-in-out overflow-hidden outline-none h-10 text-text-primary text-left`}
                     >
                         <div className="flex items-center justify-center shrink-0 w-8 h-10">
@@ -223,6 +225,8 @@ export default function Sidebar({
                         <button
                             key={character.id}
                             onClick={() => onSelectCharacter(character)}
+                            onMouseEnter={() => onPrefetchCharacter?.(character.id)}
+                            onFocus={() => onPrefetchCharacter?.(character.id)}
                             className={`
                                 flex items-center px-1 rounded-lg transition-all duration-300 ease-in-out overflow-hidden outline-none shrink-0 w-full
                                 ${isSelected ? "bg-sidebar-selected" : "hover:bg-sidebar-hover"}
@@ -254,35 +258,73 @@ export default function Sidebar({
                 })}
             </nav>
 
-            {/* 用户菜单区 */}
+            {/* 创建角色入口 */}
+            <div className="shrink-0 px-2 pb-1.5 pt-1">
+                <Link
+                    href="/create"
+                    className={`
+                        flex items-center rounded-lg border border-dashed border-black/15 text-text-secondary
+                        transition-all duration-300 ease-in-out hover:bg-sidebar-hover hover:text-text-primary
+                        ${isCollapsed ? "h-9 justify-center" : "gap-2 px-2.5 py-2"}
+                    `}
+                    title={isCollapsed ? "没有想要的角色？点击创建" : undefined}
+                    aria-label="创建新角色"
+                >
+                    <Plus className="h-4 w-4 shrink-0" />
+                    {!isCollapsed && (
+                        <span className="text-[12.5px] leading-4">
+                            没有想要的角色？点击创建
+                        </span>
+                    )}
+                </Link>
+            </div>
+
+            {/* 用户菜单区：访客显示登录入口，登录用户显示头像下拉菜单 */}
             <section className="flex-none py-1.5 px-2 mt-auto border-t border-divider relative" aria-label="账户菜单">
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <button className={`flex items-center w-full px-1 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-all duration-300 ease-in-out overflow-hidden outline-none relative ${isCollapsed ? 'h-10' : 'h-[52px]'}`}>
-                            <div className={`flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-8' : 'w-10'}`}>
-                                <Avatar className={`rounded-lg overflow-hidden shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'h-8 w-8' : 'h-10 w-10'}`}>
-                                    <AvatarImage src={user?.avatar_urls?.sm || "/default-avatar.svg"} alt={user?.username || "User"} />
-                                    <AvatarFallback className="bg-gray-100 text-gray-600 text-[10px]">
-                                        {user?.username?.slice(0, 2) || "GU"}
-                                    </AvatarFallback>
-                                </Avatar>
-                            </div>
-                            <div className={`flex flex-col items-start min-w-[150px] justify-center transition-all duration-300 ease-in-out ${isCollapsed ? "opacity-0 ml-2" : "opacity-100 ml-3"}`}>
-                                <span className={`font-medium text-text-primary truncate w-full text-left transition-all duration-300 ease-in-out ${isCollapsed ? 'text-[13.5px]' : 'text-sm'}`}>
-                                    {user?.username || "Guest"}
-                                </span>
-                            </div>
-                        </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                        side={isCollapsed ? "right" : "top"}
-                        align={isCollapsed ? "end" : "center"}
-                        className="w-[244px] p-1.5 rounded-xl shadow-xl"
-                        sideOffset={10}
+                {isGuest ? (
+                    <button
+                        type="button"
+                        onClick={goToLogin}
+                        className={`flex items-center w-full px-1 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-all duration-300 ease-in-out overflow-hidden outline-none relative ${isCollapsed ? 'h-10 justify-center' : 'h-[52px]'}`}
                     >
-                        {userMenuItems}
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                        <div className={`flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-8' : 'w-10'}`}>
+                            <LogIn className="h-5 w-5 text-text-primary" />
+                        </div>
+                        {!isCollapsed && (
+                            <span className="ml-3 text-sm font-medium text-text-primary">
+                                登录
+                            </span>
+                        )}
+                    </button>
+                ) : (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button className={`flex items-center w-full px-1 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-all duration-300 ease-in-out overflow-hidden outline-none relative ${isCollapsed ? 'h-10' : 'h-[52px]'}`}>
+                                <div className={`flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-8' : 'w-10'}`}>
+                                    <Avatar className={`rounded-lg overflow-hidden shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'h-8 w-8' : 'h-10 w-10'}`}>
+                                        <AvatarImage src={user?.avatar_urls?.sm || "/default-avatar.svg"} alt={user?.username || "User"} />
+                                        <AvatarFallback className="bg-gray-100 text-gray-600 text-[10px]">
+                                            {user?.username?.slice(0, 2) || "GU"}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                </div>
+                                <div className={`flex flex-col items-start min-w-[150px] justify-center transition-all duration-300 ease-in-out ${isCollapsed ? "opacity-0 ml-2" : "opacity-100 ml-3"}`}>
+                                    <span className={`font-medium text-text-primary truncate w-full text-left transition-all duration-300 ease-in-out ${isCollapsed ? 'text-[13.5px]' : 'text-sm'}`}>
+                                        {user?.username || "Guest"}
+                                    </span>
+                                </div>
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                            side={isCollapsed ? "right" : "top"}
+                            align={isCollapsed ? "end" : "center"}
+                            className="w-[244px] p-1.5 rounded-xl shadow-xl"
+                            sideOffset={10}
+                        >
+                            {userMenuItems}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
 
                 <SettingsModal
                     open={isSettingsOpen}

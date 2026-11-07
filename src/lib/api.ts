@@ -267,6 +267,8 @@ export const getUserCharacters = apiService.getUserCharacters.bind(apiService);
 export const getMyCharacters = apiService.getMyCharacters.bind(apiService);
 export const updateCharacter = apiService.updateCharacter.bind(apiService);
 export const unpublishCharacter = apiService.unpublishCharacter.bind(apiService);
+export const publishCharacter = apiService.publishCharacter.bind(apiService);
+export const deleteCharacter = apiService.deleteCharacter.bind(apiService);
 
 // 聊天相关
 export const listChats = apiService.listChats.bind(apiService);
@@ -323,6 +325,17 @@ export const streamLearningAssistant =
 export const createSavedItemPhase3 = apiService.createSavedItemPhase3.bind(apiService);
 export const listSavedItemsPhase3 = apiService.listSavedItemsPhase3.bind(apiService);
 
+// Character forge（对话式创建角色）
+export const listForgeSessions = apiService.listForgeSessions.bind(apiService);
+export const createForgeSession = apiService.createForgeSession.bind(apiService);
+export const getForgeSession = apiService.getForgeSession.bind(apiService);
+export const deleteForgeSession = apiService.deleteForgeSession.bind(apiService);
+export const renameForgeSession = apiService.renameForgeSession.bind(apiService);
+export const streamForgeMessage = apiService.streamForgeMessage.bind(apiService);
+export const steerForgeMessage = apiService.steerForgeMessage.bind(apiService);
+export const getForgeVoicePreviewAudio =
+  apiService.getForgeVoicePreviewAudio.bind(apiService);
+
 // 导出类型和错误类
 export * from "./token-store";
 export type {
@@ -363,7 +376,6 @@ export type {
   PaymentOrderResponse,
   CreateCharacterRequest,
   CharacterResponse,
-  CharacterStatus,
   UpdateCharacterRequest,
   CharacterVisibility,
   // Phase 1 types
@@ -411,4 +423,14 @@ export type {
   SavedItemPayloadPhase3,
   SavedItemResponsePhase3,
   SavedItemsPagePhase3,
+  // Character forge types
+  ForgeSessionSummary,
+  ForgeMessageItem,
+  ForgeSessionDetail,
+  ForgeSessionList,
+  ForgeVoicePreviewPayload,
+  ForgeCharacterPayload,
+  ForgeUiPayload,
+  ForgeStreamEvent,
+  ForgeSteerResult,
 } from "./api-service";

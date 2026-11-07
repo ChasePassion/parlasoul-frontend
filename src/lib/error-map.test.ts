@@ -24,16 +24,6 @@ test("maps effective entitlement conflicts to a non-blocking result", () => {
   assert.equal(mapped.rawMessage, detail);
 });
 
-test("maps unpublished character errors consistently across API and runtime errors", () => {
-  const detail = "resource not found: character is unpublished";
-
-  const fromApi = mapApiError(new ApiError(404, "resource_not_found", detail));
-  const fromRuntime = mapApiError(new Error(detail));
-
-  assert.deepEqual(fromApi, fromRuntime);
-  assert.equal(fromApi.code, "character_unpublished");
-  assert.equal(fromApi.severity, "warning");
-});
 
 test("extracts upstream speech error codes from structured details", () => {
   const mapped = mapApiError(

@@ -2,6 +2,7 @@ import {
   useInfiniteQuery,
   useMutation,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import {
   createChatInstance,
@@ -37,6 +38,8 @@ export function chatTurnsQueryOptions(
         limit: params.limit,
         signal,
       }),
+    // 聊天消息必须拿到最新内容，不能靠调大 staleTime 消除加载态。
+    // 首帧由缓存种子接管，见 .agent/loading.md。
     staleTime: 0,
   };
 }
@@ -75,38 +78,55 @@ export function useChatHistoryInfiniteQuery(
   });
 }
 
+/**
+ * 取得（或创建）某个角色的 chatId。全站唯一实现。
+ *
+ * invalidateQueries 属于后台刷新，与 chatId 无关，绝不能 await 在返回之前：
+ * 否则导航会多等 2 个 active refetch（见 .agent/loading.md §3.3）。
+ */
+export async function resolveChatId(
+  queryClient: QueryClient,
+  userId: string | null | undefined,
+  characterId: string,
+): Promise<string> {
+  const existing = await queryClient.fetchQuery(
+    recentChatQueryOptions(userId, characterId),
+  );
+
+  if (existing?.chat?.id) {
+    return existing.chat.id;
+  }
+
+  const created = await createChatInstance({ character_id: characterId });
+  queryClient.setQueryData(queryKeys.chats.recent(userId, characterId), {
+    chat: created.chat,
+    character: created.character,
+  });
+
+  // 后台刷新，失败静默；不阻塞导航。
+  void Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.sidebar.characters(userId),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.chats.history(userId, characterId),
+    }),
+  ]).catch((error) => {
+    console.error("Failed to refresh chat lists after create:", error);
+  });
+
+  return created.chat.id;
+}
+
+/**
+ * 兼容包装：仅供确实需要 react-query mutation 状态的场景使用。
+ * 新代码一律走 useOpenCharacterChat()（统一入口）。
+ */
 export function useGetOrCreateChatMutation(userId: string | null | undefined) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (characterId: string) => {
-      const existing = await queryClient.fetchQuery(
-        recentChatQueryOptions(userId, characterId),
-      );
-
-      if (existing?.chat?.id) {
-        return existing.chat.id;
-      }
-
-      const created = await createChatInstance({ character_id: characterId });
-      queryClient.setQueryData(
-        queryKeys.chats.recent(userId, characterId),
-        {
-          chat: created.chat,
-          character: created.character,
-        },
-      );
-
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.sidebar.characters(userId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.chats.history(userId, characterId),
-        }),
-      ]);
-
-      return created.chat.id;
-    },
+    mutationFn: (characterId: string) =>
+      resolveChatId(queryClient, userId, characterId),
   });
 }

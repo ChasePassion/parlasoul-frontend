@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Sparkles } from "lucide-react";
 import type { Character } from "./Sidebar";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -17,6 +18,8 @@ interface ChatHeaderProps {
     isNewChatDisabled?: boolean;
     isReadOnly?: boolean;
     onToggleSidebar?: () => void;
+    headerAction?: ReactNode;
+    hideIdentity?: boolean;
 }
 
 export default function ChatHeader({
@@ -30,6 +33,8 @@ export default function ChatHeader({
     isNewChatDisabled = false,
     isReadOnly = false,
     onToggleSidebar,
+    headerAction,
+    hideIdentity = false,
 }: ChatHeaderProps) {
     if (!character) {
         return (
@@ -56,38 +61,45 @@ export default function ChatHeader({
                         <SpriteIcon name="sidebar" size={16} />
                     </button>
                 )}
-                <Avatar className="h-10 w-10 rounded-lg overflow-hidden shrink-0">
-                    <AvatarImage src={character.avatar} alt={character.name} />
-                    <AvatarFallback className="bg-gray-100 text-gray-600">
-                        {character.name.slice(0, 2)}
-                    </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex items-center gap-2">
-                    <span className="text-base font-[500] text-text-primary truncate">
-                        {character.name}
-                    </span>
-                    {isReadOnly ? (
-                        <span className="shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                            已下架
-                        </span>
-                    ) : null}
-                </div>
+                {hideIdentity ? null : (
+                    <>
+                        <Avatar className="h-10 w-10 rounded-lg overflow-hidden shrink-0">
+                            <AvatarImage src={character.avatar} alt={character.name} />
+                            <AvatarFallback className="bg-gray-100 text-gray-600">
+                                {character.name.slice(0, 2)}
+                            </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex items-center gap-2">
+                            <span className="text-base font-[500] text-text-primary truncate">
+                                {character.name}
+                            </span>
+                            {isReadOnly ? (
+                                <span className="shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                    已下架
+                                </span>
+                            ) : null}
+                        </div>
+                    </>
+                )}
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
                 {chatId && <ReadingRing chatId={chatId} />}
-                <button
-                    type="button"
-                    onClick={onToggleAssistant}
-                    className={`h-9 w-9 flex items-center justify-center rounded-lg border transition-colors ${
-                        isAssistantOpen
-                            ? "border-[#3964FE]/20 bg-[#3964FE]/10 text-[#3964FE]"
-                            : "border-divider bg-white text-gray-600 hover:bg-sidebar-hover"
-                    }`}
-                    aria-label="学习助手"
-                >
-                    <Sparkles className="h-[17px] w-[17px]" />
-                </button>
+                {headerAction}
+                {onToggleAssistant ? (
+                    <button
+                        type="button"
+                        onClick={onToggleAssistant}
+                        className={`h-9 w-9 flex items-center justify-center rounded-lg border transition-colors ${
+                            isAssistantOpen
+                                ? "border-[#3964FE]/20 bg-[#3964FE]/10 text-[#3964FE]"
+                                : "border-divider bg-white text-gray-600 hover:bg-sidebar-hover"
+                        }`}
+                        aria-label="学习助手"
+                    >
+                        <Sparkles className="h-[17px] w-[17px]" />
+                    </button>
+                ) : null}
                 <button
                     type="button"
                     onClick={onNewChat}
