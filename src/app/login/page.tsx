@@ -387,6 +387,9 @@ function LoginPageContent() {
             >
               {isLoading ? "Verifying..." : "Continue with email"}
             </Button>
+            <p className="mt-3 text-center text-xs text-gray-400">
+              Can&apos;t find the code? Check your spam or junk folder.
+            </p>
           </form>
 
           {/* Google 登录已撤销；恢复时取消整段注释。
