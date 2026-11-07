@@ -240,6 +240,24 @@ function parseAlibabaCloudError(errorMessage: string): AlibabaCloudError | null 
   };
 }
 
+function mapUpstreamCloudError(message: string | undefined): MappedError | null {
+  if (!message) return null;
+
+  const parsed = parseAlibabaCloudError(message);
+  if (parsed && parsed.upstream_code) {
+    const upstreamMapped = ERROR_MESSAGE_MAP[parsed.upstream_code];
+    if (upstreamMapped) {
+      return {
+        code: parsed.upstream_code,
+        message: upstreamMapped.message,
+        severity: upstreamMapped.severity,
+        rawMessage: parsed.upstream_message || message,
+      };
+    }
+  }
+  return null;
+}
+
 export function mapApiError(error: unknown): MappedError {
   if (error instanceof ApiError) {
     const statusKey = error.status?.toString() || "DEFAULT";
@@ -258,18 +276,8 @@ export function mapApiError(error: unknown): MappedError {
       };
     }
 
-    const parsed = error.detail ? parseAlibabaCloudError(error.detail) : null;
-    if (parsed && parsed.upstream_code) {
-      const upstreamMapped = ERROR_MESSAGE_MAP[parsed.upstream_code];
-      if (upstreamMapped) {
-        return {
-          code: parsed.upstream_code,
-          message: upstreamMapped.message,
-          severity: upstreamMapped.severity,
-          rawMessage: parsed.upstream_message || error.detail,
-        };
-      }
-    }
+    const upstreamError = mapUpstreamCloudError(error.detail);
+    if (upstreamError) return upstreamError;
 
     const mapped = ERROR_MESSAGE_MAP[codeKey] || ERROR_MESSAGE_MAP[statusKey];
 
@@ -282,18 +290,8 @@ export function mapApiError(error: unknown): MappedError {
   }
 
   if (error instanceof Error) {
-    const parsed = parseAlibabaCloudError(error.message);
-    if (parsed && parsed.upstream_code) {
-      const upstreamMapped = ERROR_MESSAGE_MAP[parsed.upstream_code];
-      if (upstreamMapped) {
-        return {
-          code: parsed.upstream_code,
-          message: upstreamMapped.message,
-          severity: upstreamMapped.severity,
-          rawMessage: parsed.upstream_message || error.message,
-        };
-      }
-    }
+    const upstreamError = mapUpstreamCloudError(error.message);
+    if (upstreamError) return upstreamError;
 
     const knownError = ERROR_MESSAGE_MAP[error.message];
     if (knownError) {

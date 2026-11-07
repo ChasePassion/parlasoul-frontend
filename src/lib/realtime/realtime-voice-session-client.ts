@@ -96,13 +96,17 @@ export class RealtimeVoiceSessionClient {
   attachAudioElement(element: HTMLAudioElement | null): void {
     this.audioElement = element;
     if (element && this.remoteStream) {
-      element.srcObject = this.remoteStream;
-      element.muted = false;
-      element.volume = 1;
-      element.setAttribute("playsinline", "true");
-      element.autoplay = true;
-      void element.play().catch(() => {});
+      this.bindRemoteStreamToElement(element);
     }
+  }
+
+  private bindRemoteStreamToElement(element: HTMLAudioElement): void {
+    element.srcObject = this.remoteStream;
+    element.muted = false;
+    element.volume = 1;
+    element.setAttribute("playsinline", "true");
+    element.autoplay = true;
+    void element.play().catch(() => {});
   }
 
   getMicAnalyserNode(): AnalyserNode | null {
@@ -234,12 +238,7 @@ export class RealtimeVoiceSessionClient {
           });
         }
         if (this.audioElement) {
-          this.audioElement.srcObject = this.remoteStream;
-          this.audioElement.muted = false;
-          this.audioElement.volume = 1;
-          this.audioElement.setAttribute("playsinline", "true");
-          this.audioElement.autoplay = true;
-          void this.audioElement.play().catch(() => {});
+          this.bindRemoteStreamToElement(this.audioElement);
         }
       };
 

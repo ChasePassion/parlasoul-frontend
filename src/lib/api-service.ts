@@ -994,6 +994,20 @@ export type ForgeStreamEvent =
   | { type: "error"; code?: string; message?: string };
 
 export class ApiService {
+  private async fetchAudioBuffer(
+    url: string,
+    signal?: AbortSignal,
+  ): Promise<ArrayBuffer> {
+    const response = await fetchWithBetterAuth(url, {
+      method: "GET",
+      signal,
+    });
+    if (!response.ok) {
+      return throwApiErrorResponse(response);
+    }
+    return response.arrayBuffer();
+  }
+
   async uploadFile(
     file: File,
     options: UploadFileOptions = {},
@@ -1876,19 +1890,10 @@ export class ApiService {
     options?: { audio_format?: "opus" | "mp3"; signal?: AbortSignal },
   ): Promise<ArrayBuffer> {
     const format = options?.audio_format ?? "mp3";
-    const response = await fetchWithBetterAuth(
+    return this.fetchAudioBuffer(
       `/v1/voice/tts/messages/${assistantCandidateId}/audio?audio_format=${format}`,
-      {
-        method: "GET",
-        signal: options?.signal,
-      },
+      options?.signal,
     );
-
-    if (!response.ok) {
-      return throwApiErrorResponse(response);
-    }
-
-    return response.arrayBuffer();
   }
 
   async createRealtimeSession(
@@ -2014,19 +2019,10 @@ export class ApiService {
     options?: { audio_format?: "opus" | "mp3"; signal?: AbortSignal },
   ): Promise<ArrayBuffer> {
     const format = options?.audio_format ?? "mp3";
-    const response = await fetchWithBetterAuth(
+    return this.fetchAudioBuffer(
       `/v1/voices/${voiceId}/preview/audio?audio_format=${format}`,
-      {
-        method: "GET",
-        signal: options?.signal,
-      },
+      options?.signal,
     );
-
-    if (!response.ok) {
-      return throwApiErrorResponse(response);
-    }
-
-    return response.arrayBuffer();
   }
 
   async streamLearningAssistant(
@@ -2213,14 +2209,7 @@ export class ApiService {
     previewUrl: string,
     options?: { signal?: AbortSignal },
   ): Promise<ArrayBuffer> {
-    const response = await fetchWithBetterAuth(previewUrl, {
-      method: "GET",
-      signal: options?.signal,
-    });
-    if (!response.ok) {
-      return throwApiErrorResponse(response);
-    }
-    return response.arrayBuffer();
+    return this.fetchAudioBuffer(previewUrl, options?.signal);
   }
 }
 

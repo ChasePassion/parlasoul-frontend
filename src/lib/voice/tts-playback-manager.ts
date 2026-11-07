@@ -330,7 +330,10 @@ export class TtsPlaybackManager {
 
   stopMessage(candidateId: string): void {
     if (this.playingCandidateId !== candidateId) return;
+    this.stopSinglePlayback();
+  }
 
+  private stopSinglePlayback(): void {
     if (this.singleSource) {
       try {
         this.singleSource.stop();
@@ -353,23 +356,7 @@ export class TtsPlaybackManager {
   interruptAll(): void {
     // Stop realtime
     this.stopRealtime();
-
-    // Stop single playback
-    if (this.singleSource) {
-      try {
-        this.singleSource.stop();
-      } catch {
-        // Already stopped
-      }
-      this.singleSource = null;
-    }
-
-    if (this.singleAbort) {
-      this.singleAbort.abort();
-      this.singleAbort = null;
-    }
-
-    this.setPlayingId(null);
+    this.stopSinglePlayback();
   }
 
   // ── State query ──

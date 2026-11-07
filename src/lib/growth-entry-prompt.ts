@@ -50,7 +50,10 @@ export function shouldAutoOpenGrowthEntryPopup({
 type StorageReader = Pick<Storage, "getItem"> | null | undefined;
 type StorageWriter = Pick<Storage, "setItem"> | null | undefined;
 
-function resolveReader(storage?: StorageReader): StorageReader {
+function resolveStorage<T>(
+  storage: T | null | undefined,
+  getDefault: () => T,
+): T | null {
   if (storage !== undefined) {
     return storage;
   }
@@ -59,43 +62,23 @@ function resolveReader(storage?: StorageReader): StorageReader {
     return null;
   }
 
-  return window.localStorage;
+  return getDefault();
+}
+
+function resolveReader(storage?: StorageReader): StorageReader {
+  return resolveStorage(storage, () => window.localStorage);
 }
 
 function resolveWriter(storage?: StorageWriter): StorageWriter {
-  if (storage !== undefined) {
-    return storage;
-  }
-
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.localStorage;
+  return resolveStorage(storage, () => window.localStorage);
 }
 
 function resolveSessionReader(storage?: StorageReader): StorageReader {
-  if (storage !== undefined) {
-    return storage;
-  }
-
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.sessionStorage;
+  return resolveStorage(storage, () => window.sessionStorage);
 }
 
 function resolveSessionWriter(storage?: StorageWriter): StorageWriter {
-  if (storage !== undefined) {
-    return storage;
-  }
-
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.sessionStorage;
+  return resolveStorage(storage, () => window.sessionStorage);
 }
 
 export function readGrowthEntryDismissedStatDate(
