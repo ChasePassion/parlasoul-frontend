@@ -90,6 +90,14 @@ const readMetaString = (
     return "";
 };
 
+const readOriginalContent = (item: SavedItemResponsePhase3) =>
+    readMetaString(item, [
+        "original_content",
+        "original",
+        "source_content",
+        "user_content",
+    ]) || item.display.surface;
+
 function isWordCard(card: SavedItemResponsePhase3["card"]): card is WordCard {
     return "pos_groups" in card;
 }
@@ -170,6 +178,28 @@ function PhraseChip({
     );
 }
 
+function KeyPhraseFooter({
+    card,
+    themeColor,
+}: {
+    card: ReplyCard | FeedbackCard;
+    themeColor: string;
+}) {
+    return (
+        <footer className="mt-6 border-t border-[#EAEAEA] pt-4">
+            <div className="flex flex-wrap gap-2">
+                {card.key_phrases.map((phrase) => (
+                    <PhraseChip
+                        key={`${phrase.surface}-${phrase.ipa_us}`}
+                        phrase={phrase}
+                        themeColor={themeColor}
+                    />
+                ))}
+            </div>
+        </footer>
+    );
+}
+
 function WordDetail({ item }: { item: SavedItemResponsePhase3 }) {
     if (!isWordCard(item.card)) return null;
 
@@ -232,13 +262,7 @@ function WordDetail({ item }: { item: SavedItemResponsePhase3 }) {
 function FeedbackDetail({ item }: { item: SavedItemResponsePhase3 }) {
     if (!hasKeyPhrases(item.card)) return null;
 
-    const original =
-        readMetaString(item, [
-            "original_content",
-            "original",
-            "source_content",
-            "user_content",
-        ]) || item.display.surface;
+    const original = readOriginalContent(item);
     const phrases = item.card.key_phrases.map((phrase) => phrase.surface);
     const themeColor = TAB_META.feedback_card.themeColor;
 
@@ -266,17 +290,7 @@ function FeedbackDetail({ item }: { item: SavedItemResponsePhase3 }) {
                 </div>
             </div>
 
-            <footer className="mt-6 border-t border-[#EAEAEA] pt-4">
-                <div className="flex flex-wrap gap-2">
-                    {item.card.key_phrases.map((phrase) => (
-                        <PhraseChip
-                            key={`${phrase.surface}-${phrase.ipa_us}`}
-                            phrase={phrase}
-                            themeColor={themeColor}
-                        />
-                    ))}
-                </div>
-            </footer>
+            <KeyPhraseFooter card={item.card} themeColor={themeColor} />
         </>
     );
 }
@@ -302,17 +316,7 @@ function ReplyDetail({ item }: { item: SavedItemResponsePhase3 }) {
                 </p>
             </div>
 
-            <footer className="mt-6 border-t border-[#EAEAEA] pt-4">
-                <div className="flex flex-wrap gap-2">
-                    {item.card.key_phrases.map((phrase) => (
-                        <PhraseChip
-                            key={`${phrase.surface}-${phrase.ipa_us}`}
-                            phrase={phrase}
-                            themeColor={themeColor}
-                        />
-                    ))}
-                </div>
-            </footer>
+            <KeyPhraseFooter card={item.card} themeColor={themeColor} />
         </>
     );
 }
@@ -341,14 +345,7 @@ function getItemSummary(item: SavedItemResponsePhase3) {
     }
 
     if (item.kind === "feedback_card") {
-        return (
-            readMetaString(item, [
-                "original_content",
-                "original",
-                "source_content",
-                "user_content",
-            ]) || item.display.surface
-        );
+        return readOriginalContent(item);
     }
 
     return item.display.surface;

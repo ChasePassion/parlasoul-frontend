@@ -26,6 +26,8 @@ import {
   resolveTourEntry,
   selectAvailableSteps,
   type OnboardingLocalState,
+  type TourLocalStatus,
+  type TourPhase,
   type TourRoute,
 } from "@/lib/onboarding/tour-state";
 import {
@@ -68,6 +70,22 @@ function getTourRoute(pathname: string): TourRoute {
 
 // 访客没有账号，用一个稳定的本地身份承载导览进度（只写 localStorage，不写后端）。
 const GUEST_TOUR_ID = "guest";
+
+function buildLocalState(
+  status: TourLocalStatus,
+  phase: TourPhase,
+  stepId: string,
+  feedbackHintPending: boolean,
+): OnboardingLocalState {
+  return {
+    version: 1,
+    status,
+    phase,
+    stepId,
+    feedbackHintPending,
+    updatedAt: Date.now(),
+  };
+}
 
 function useAvailableSteps(
   phase: "discover" | "chat" | null,
@@ -284,26 +302,12 @@ export default function OnboardingTour() {
     const nextId = getAdjacentStepId(stepIds, currentStep.id, 1);
     if (!nextId) {
       if (phase === "discover") {
-        persistLocal({
-          version: 1,
-          status: "active",
-          phase: "chat",
-          stepId: CHAT_FIRST_STEP_ID,
-          feedbackHintPending: false,
-          updatedAt: Date.now(),
-        });
+        persistLocal(buildLocalState("active", "chat", CHAT_FIRST_STEP_ID, false));
         // 访客只能走发现页导览，走完即视为这个浏览器已经导览过。
         markGuestTourCompleted();
         void persistStatus("discover_done");
       } else {
-        persistLocal({
-          version: 1,
-          status: "completed",
-          phase: "chat",
-          stepId: currentStep.id,
-          feedbackHintPending: true,
-          updatedAt: Date.now(),
-        });
+        persistLocal(buildLocalState("completed", "chat", currentStep.id, true));
         markGuestTourCompleted();
         void persistStatus("completed");
       }
@@ -312,14 +316,7 @@ export default function OnboardingTour() {
       return;
     }
 
-    persistLocal({
-      version: 1,
-      status: "active",
-      phase,
-      stepId: nextId,
-      feedbackHintPending: false,
-      updatedAt: Date.now(),
-    });
+    persistLocal(buildLocalState("active", phase, nextId, false));
     setRuntime({ state: "tour", phase, stepId: nextId });
   }, [
     availableIds,
@@ -341,14 +338,7 @@ export default function OnboardingTour() {
       return;
     }
 
-    persistLocal({
-      version: 1,
-      status: "active",
-      phase,
-      stepId: previousId,
-      feedbackHintPending: false,
-      updatedAt: Date.now(),
-    });
+    persistLocal(buildLocalState("active", phase, previousId, false));
     setRuntime({ state: "tour", phase, stepId: previousId });
   }, [availableIds, currentStep, persistLocal, phase, runtime.state]);
 
@@ -358,14 +348,7 @@ export default function OnboardingTour() {
       (phase === "chat" ? CHAT_FIRST_STEP_ID : DISCOVER_FIRST_STEP_ID);
 
     if (userId) {
-      persistLocal({
-        version: 1,
-        status: "skipped",
-        phase: phase ?? "discover",
-        stepId,
-        feedbackHintPending: false,
-        updatedAt: Date.now(),
-      });
+      persistLocal(buildLocalState("skipped", phase ?? "discover", stepId, false));
       void persistStatus("skipped");
     }
 
@@ -435,14 +418,7 @@ export default function OnboardingTour() {
 
     const local = readOnboardingLocal(userId);
     if (!local || !isTerminalLocalStatus(local.status)) {
-      writeOnboardingLocal(userId, {
-        version: 1,
-        status: "completed",
-        phase: "chat",
-        stepId: CHAT_FIRST_STEP_ID,
-        feedbackHintPending: false,
-        updatedAt: Date.now(),
-      });
+      writeOnboardingLocal(userId, buildLocalState("completed", "chat", CHAT_FIRST_STEP_ID, false));
     }
 
     if (!isTerminalServerStatus(serverStatus)) {
@@ -490,14 +466,7 @@ export default function OnboardingTour() {
     }
 
     if (entry.phase === "chat" && local?.phase === "discover") {
-      persistLocal({
-        version: 1,
-        status: "active",
-        phase: "chat",
-        stepId: CHAT_FIRST_STEP_ID,
-        feedbackHintPending: false,
-        updatedAt: Date.now(),
-      });
+      persistLocal(buildLocalState("active", "chat", CHAT_FIRST_STEP_ID, false));
       if (serverStatus === "pending") {
         void persistStatus("discover_done");
       }

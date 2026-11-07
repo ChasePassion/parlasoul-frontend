@@ -369,6 +369,17 @@ export default function ChatPage() {
 
     const learningAssistantContext = buildLearningAssistantContext(messages);
 
+    const invalidateChatLists = useCallback(async () => {
+        await Promise.all([
+            queryClient.invalidateQueries({
+                queryKey: queryKeys.chats.history(user?.id, characterId),
+            }),
+            queryClient.invalidateQueries({
+                queryKey: queryKeys.sidebar.characters(user?.id),
+            }),
+        ]);
+    }, [characterId, queryClient, user?.id]);
+
     const handleCreateNewChat = useCallback(async () => {
         if (!characterId || isStreaming) {
             return;
@@ -382,17 +393,11 @@ export default function ChatPage() {
                 character: created.character,
             },
         );
-        await Promise.all([
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.chats.history(user?.id, characterId),
-            }),
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.sidebar.characters(user?.id),
-            }),
-        ]);
+        await invalidateChatLists();
         router.push(`/chat/${created.chat.id}`);
     }, [
         characterId,
+        invalidateChatLists,
         isStreaming,
         queryClient,
         router,
@@ -443,17 +448,10 @@ export default function ChatPage() {
             if (targetChatId === chatId) {
                 setCurrentChatTitle(updated.title);
             }
-            await Promise.all([
-                queryClient.invalidateQueries({
-                    queryKey: queryKeys.chats.history(user?.id, characterId),
-                }),
-                queryClient.invalidateQueries({
-                    queryKey: queryKeys.sidebar.characters(user?.id),
-                }),
-            ]);
+            await invalidateChatLists();
             return updated;
         },
-        [chatId, characterId, queryClient, setCurrentChatTitle, user?.id],
+        [chatId, invalidateChatLists, setCurrentChatTitle],
     );
 
     const handleDeleteHistoryChat = useCallback(async (targetChatId: string) => {
@@ -462,14 +460,7 @@ export default function ChatPage() {
         }
 
         await deleteChat(targetChatId);
-        await Promise.all([
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.chats.history(user?.id, characterId),
-            }),
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.sidebar.characters(user?.id),
-            }),
-        ]);
+        await invalidateChatLists();
 
         if (targetChatId !== chatId) {
             return;
@@ -503,7 +494,7 @@ export default function ChatPage() {
             }
         }
 
-    }, [characterId, chatId, queryClient, router, user?.id]);
+    }, [characterId, chatId, invalidateChatLists, queryClient, router, user?.id]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesStartRef = useRef<HTMLDivElement | null>(null);
