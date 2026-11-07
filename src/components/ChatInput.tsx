@@ -23,6 +23,13 @@ const WAVEFORM_CONFIG = {
 };
 
 type InputAreaState = "default" | "recording" | "transcribing";
+
+function formatRecordingDuration(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
 export type VoiceButtonState = "idle" | "connecting" | "active_ready" | "active_user_speaking";
 export type MicCaptureState = "hidden" | "mic_hot" | "mic_cold";
 
@@ -38,6 +45,7 @@ interface ChatInputProps {
     disabled?: boolean;
     disabledReason?: string | null;
     roleName?: string;
+    chatId?: string;
     replySuggestions?: ReplySuggestion[] | null;
     onSelectSuggestion?: (text: string) => void;
     onRegisterAddImages?: (fn: ((files: File[]) => void) | null) => void;
@@ -62,6 +70,7 @@ export default function ChatInput({
     disabled = false,
     disabledReason,
     roleName,
+    chatId,
     replySuggestions,
     onSelectSuggestion,
     onRegisterAddImages,
@@ -90,6 +99,7 @@ export default function ChatInput({
 
     // Phase 2: recording state
     const [inputAreaState, setInputAreaState] = useState<InputAreaState>("default");
+    const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
     const sttRecorderRef = useRef<SttRecorder | null>(null);
 
     // Canvas waveform refs
@@ -386,10 +396,24 @@ export default function ChatInput({
 
     // Start/stop waveform animation based on recording state
     useEffect(() => {
+        let durationTimerId: number | undefined;
+
         if (inputAreaState === "recording") {
             dataArrayRef.current = [];
             frameCounterRef.current = 0;
+            setRecordingElapsedMs(0);
+            durationTimerId = window.setInterval(() => {
+                setRecordingElapsedMs((ms) => ms + 1000);
+            }, 1000);
             initCanvas();
+            // Pre-fill the buffer with baseline bars so the first frame already
+            // shows a full-width low-amplitude waveform instead of a blank gap.
+            if (maxBarsRef.current > 0) {
+                dataArrayRef.current = new Array(maxBarsRef.current).fill(
+                    WAVEFORM_CONFIG.minHeight
+                );
+            }
+            renderWaveform();
             // Small delay so canvas is ready
             const raf = requestAnimationFrame(waveformLoop);
             animationFrameRef.current = raf;
@@ -411,18 +435,28 @@ export default function ChatInput({
         }
 
         return () => {
+            if (durationTimerId !== undefined) {
+                window.clearInterval(durationTimerId);
+            }
             if (animationFrameRef.current) {
                 cancelAnimationFrame(animationFrameRef.current);
                 animationFrameRef.current = null;
             }
         };
-    }, [inputAreaState, initCanvas, waveformLoop]);
+    }, [inputAreaState, initCanvas, renderWaveform, waveformLoop]);
 
     // Handle window resize during recording
     useEffect(() => {
         const handleResize = () => {
             if (inputAreaState === "recording") {
                 initCanvas();
+                // Keep the waveform a full-width baseline after the container re-layouts.
+                while (dataArrayRef.current.length < maxBarsRef.current) {
+                    dataArrayRef.current.unshift(WAVEFORM_CONFIG.minHeight);
+                }
+                while (dataArrayRef.current.length > maxBarsRef.current) {
+                    dataArrayRef.current.shift();
+                }
             }
         };
         window.addEventListener("resize", handleResize);
@@ -489,7 +523,7 @@ export default function ChatInput({
         setInputAreaState("transcribing");
 
         try {
-            const text = await sttRecorderRef.current.confirmAndTranscribe();
+            const text = await sttRecorderRef.current.confirmAndTranscribe(chatId);
             // Input area is still not in default state here; defer append until editor remounts.
             setPendingTranscript(text);
             setInputAreaState("default");
@@ -766,11 +800,13 @@ export default function ChatInput({
                                     </div>
 
                                     {inputAreaState === "recording" && (
-                                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-1.5">
+                                        <div className="pointer-events-none absolute inset-0 flex items-center gap-3 pr-[5.25rem]">
+                                            <span className="shrink-0 select-none text-sm tabular-nums text-token-text-secondary">
+                                                {formatRecordingDuration(recordingElapsedMs)}
+                                            </span>
                                             <div
                                                 ref={waveformContainerRef}
-                                                className="recording-waveform-container w-full"
-                                                style={{ maxWidth: "min(42rem, calc(100% - 9rem))" }}
+                                                className="recording-waveform-container min-w-0 flex-1"
                                             >
                                                 <canvas
                                                     ref={canvasRef}

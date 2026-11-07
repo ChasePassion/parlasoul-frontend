@@ -114,7 +114,7 @@ export class SttRecorder {
     this.setState("recording");
   }
 
-  async confirmAndTranscribe(): Promise<string> {
+  async confirmAndTranscribe(chatId?: string): Promise<string> {
     if (this.state !== "recording" || !this.mediaRecorder) {
       throw new Error("NOT_RECORDING");
     }
@@ -135,6 +135,7 @@ export class SttRecorder {
       const result = await sttTranscribe(uploadBlob, {
         audio_format: "wav",
         sample_rate: TARGET_STT_SAMPLE_RATE,
+        chat_id: chatId,
       });
 
       if (!result.text || result.text.trim().length === 0) {

@@ -1783,7 +1783,7 @@ export class ApiService {
   // Phase 2: STT transcription
   async sttTranscribe(
     audioBlob: Blob,
-    options?: { audio_format?: string; sample_rate?: number },
+    options?: { audio_format?: string; sample_rate?: number; chat_id?: string },
   ): Promise<STTTranscriptionResult> {
     const formData = new FormData();
     const fileName = options?.audio_format === "wav" ? "recording.wav" : "recording.webm";
@@ -1793,6 +1793,9 @@ export class ApiService {
     }
     if (options?.sample_rate) {
       formData.append("sample_rate", String(options.sample_rate));
+    }
+    if (options?.chat_id) {
+      formData.append("chat_id", options.chat_id);
     }
 
     const response = await fetchWithBetterAuth("/v1/voice/stt/transcriptions", {
