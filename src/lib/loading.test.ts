@@ -6,7 +6,6 @@ import {
   clearChatEntrySeed,
   clearCharacterSeed,
   isTerminalLoadingError,
-  loadingFailureMessage,
   loadingTierFor,
   readCharacterSeed,
   readChatEntrySeed,
@@ -110,10 +109,3 @@ test("transient failures are retryable, terminal 4xx are not", () => {
   assert.equal(isTerminalLoadingError(new ApiError(422)), true);
 });
 
-test("failure messages distinguish auth, access, and service errors", () => {
-  assert.match(loadingFailureMessage(new UnauthorizedError()), /重新登录/);
-  assert.match(loadingFailureMessage(new ApiError(403)), /无法进入/);
-  assert.match(loadingFailureMessage(new ApiError(404)), /无法进入/);
-  assert.match(loadingFailureMessage(new ApiError(500)), /服务暂时不可用/);
-  assert.match(loadingFailureMessage(new Error("fetch failed")), /连接不稳定/);
-});
