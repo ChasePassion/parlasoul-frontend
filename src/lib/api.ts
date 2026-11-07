@@ -263,7 +263,6 @@ export const createCharacter = apiService.createCharacter.bind(apiService);
 export const getMarketCharacters =
   apiService.getMarketCharacters.bind(apiService);
 export const getCharacterById = apiService.getCharacterById.bind(apiService);
-export const getUserCharacters = apiService.getUserCharacters.bind(apiService);
 export const getMyCharacters = apiService.getMyCharacters.bind(apiService);
 export const updateCharacter = apiService.updateCharacter.bind(apiService);
 export const unpublishCharacter = apiService.unpublishCharacter.bind(apiService);
@@ -278,8 +277,6 @@ export const updateChat = apiService.updateChat.bind(apiService);
 export const deleteChat = apiService.deleteChat.bind(apiService);
 export const getChatTurns = apiService.getChatTurns.bind(apiService);
 export const streamChatMessage = apiService.streamChatMessage.bind(apiService);
-export const selectTurnCandidate =
-  apiService.selectTurnCandidate.bind(apiService);
 export const selectTurnCandidateWithSnapshot =
   apiService.selectTurnCandidateWithSnapshot.bind(apiService);
 export const regenAssistantTurn =
@@ -295,7 +292,6 @@ export const searchMemories = apiService.searchMemories.bind(apiService);
 
 // 收藏相关
 export const createSavedItem = apiService.createSavedItem.bind(apiService);
-export const listSavedItems = apiService.listSavedItems.bind(apiService);
 export const deleteSavedItem = apiService.deleteSavedItem.bind(apiService);
 
 // Phase 2: 语音相关
@@ -340,7 +336,6 @@ export const getForgeVoicePreviewAudio =
 export * from "./token-store";
 export type {
   User,
-  ChatMessage,
   ChatDetailResponse,
   ChatCreateRequest,
   ChatCreateResponse,
@@ -391,7 +386,6 @@ export type {
   SavedItemSource,
   SavedItemPayload,
   SavedItemResponse,
-  SavedItemsPage,
   // Phase 2 types
   STTTranscriptionResult,
   RealtimeSessionDescription,

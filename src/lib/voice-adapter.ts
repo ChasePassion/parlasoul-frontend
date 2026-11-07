@@ -24,9 +24,7 @@ export interface VoiceDisplayInfo {
 
 export function getVoiceDescription(item: VoiceSelectableItem | VoiceProfile): string {
   if (item.source_type === "system") {
-    return item.source_type === "system" && "usage_hint" in item
-      ? (item as VoiceSelectableItem).usage_hint || ""
-      : "";
+    return "usage_hint" in item ? item.usage_hint || "" : "";
   }
   return "description" in item ? item.description || "" : "";
 }

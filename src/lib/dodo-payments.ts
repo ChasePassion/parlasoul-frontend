@@ -1,7 +1,7 @@
 import "server-only";
 
 import DodoPayments from "dodopayments";
-import type { Product, Price } from "dodopayments/resources/products/products";
+import type { Product } from "dodopayments/resources/products/products";
 
 import {
   type BillingTier,
@@ -95,34 +95,10 @@ function requireRecurringPrice(product: Product, productId: string) {
   return price;
 }
 
-function formatBillingIntervalLabel(price: Price.RecurringPrice) {
-  const intervalLabel =
-    price.payment_frequency_interval === "Year"
-      ? "年"
-      : price.payment_frequency_interval === "Month"
-        ? "月"
-        : price.payment_frequency_interval === "Week"
-          ? "周"
-          : "日";
-
-  return price.payment_frequency_count === 1
-    ? `每${intervalLabel}`
-    : `每 ${price.payment_frequency_count} ${intervalLabel}`;
-}
-
 function getPlanBillingIntervalLabel(
   definition: (typeof PRICING_PLAN_DEFINITIONS)[number],
-  price: Price.RecurringPrice,
 ) {
-  if (definition.period === "yearly") {
-    return "每年";
-  }
-
-  if (definition.period === "monthly") {
-    return "每月";
-  }
-
-  return formatBillingIntervalLabel(price);
+  return definition.period === "yearly" ? "每年" : "每月";
 }
 
 function mapProductToCatalogPlan(product: Product): PricingCatalogPlan {
@@ -139,7 +115,7 @@ function mapProductToCatalogPlan(product: Product): PricingCatalogPlan {
     currency: price.currency,
     priceMinor: price.price,
     priceDisplay: formatMinorCurrency(price.price, price.currency),
-    billingIntervalLabel: getPlanBillingIntervalLabel(definition, price),
+    billingIntervalLabel: getPlanBillingIntervalLabel(definition),
     trialPeriodDays: price.trial_period_days ?? null,
   };
 }

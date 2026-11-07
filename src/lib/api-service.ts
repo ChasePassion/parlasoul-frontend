@@ -9,11 +9,6 @@ import {
 } from "./http-client";
 import { consumeSseStream, handleStreamError } from "./sse-stream";
 
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
 export interface LearningAssistantContextMessage {
   role: "user" | "assistant";
   content: string;
@@ -385,12 +380,6 @@ export interface SavedItemPayload {
 export interface SavedItemResponse extends SavedItemPayload {
   id: string;
   created_at: string;
-}
-
-export interface SavedItemsPage {
-  items: SavedItemResponse[];
-  next_cursor?: string | null;
-  has_more: boolean;
 }
 
 export interface CandidateExtra {
@@ -1191,18 +1180,6 @@ export class ApiService {
     return httpClient.get<CharacterResponse>(`/v1/characters/${id}`, options);
   }
 
-  async getUserCharacters(
-    creatorId: string,
-    skip = 0,
-    limit = 20,
-    options: ApiRequestOptions = {},
-  ): Promise<CharacterResponse[]> {
-    return httpClient.get<CharacterResponse[]>(
-      `/v1/users/${creatorId}/characters?skip=${skip}&limit=${limit}`,
-      options,
-    );
-  }
-
   async updateCharacter(
     id: string,
     data: UpdateCharacterRequest,
@@ -1293,16 +1270,6 @@ export class ApiService {
     return httpClient.get<TurnsPageResponse>(
       `/v1/chats/${chatId}/turns${suffix}`,
       { signal: options.signal },
-    );
-  }
-
-  async selectTurnCandidate(
-    turnId: string,
-    req: TurnSelectRequest,
-  ): Promise<TurnSelectResponse> {
-    return httpClient.post<TurnSelectResponse, TurnSelectRequest>(
-      `/v1/turns/${turnId}/select`,
-      req,
     );
   }
 
@@ -1850,23 +1817,6 @@ export class ApiService {
     });
   }
 
-  async listSavedItems(params?: {
-    kind?: string;
-    role_id?: string;
-    chat_id?: string;
-    cursor?: string;
-    limit?: number;
-  }, options: ApiRequestOptions = {}): Promise<SavedItemsPage> {
-    const qs = new URLSearchParams();
-    if (params?.kind) qs.set("kind", params.kind);
-    if (params?.role_id) qs.set("role_id", params.role_id);
-    if (params?.chat_id) qs.set("chat_id", params.chat_id);
-    if (params?.cursor) qs.set("cursor", params.cursor);
-    if (params?.limit) qs.set("limit", String(params.limit));
-    const suffix = qs.toString() ? `?${qs}` : "";
-    return httpClient.get<SavedItemsPage>(`/v1/saved-items${suffix}`, options);
-  }
-
   async deleteSavedItem(id: string): Promise<void> {
     await httpClient.delete(`/v1/saved-items/${id}`);
   }
@@ -2145,7 +2095,7 @@ export class ApiService {
     return httpClient.post<{ feedback_card: FeedbackCard }>(
       `/v1/turns/${turnId}/feedback-card`,
       {},
-      options as RequestInit,
+      options,
     );
   }
 
