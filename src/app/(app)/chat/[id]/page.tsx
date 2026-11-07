@@ -892,6 +892,7 @@ export default function ChatPage() {
                 onInterrupt={interruptStream}
                 onContinue={wrappedHandleContinue}
                 roleName={character.name}
+                chatId={chatId}
                 replySuggestions={realtimeSession.isConnected ? null : currentReplySuggestions}
                 onRegisterAddImages={(fn) => { chatInputAddImagesRef.current = fn; }}
                 onMicStart={handleMicStart}
