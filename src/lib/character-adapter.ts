@@ -21,7 +21,6 @@ interface CharacterLike {
     creator_id?: string | null;
     creator_username?: string | null;
     llm_preset_id?: string | null;
-    dialogue_style_id?: string | null;
     voice_provider?: string;
     voice_model?: string;
     voice_provider_voice_id?: string;
@@ -49,7 +48,6 @@ export function mapCharacterToSidebar(
         creator_id: source.creator_id ?? null,
         creator_username: source.creator_username ?? null,
         llm_preset_id: source.llm_preset_id,
-        dialogue_style_id: source.dialogue_style_id,
         voice_provider: source.voice_provider,
         voice_model: source.voice_model,
         voice_provider_voice_id: source.voice_provider_voice_id,

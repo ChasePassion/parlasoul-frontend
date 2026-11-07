@@ -18,12 +18,9 @@ import AvatarCropper from "./AvatarCropper";
 import VoiceSelector from "./voice/VoiceSelector";
 import VoiceUsageManagerDialog from "./voice/VoiceUsageManagerDialog";
 // import PresetSelector from "./PresetSelector";
-import DialogueStyleSelector from "./DialogueStyleSelector";
 import {
-    DEFAULT_DIALOGUE_STYLE_ID,
     DEFAULT_LLM_PRESET_ID,
     type LLMPresetId,
-    type DialogueStyleId,
 } from "@/lib/presets";
 import { getErrorMessage } from "@/lib/error-map";
 import { logger, Module, CharacterEvent } from "@/lib/logger";
@@ -96,7 +93,6 @@ export default function CreateCharacterModal({
     const [error, setError] = useState<string | null>(null);
     const [selectedVoice, setSelectedVoice] = useState<VoiceSelectableItem | null>(null);
     const [selectedPresetId, setSelectedPresetId] = useState<LLMPresetId>(DEFAULT_LLM_PRESET_ID);
-    const [selectedStyleId, setSelectedStyleId] = useState<DialogueStyleId>(DEFAULT_DIALOGUE_STYLE_ID);
     const [isVoiceUsageDialogOpen, setIsVoiceUsageDialogOpen] = useState(false);
     const [voiceUsageCharacters, setVoiceUsageCharacters] = useState<CharacterResponse[]>([]);
     const [voiceUsageCharacterIds, setVoiceUsageCharacterIds] = useState<string[]>([]);
@@ -151,7 +147,6 @@ export default function CreateCharacterModal({
             setAvatarPreview(character.avatar);
             setSelectedVoice(fallbackVoice);
             setSelectedPresetId((character.llm_preset_id as LLMPresetId) ?? DEFAULT_LLM_PRESET_ID);
-            setSelectedStyleId((character.dialogue_style_id as DialogueStyleId) ?? DEFAULT_DIALOGUE_STYLE_ID);
             setIsVoiceUsageDialogOpen(false);
             setVoiceUsageCharacters([]);
             setVoiceUsageCharacterIds([]);
@@ -167,7 +162,6 @@ export default function CreateCharacterModal({
             setAvatarPreview(null);
             setSelectedVoice(null);
             setSelectedPresetId(DEFAULT_LLM_PRESET_ID);
-            setSelectedStyleId(DEFAULT_DIALOGUE_STYLE_ID);
             setIsVoiceUsageDialogOpen(false);
             setVoiceUsageCharacters([]);
             setVoiceUsageCharacterIds([]);
@@ -339,13 +333,11 @@ export default function CreateCharacterModal({
                 voice_provider_voice_id: voiceProviderVoiceId,
                 voice_source_type: voiceSourceType,
                 llm_preset_id: selectedPresetId,
-                dialogue_style_id: selectedStyleId,
             };
 
             let savedCharacter: CharacterResponse;
             logger.info(Module.CHARACTER, CharacterEvent.API_CALLED, `Calling ${mode === "edit" ? "updateCharacter" : "createCharacter"} API`, {
               llm_preset_id: selectedPresetId,
-              dialogue_style_id: selectedStyleId,
             });
 
             if (mode === 'edit' && character) {
@@ -378,7 +370,6 @@ export default function CreateCharacterModal({
                 setAvatarPreview(null);
                 setSelectedVoice(null);
                 setSelectedPresetId(DEFAULT_LLM_PRESET_ID);
-                setSelectedStyleId(DEFAULT_DIALOGUE_STYLE_ID);
                 setVoiceUsageCharacters([]);
                 setVoiceUsageCharacterIds([]);
                 setVoiceUsageVoiceId(null);
@@ -551,19 +542,6 @@ export default function CreateCharacterModal({
                         <p className="text-xs text-gray-500 mt-1.5">
                             {visibility === "PUBLIC" && "将显示在市场中，任何人可访问"}
                             {visibility === "PRIVATE" && "不在市场中显示，可通过分享链接邀请他人访问"}
-                        </p>
-                    </div>
-
-                    {/* 对话风格 */}
-                    <div className="py-2 space-y-3">
-                        <Label className="text-sm font-medium text-gray-700">对话风格</Label>
-                        <DialogueStyleSelector
-                            selectedStyleId={selectedStyleId}
-                            onSelectStyle={setSelectedStyleId}
-                            disabled={isSubmitting}
-                        />
-                        <p className="text-xs text-gray-500">
-                            选择角色与你互动时的气质倾向，不会改变角色本身设定
                         </p>
                     </div>
 
