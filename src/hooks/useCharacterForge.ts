@@ -108,6 +108,19 @@ function isEmptyAssistant(message: ForgeMessage): boolean {
   return message.role === "assistant" && message.parts.length === 0;
 }
 
+function settleTranscript(messages: ForgeMessage[]): ForgeMessage[] {
+  return messages
+    .map((message) =>
+      message.streaming ? { ...message, streaming: false } : message,
+    )
+    .map((message) =>
+      message.steerStatus === "queued"
+        ? { ...message, steerStatus: "discarded" as const }
+        : message,
+    )
+    .filter((message) => !isEmptyAssistant(message));
+}
+
 function findCreatedChatId(messages: ForgeMessage[]): string | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     for (const part of messages[index].parts) {
@@ -601,18 +614,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
       });
 
       activeAssistantIdRef.current = null;
-      setMessages((prev) =>
-        prev
-          .map((message) =>
-            message.streaming ? { ...message, streaming: false } : message,
-          )
-          .map((message) =>
-            message.steerStatus === "queued"
-              ? { ...message, steerStatus: "discarded" as const }
-              : message,
-          )
-          .filter((message) => !isEmptyAssistant(message)),
-      );
+      setMessages(settleTranscript);
       setIsStreaming(false);
       setToolStatus(null);
       abortRef.current = null;
@@ -627,18 +629,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
     activeAssistantIdRef.current = null;
     setIsStreaming(false);
     setToolStatus(null);
-    setMessages((prev) =>
-      prev
-        .map((message) =>
-          message.streaming ? { ...message, streaming: false } : message,
-        )
-        .map((message) =>
-          message.steerStatus === "queued"
-            ? { ...message, steerStatus: "discarded" as const }
-            : message,
-        )
-        .filter((message) => !isEmptyAssistant(message)),
-    );
+    setMessages(settleTranscript);
   }, []);
 
   return {
