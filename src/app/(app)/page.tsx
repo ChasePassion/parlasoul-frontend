@@ -100,7 +100,6 @@ export default function DiscoverPage() {
       voice_source_type: character.voice_source_type,
       voice: character.voice ?? undefined,
       llm_preset_id: character.llm_preset_id,
-      dialogue_style_id: character.dialogue_style_id,
       distinct_user_count: character.distinct_user_count,
     }));
   }, [discoverCharacters]);
