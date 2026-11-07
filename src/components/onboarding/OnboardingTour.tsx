@@ -21,16 +21,21 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { queryKeys } from "@/lib/query";
 import {
   getAdjacentStepId,
+  isTerminalLocalStatus,
+  isTerminalServerStatus,
   resolveTourEntry,
   selectAvailableSteps,
   type OnboardingLocalState,
   type TourRoute,
 } from "@/lib/onboarding/tour-state";
 import {
+  markBrowserTourCompleted,
   onboardingStorageKey,
+  readBrowserTourCompleted,
   readOnboardingLocal,
   writeOnboardingLocal,
 } from "@/lib/onboarding/tour-storage";
+import { peekResumeCharacterId } from "@/lib/pending-chat";
 import TourCard from "./TourCard";
 import TourSpotlight, { type SpotlightHole } from "./TourSpotlight";
 import { computeCardPosition } from "./positioning";
@@ -49,12 +54,20 @@ function getTourRoute(pathname: string): TourRoute {
     return "discover";
   }
 
+  // /chat/new 是乐观导航的过渡页，不是真实对话，不触发聊天导览。
+  if (pathname === "/chat/new" || pathname === "/chat/new/") {
+    return null;
+  }
+
   if (/^\/chat\/[^/]+\/?$/.test(pathname)) {
     return "chat";
   }
 
   return null;
 }
+
+// 访客没有账号，用一个稳定的本地身份承载导览进度（只写 localStorage，不写后端）。
+const GUEST_TOUR_ID = "guest";
 
 function useAvailableSteps(
   phase: "discover" | "chat" | null,
@@ -155,7 +168,7 @@ function useAvailableSteps(
 }
 
 export default function OnboardingTour() {
-  const { user } = useAuth();
+  const { user, isInitialLoading: isAuthLoading } = useAuth();
   const { isEntryPopupVisible } = useGrowth();
   const { replyCardEnabled } = useUserSettings();
   const pathname = usePathname();
@@ -169,13 +182,25 @@ export default function OnboardingTour() {
     height: typeof window === "undefined" ? 0 : window.innerHeight,
   }));
   const [runtime, setRuntime] = useState<TourRuntime>({ state: "hidden" });
+  // 浏览器级「已走过导览」标记。访客走完导览后，之后登录的任何账号都直接完成导览。
+  // 惰性初始化：避免 mount effect 才赋值时，同一批 effect 先闪出一帧导览。
+  const [browserCompleted, setBrowserCompleted] = useState(
+    () => readBrowserTourCompleted() || peekResumeCharacterId() !== null,
+  );
+  const syncedUserIdRef = useRef<string | null>(null);
+  const pausedForPopupRef = useRef<TourRuntime | null>(null);
+  const wasPopupVisibleRef = useRef(false);
   const pausedForRouteRef = useRef<TourRoute>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const cardBoxRef = useRef<HTMLDivElement | null>(null);
 
-  const userId = user?.id ?? null;
-  const serverStatus = user?.onboarding_status;
+  // 认证解析完成后仍无用户 = 访客。访客用一个稳定的本地身份走发现页导览，
+  // serverStatus 视为 pending，导览进度只写 localStorage，不写需要登录的后端。
+  const isGuest = !isAuthLoading && !user;
+  const userId = user?.id ?? (isGuest ? GUEST_TOUR_ID : null);
+  const serverStatus =
+    user?.onboarding_status ?? (isGuest ? ("pending" as const) : undefined);
   const route = getTourRoute(pathname);
   const phase = runtime.state === "tour" ? runtime.phase : null;
 
@@ -221,7 +246,8 @@ export default function OnboardingTour() {
 
   const persistStatus = useCallback(
     async (status: "discover_done" | "completed" | "skipped") => {
-      if (!userId) {
+      // 访客没有登录态，只保留本地导览进度，不调用需要鉴权的后端接口。
+      if (!userId || isGuest) {
         return;
       }
 
@@ -232,8 +258,18 @@ export default function OnboardingTour() {
         console.error("Failed to persist onboarding status:", error);
       }
     },
-    [queryClient, userId],
+    [queryClient, userId, isGuest],
   );
+
+  // 访客走完 / 跳过导览后，标记这个浏览器已经走过。点角色触发的登录也属于
+  // 这一路径：访客已经在发现页浏览并选中了角色，登录后不该再被导览拦一次。
+  const markGuestTourCompleted = useCallback(() => {
+    if (!isGuest) {
+      return;
+    }
+    markBrowserTourCompleted();
+    setBrowserCompleted(true);
+  }, [isGuest]);
 
   const handleNext = useCallback(() => {
     if (runtime.state !== "tour" || !phase || !currentStep) {
@@ -256,6 +292,8 @@ export default function OnboardingTour() {
           feedbackHintPending: false,
           updatedAt: Date.now(),
         });
+        // 访客只能走发现页导览，走完即视为这个浏览器已经导览过。
+        markGuestTourCompleted();
         void persistStatus("discover_done");
       } else {
         persistLocal({
@@ -266,6 +304,7 @@ export default function OnboardingTour() {
           feedbackHintPending: true,
           updatedAt: Date.now(),
         });
+        markGuestTourCompleted();
         void persistStatus("completed");
       }
 
@@ -285,6 +324,7 @@ export default function OnboardingTour() {
   }, [
     availableIds,
     currentStep,
+    markGuestTourCompleted,
     persistLocal,
     persistStatus,
     phase,
@@ -329,8 +369,9 @@ export default function OnboardingTour() {
       void persistStatus("skipped");
     }
 
+    markGuestTourCompleted();
     setRuntime({ state: "hidden" });
-  }, [currentStep, persistLocal, persistStatus, phase, userId]);
+  }, [currentStep, markGuestTourCompleted, persistLocal, persistStatus, phase, userId]);
 
   const handlePause = useCallback(() => {
     pausedForRouteRef.current = route;
@@ -354,6 +395,12 @@ export default function OnboardingTour() {
 
   useEffect(() => {
     setMounted(true);
+    // 点角色触发的登录路径同样视为已经导览过：访客在发现页选中了角色，
+    // 登录后应直接进聊天，而不是被导览拦住。只单调置 true，避免覆盖本次
+    // 会话里刚完成的访客导览。
+    setBrowserCompleted((previous) =>
+      previous || readBrowserTourCompleted() || peekResumeCharacterId() !== null,
+    );
 
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReducedMotion(mediaQuery.matches);
@@ -369,6 +416,51 @@ export default function OnboardingTour() {
       window.removeEventListener("resize", updateViewport);
     };
   }, []);
+
+  // 这个浏览器已经走过导览后，登录后无论用哪个账号，都把该账号的导览
+  // 直接标记为完成：本地写终态防止重放，服务端同步一次让其它设备也不再重放。
+  useEffect(() => {
+    // 等 serverStatus 就绪再同步：登录瞬间 profile 查询还在飞，
+    // 过早 PATCH 会被随后返回的旧 profile 覆盖。
+    if (
+      !browserCompleted ||
+      isGuest ||
+      !userId ||
+      !serverStatus ||
+      syncedUserIdRef.current === userId
+    ) {
+      return;
+    }
+    syncedUserIdRef.current = userId;
+
+    const local = readOnboardingLocal(userId);
+    if (!local || !isTerminalLocalStatus(local.status)) {
+      writeOnboardingLocal(userId, {
+        version: 1,
+        status: "completed",
+        phase: "chat",
+        stepId: CHAT_FIRST_STEP_ID,
+        feedbackHintPending: false,
+        updatedAt: Date.now(),
+      });
+    }
+
+    if (!isTerminalServerStatus(serverStatus)) {
+      void persistStatus("completed");
+    }
+  }, [browserCompleted, isGuest, userId, serverStatus, persistStatus]);
+
+  // browserCompleted 在 mount 后才从 localStorage 读出，可能晚于主 effect 一帧；
+  // 这里显式收起，避免「已导览过」的浏览器仍闪出一帧导览。
+  useEffect(() => {
+    if (!browserCompleted) {
+      return;
+    }
+    pausedForPopupRef.current = null;
+    setRuntime((previous) =>
+      previous.state === "hidden" ? previous : { state: "hidden" },
+    );
+  }, [browserCompleted]);
 
   useEffect(() => {
     if (!userId || !serverStatus || !route) {
@@ -390,6 +482,7 @@ export default function OnboardingTour() {
       local,
       discoverFirstStepId: DISCOVER_FIRST_STEP_ID,
       chatFirstStepId: CHAT_FIRST_STEP_ID,
+      browserCompleted,
     });
 
     if (!entry) {
@@ -426,6 +519,7 @@ export default function OnboardingTour() {
       return { state: "tour", phase: entry.phase, stepId: entry.stepId };
     });
   }, [
+    browserCompleted,
     isEntryPopupVisible,
     persistLocal,
     persistStatus,
@@ -434,15 +528,29 @@ export default function OnboardingTour() {
     userId,
   ]);
 
+  // 签到弹窗期间暂停导览，关闭后从原步骤恢复；不要重新 resolve 从头再来，
+  // 否则用户会遇到「导览→签到→导览」来回横跳。
   useEffect(() => {
-    if (!isEntryPopupVisible) {
+    const wasVisible = wasPopupVisibleRef.current;
+    wasPopupVisibleRef.current = isEntryPopupVisible;
+
+    if (isEntryPopupVisible && !wasVisible) {
+      if (runtime.state !== "hidden") {
+        pausedForPopupRef.current = runtime;
+        setRuntime({ state: "hidden" });
+      }
       return;
     }
 
-    setRuntime((previous) =>
-      previous.state === "hidden" ? previous : { state: "hidden" },
-    );
-  }, [isEntryPopupVisible]);
+    if (!isEntryPopupVisible && wasVisible && pausedForPopupRef.current) {
+      const paused = pausedForPopupRef.current;
+      pausedForPopupRef.current = null;
+      // 弹窗期间可能已经切到非导览路由，此时不要再恢复导览。
+      if (route) {
+        setRuntime(paused);
+      }
+    }
+  }, [isEntryPopupVisible, route, runtime]);
 
   useEffect(() => {
     if (route) {

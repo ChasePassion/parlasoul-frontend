@@ -31,6 +31,7 @@ function entry(args: {
   serverStatus?: "pending" | "discover_done" | "completed" | "skipped";
   route?: "discover" | "chat" | null;
   local?: OnboardingLocalState | null;
+  browserCompleted?: boolean;
 }) {
   return resolveTourEntry({
     serverStatus: args.serverStatus,
@@ -38,6 +39,7 @@ function entry(args: {
     local: args.local ?? null,
     discoverFirstStepId: DISCOVER_FIRST,
     chatFirstStepId: CHAT_FIRST,
+    browserCompleted: args.browserCompleted,
   });
 }
 
@@ -128,6 +130,34 @@ test("terminal local states suppress the tour", () => {
 
 test("missing server status suppresses the tour", () => {
   assert.equal(entry({ route: "discover" }), null);
+});
+
+test("a browser that already toured suppresses the tour for any account", () => {
+  assert.equal(
+    entry({
+      serverStatus: "pending",
+      route: "discover",
+      browserCompleted: true,
+    }),
+    null,
+  );
+  assert.equal(
+    entry({
+      serverStatus: "discover_done",
+      route: "chat",
+      browserCompleted: true,
+    }),
+    null,
+  );
+  assert.equal(
+    entry({
+      serverStatus: "pending",
+      route: "discover",
+      local: localState({ stepId: "discover-story" }),
+      browserCompleted: true,
+    }),
+    null,
+  );
 });
 
 test("terminal helpers detect terminal states", () => {

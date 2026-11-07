@@ -33,11 +33,6 @@
   --user-bubble: #e5f3ff;
   --send-button: #924ff7;
   --chat-bubble-shadow: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.08));
-
-  /* Liquid glass */
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.5);
-  --glass-shadow: rgba(0, 0, 0, 0.1);
   --radius: 0.625rem;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.141 0.005 285.823);
@@ -369,32 +364,6 @@ strong,
     100% 100%;
 }
 
-/* Liquid glass card effect */
-.liquid-glass {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.9) 0%,
-    rgba(255, 255, 255, 0.6) 50%,
-    rgba(255, 255, 255, 0.8) 100%
-  );
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.08),
-    0 2px 8px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  transition: all 0.3s ease;
-}
-
-.liquid-glass:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.12),
-    0 4px 12px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
 /* Reply suggestion card — 立体浮雕效果 */
 .suggestion-card {
   background: #ffffff;
@@ -609,16 +578,6 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   display: flex;
   align-items: center;
   overflow: hidden;
-}
-
-.recording-waveform-container::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  border-top: 1px dashed var(--text-tertiary);
 }
 
 .recording-waveform-canvas {

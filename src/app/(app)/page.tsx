@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useGrowth } from "@/lib/growth-context";
+import { peekResumeCharacterId } from "@/lib/pending-chat";
+import { readBrowserTourCompleted } from "@/lib/onboarding/tour-storage";
+import { useOpenCharacterChat } from "@/hooks/useOpenCharacterChat";
 import WorkspaceFrame from "@/components/layout/WorkspaceFrame";
 import { useSidebar } from "./layout";
 import TopConsole from "@/components/TopConsole";
@@ -20,18 +22,16 @@ import { resolveCharacterAvatarSrc } from "@/lib/character-avatar";
 import {
   useAllMarketCharactersQuery,
   useDiscoverConfigQuery,
-  useGetOrCreateChatMutation,
 } from "@/lib/query";
 
 export default function DiscoverPage() {
   const { user } = useAuth();
   const { refreshGrowthEntry } = useGrowth();
-  const router = useRouter();
   const { toggleSidebar, setSelectedCharacterId } = useSidebar();
   const userId = user?.id ?? null;
   const discoverConfigQuery = useDiscoverConfigQuery();
   const marketCharactersQuery = useAllMarketCharactersQuery();
-  const openChatMutation = useGetOrCreateChatMutation(userId);
+  const { open, prefetchOnIntent } = useOpenCharacterChat();
 
   const [searchQuery, setSearchQuery] = useState("");
   const discoverCharacters = useMemo(
@@ -50,10 +50,16 @@ export default function DiscoverPage() {
       return;
     }
 
-    void refreshGrowthEntry({ autoOpenPopup: true }).catch((err) => {
+    // 导览还没走完、或这次登录由点击角色触发时，签到弹窗先让路：
+    // 否则它会在导览中途弹出，把导览压掉，关掉后又重新拉起一次导览。
+    const hasPendingResume = peekResumeCharacterId() !== null;
+    const onboardingPending =
+      !readBrowserTourCompleted() && user?.onboarding_status === "pending";
+    const autoOpenPopup = !hasPendingResume && !onboardingPending;
+    void refreshGrowthEntry({ autoOpenPopup }).catch((err) => {
       console.error("Failed to refresh growth entry:", err);
     });
-  }, [refreshGrowthEntry, userId]);
+  }, [refreshGrowthEntry, user, userId]);
 
   // 当处于 Discover 页时清除选中的角色
   useEffect(() => {
@@ -70,15 +76,13 @@ export default function DiscoverPage() {
     return selectHeroCharacters(discoverCharacters, heroItems);
   }, [discoverCharacters, heroItems]);
 
-  // 处理角色选择
-  const handleSelectCharacter = async (character: CharacterResponse | Character) => {
-    try {
-      const chatId = await openChatMutation.mutateAsync(character.id);
-      router.push(`/chat/${chatId}`);
-    } catch (err) {
-      console.error("Failed to open chat:", err);
-    }
+  // 全站统一入口：pending 态、防连点、意图预取、首帧种子、访客引导都在 hook 内。
+  const handleSelectCharacter = (character: CharacterResponse | Character) => {
+    void open(character);
   };
+
+  // 角色续接统一在 (app)/layout.tsx 处理：登录页直接进聊天，布局层负责
+  // /setup 之后和失败重试，避免发现页与布局层同时抢 id。
 
   // 转换全量数据以匹配 Character 接口 (用于 HorizontalSection 的 cards)
   const mappedCharacters = useMemo<Character[]>(() => {
@@ -146,6 +150,7 @@ export default function DiscoverPage() {
           searchResults={searchResults}
           onSelectSearchResult={handleSelectCharacter}
           onToggleSidebar={toggleSidebar}
+          onPrefetchCharacter={prefetchOnIntent}
         />
       }
     >
@@ -159,6 +164,7 @@ export default function DiscoverPage() {
               <HeroCarousel
                 characters={heroCharacters}
                 onSelectCharacter={handleSelectCharacter}
+                onPrefetchCharacter={prefetchOnIntent}
               />
 
               {/* 陪伴型角色横滑区 */}
@@ -168,6 +174,7 @@ export default function DiscoverPage() {
                   characters={companionCharacters}
                   onSelectCharacter={handleSelectCharacter}
                   tourId="discover-companion"
+                  onPrefetchCharacter={prefetchOnIntent}
                 />
               )}
 
@@ -178,6 +185,7 @@ export default function DiscoverPage() {
                   characters={storyCharacters}
                   onSelectCharacter={handleSelectCharacter}
                   tourId="discover-story"
+                  onPrefetchCharacter={prefetchOnIntent}
                 />
               )}
 
@@ -188,6 +196,7 @@ export default function DiscoverPage() {
                   characters={professionalCharacters}
                   onSelectCharacter={handleSelectCharacter}
                   tourId="discover-professional"
+                  onPrefetchCharacter={prefetchOnIntent}
                 />
               )}
             </div>

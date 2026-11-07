@@ -13,6 +13,7 @@ interface TopConsoleProps {
   searchResults: CharacterResponse[];
   onSelectSearchResult: (character: CharacterResponse) => void;
   onToggleSidebar?: () => void;
+  onPrefetchCharacter?: (characterId: string) => void;
 }
 
 export default function TopConsole({
@@ -21,6 +22,7 @@ export default function TopConsole({
   searchResults,
   onSelectSearchResult,
   onToggleSidebar,
+  onPrefetchCharacter,
 }: TopConsoleProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [activeResultIndex, setActiveResultIndex] = useState(-1);
@@ -154,7 +156,10 @@ export default function TopConsole({
                         setIsSearchFocused(false);
                         searchInputRef.current?.blur();
                       }}
-                      onMouseEnter={() => setActiveResultIndex(index)}
+                      onMouseEnter={() => {
+                        setActiveResultIndex(index);
+                        onPrefetchCharacter?.(character.id);
+                      }}
                     >
                       <Avatar className="w-8 h-8 rounded-lg shrink-0">
                         <AvatarImage

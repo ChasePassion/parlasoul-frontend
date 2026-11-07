@@ -29,6 +29,8 @@ interface HorizontalSectionProps {
   characters: Character[];
   onSelectCharacter: (character: Character) => void;
   tourId?: string;
+  /** hover / focus 时预取该角色，不产生可见加载态 */
+  onPrefetchCharacter?: (characterId: string) => void;
 }
 
 export default function HorizontalSection({
@@ -37,6 +39,7 @@ export default function HorizontalSection({
   characters,
   onSelectCharacter,
   tourId,
+  onPrefetchCharacter,
 }: HorizontalSectionProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -180,6 +183,11 @@ export default function HorizontalSection({
               <CharacterCard
                 character={character}
                 onClick={onSelectCharacter}
+                onPrefetchIntent={
+                  onPrefetchCharacter
+                    ? () => onPrefetchCharacter(character.id)
+                    : undefined
+                }
               />
             </div>
           ))}

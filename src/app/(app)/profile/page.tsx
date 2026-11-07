@@ -17,6 +17,8 @@ import { SpriteIcon } from "@/components/ui/sprite-icon";
 import CreateItemCard from "@/components/CreateItemCard";
 import {
     unpublishCharacter,
+    publishCharacter,
+    deleteCharacter,
     deleteVoiceById,
 } from "@/lib/api";
 import { isBillingPaywallDisabled } from "@/lib/billing-flags";
@@ -32,10 +34,10 @@ import {
 } from "@/lib/voice-adapter";
 import {
     queryKeys,
-    useGetOrCreateChatMutation,
     useMyCharactersQuery,
     useMyVoicesInfiniteQuery,
 } from "@/lib/query";
+import { useOpenCharacterChat } from "@/hooks/useOpenCharacterChat";
 
 type TabType = 'works' | 'voices';
 
@@ -51,8 +53,12 @@ export default function ProfilePage() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [editCharacter, setEditCharacter] = useState<Character | undefined>(undefined);
     const [isUnpublishDialogOpen, setIsUnpublishDialogOpen] = useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [characterToDelete, setCharacterToDelete] = useState<Character | null>(null);
+    const [isDeletingCharacter, setIsDeletingCharacter] = useState(false);
     const [characterToUnpublish, setCharacterToUnpublish] = useState<Character | null>(null);
     const [isUnpublishing, setIsUnpublishing] = useState(false);
+    const [isPublishing, setIsPublishing] = useState(false);
 
     // Voice Modal State
     const [isCreateVoiceModalOpen, setIsCreateVoiceModalOpen] = useState(false);
@@ -77,7 +83,7 @@ export default function ProfilePage() {
             ),
         [charactersQuery.data],
     );
-    const openChatMutation = useGetOrCreateChatMutation(user?.id ?? null);
+    const { open: openCharacterChat, prefetchOnIntent } = useOpenCharacterChat();
     const voices = useMemo<VoiceCardDisplay[]>(
         () =>
             voicesQuery.data?.pages
@@ -109,6 +115,11 @@ export default function ProfilePage() {
             }),
         ]);
     }, [queryClient, user?.id]);
+
+    const publishCharacterMutation = useMutation({
+        mutationFn: (characterId: string) => publishCharacter(characterId),
+        onSuccess: invalidateCharacterData,
+    });
 
     const unpublishCharacterMutation = useMutation({
         mutationFn: (characterId: string) => unpublishCharacter(characterId),
@@ -147,19 +158,52 @@ export default function ProfilePage() {
         setIsCreateModalOpen(true);
     };
 
+    const handlePublishClick = async (character: Character) => {
+        if (!isAuthed || isPublishing) return;
+        setIsPublishing(true);
+        try {
+            await publishCharacterMutation.mutateAsync(character.id);
+            toast.success(`已上架角色 "${character.name}"`);
+        } catch (err) {
+            console.error("Publish failed:", err);
+            toast.error("上架失败，请稍后重试");
+        } finally {
+            setIsPublishing(false);
+        }
+    };
+
+    const deleteCharacterMutation = useMutation({
+        mutationFn: (characterId: string) => deleteCharacter(characterId),
+        onSuccess: invalidateCharacterData,
+    });
+
+    const handleDeleteClick = (character: Character) => {
+        setCharacterToDelete(character);
+        setIsDeleteDialogOpen(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!characterToDelete || !isAuthed) return;
+        setIsDeletingCharacter(true);
+        try {
+            await deleteCharacterMutation.mutateAsync(characterToDelete.id);
+            setIsDeleteDialogOpen(false);
+            setCharacterToDelete(null);
+        } catch (err) {
+            console.error("Delete character failed:", err);
+            toast.error("删除失败，请稍后重试");
+        } finally {
+            setIsDeletingCharacter(false);
+        }
+    };
+
     const handleUnpublishClick = (character: Character) => {
         setCharacterToUnpublish(character);
         setIsUnpublishDialogOpen(true);
     };
 
-    const handleChat = async (character: Character) => {
-        try {
-            const chatId = await openChatMutation.mutateAsync(character.id);
-            router.push(`/chat/${chatId}`);
-        } catch (err) {
-            console.error("Open chat failed:", err);
-            toast.error("打开聊天失败，请稍后重试");
-        }
+    const handleChat = (character: Character) => {
+        void openCharacterChat(character);
     };
 
     const handleShare = async (character: Character) => {
@@ -300,8 +344,11 @@ export default function ProfilePage() {
                                     showMenu={true}
                                     onChat={handleChat}
                                     onEdit={handleEdit}
-                                    onShare={character.status === "ACTIVE" ? handleShare : undefined}
+                                    onShare={handleShare}
                                     onUnpublish={handleUnpublishClick}
+                                    onPublish={handlePublishClick}
+                                    onDelete={handleDeleteClick}
+                                    onPrefetchIntent={() => prefetchOnIntent(character.id)}
                                 />
                             ))}
                         </div>
@@ -379,7 +426,7 @@ export default function ProfilePage() {
                 entityName={characterToUnpublish?.name || ""}
                 entityLabel="角色"
                 title="确认下架"
-                description={`下架角色 "${characterToUnpublish?.name || ""}" 后，它不会再出现在公开入口；你仍可继续与它聊天，其他用户的已有聊天会保留为只读历史。`}
+                description={`下架角色 "${characterToUnpublish?.name || ""}" 后，它会从角色市场撤下；你仍可继续与它聊天，已分享的链接也依然可用。`}
                 confirmText="确认下架"
                 loadingText="下架中..."
                 onConfirm={handleConfirmUnpublish}
@@ -388,6 +435,22 @@ export default function ProfilePage() {
                     setCharacterToUnpublish(null);
                 }}
                 isDeleting={isUnpublishing}
+            />
+
+            <ConfirmActionDialog
+                isOpen={isDeleteDialogOpen}
+                entityName={characterToDelete?.name || ""}
+                entityLabel="角色"
+                title="删除角色"
+                description={`删除角色 "${characterToDelete?.name || ""}" 后，它的全部聊天记录与统计数据会被永久移除，已分享的链接也会失效，无法恢复。`}
+                confirmText="确认删除"
+                loadingText="删除中..."
+                onConfirm={handleConfirmDelete}
+                onCancel={() => {
+                    setIsDeleteDialogOpen(false);
+                    setCharacterToDelete(null);
+                }}
+                isDeleting={isDeletingCharacter}
             />
 
             <CreateVoiceCloneModal

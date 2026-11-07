@@ -63,6 +63,13 @@ interface ChatInputProps {
     onStopRealtimeVoice?: () => void;
     onToggleMicCapture?: () => void;
     getRealtimeMicAnalyserNode?: () => AnalyserNode | null;
+    // Optional adapters for the character forge composer.
+    placeholder?: string;
+    streamingSendable?: boolean;
+    onRegisterSetText?: (fn: ((text: string) => void) | null) => void;
+    /** Character-forge has no voice calls and no "continue the story" action. */
+    showVoiceControls?: boolean;
+    showContinueAction?: boolean;
 }
 
 export default function ChatInput({
@@ -86,6 +93,11 @@ export default function ChatInput({
     onStopRealtimeVoice,
     onToggleMicCapture,
     getRealtimeMicAnalyserNode,
+    placeholder: customPlaceholder,
+    streamingSendable = false,
+    onRegisterSetText,
+    showVoiceControls = true,
+    showContinueAction = true,
 }: ChatInputProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const savedSelectionRef = useRef<Range | null>(null);
@@ -110,7 +122,9 @@ export default function ChatInput({
     const animationFrameRef = useRef<number | null>(null);
     const maxBarsRef = useRef(0);
 
-    const placeholder = disabledReason?.trim()
+    const placeholder = customPlaceholder?.trim()
+        ? customPlaceholder.trim()
+        : disabledReason?.trim()
         ? disabledReason.trim()
         : roleName?.trim()
         ? `Chat with ${roleName.trim()}`
@@ -243,6 +257,23 @@ export default function ChatInput({
         onRegisterAddImages?.(addImages);
         return () => onRegisterAddImages?.(null);
     }, [addImages, onRegisterAddImages]);
+
+    const setEditorText = useCallback((text: string) => {
+        const root = editorRef.current;
+        if (!root) return;
+
+        root.textContent = text;
+        const trimmed = text.trim();
+        setMessage(trimmed);
+        setEditorEmptyState(trimmed.length === 0);
+        root.focus({ preventScroll: true });
+        moveCaretToEnd();
+    }, [moveCaretToEnd, setEditorEmptyState]);
+
+    useEffect(() => {
+        onRegisterSetText?.(setEditorText);
+        return () => onRegisterSetText?.(null);
+    }, [setEditorText, onRegisterSetText]);
 
     const handleSend = useCallback(() => {
         const content = getEditorText().trim();
@@ -863,21 +894,23 @@ export default function ChatInput({
                                                             <span className="text-muted-foreground text-xs">上传聊天图片</span>
                                                         </span>
                                                     </button>
-                                                    <button
-                                                        type="button"
-                                                        className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent"
-                                                        onClick={() => {
-                                                            handleVoiceMenuClick();
-                                                            setPlusMenuOpen(false);
-                                                        }}
-                                                        disabled={disabled || isInRecordingFlow}
-                                                    >
-                                                        <SpriteIcon name="sliders" size={20} />
-                                                        <span className="flex min-w-0 flex-col items-start text-left">
-                                                            <span>{voiceMenuLabel}</span>
-                                                            <span className="text-muted-foreground text-xs">{voiceMenuHint}</span>
-                                                        </span>
-                                                    </button>
+                                                    {showVoiceControls ? (
+                                                        <button
+                                                            type="button"
+                                                            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent"
+                                                            onClick={() => {
+                                                                handleVoiceMenuClick();
+                                                                setPlusMenuOpen(false);
+                                                            }}
+                                                            disabled={disabled || isInRecordingFlow}
+                                                        >
+                                                            <SpriteIcon name="sliders" size={20} />
+                                                            <span className="flex min-w-0 flex-col items-start text-left">
+                                                                <span>{voiceMenuLabel}</span>
+                                                                <span className="text-muted-foreground text-xs">{voiceMenuHint}</span>
+                                                            </span>
+                                                        </button>
+                                                    ) : null}
                                                 </PopoverContent>
                                             </Popover>
                                         </span>
@@ -892,7 +925,7 @@ export default function ChatInput({
                                     <div className="ms-auto flex items-center gap-1.5">
                                         {inputAreaState === "default" && (
                                             <>
-                                                {!isVoiceConnecting && !isVoiceActive && (
+                                                {showVoiceControls && !isVoiceConnecting && !isVoiceActive && (
                                                     <span data-state="closed">
                                                         <button
                                                             aria-label="语音输入"
@@ -926,19 +959,35 @@ export default function ChatInput({
                                                 <div>
                                                     <span className="" data-state="closed">
                                                         <div>
-                                                            <div className="relative">
+                                                            <div className="relative flex items-center gap-2">
                                                                 {isStreaming ? (
-                                                                    <button
-                                                                        type="button"
-                                                                        aria-label="暂停生成"
-                                                                        className="composer-submit-button-color flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-black focus-visible:outline-none dark:focus-visible:outline-white"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            onInterrupt?.();
-                                                                        }}
-                                                                    >
-                                                                        <span className="bg-white rounded-[3px]" style={{ width: '16px', height: '16px' }} />
-                                                                    </button>
+                                                                    <>
+                                                                        <button
+                                                                            type="button"
+                                                                            aria-label="暂停生成"
+                                                                            className="composer-submit-button-color flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-black focus-visible:outline-none dark:focus-visible:outline-white"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                onInterrupt?.();
+                                                                            }}
+                                                                        >
+                                                                            <span className="bg-white rounded-[3px]" style={{ width: '16px', height: '16px' }} />
+                                                                        </button>
+                                                                        {streamingSendable && hasText ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                aria-label="发送补充要求"
+                                                                                className="composer-submit-button-color text-submit-btn-text flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:opacity-70 focus-visible:outline-black focus-visible:outline-none disabled:opacity-30 dark:focus-visible:outline-white"
+                                                                                disabled={disabled || hasUploading || isInRecordingFlow}
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleSend();
+                                                                                }}
+                                                                            >
+                                                                                <SpriteIcon name="laptop" size={20} className="brightness-0 invert" />
+                                                                            </button>
+                                                                        ) : null}
+                                                                    </>
                                                                 ) : (
                                                                     <button
                                                                         type="button"
@@ -948,7 +997,7 @@ export default function ChatInput({
                                                                                 : undefined
                                                                         }
                                                                         aria-label={
-                                                                            hasText
+                                                                            hasText || !showContinueAction
                                                                                 ? "发送消息"
                                                                                 : voiceButtonState === "connecting"
                                                                                 ? "取消语音连接"
@@ -969,6 +1018,7 @@ export default function ChatInput({
                                                                         disabled={
                                                                             hasUploading ||
                                                                             isInRecordingFlow ||
+                                                                            (!showContinueAction && !hasText) ||
                                                                             (disabled &&
                                                                                 !hasText &&
                                                                                 !isVoiceActive &&
@@ -978,6 +1028,7 @@ export default function ChatInput({
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             if (!hasText) {
+                                                                                if (!showContinueAction) return;
                                                                                 if (isVoiceActive || voiceButtonState === "connecting") {
                                                                                     handleVoiceButtonClick();
                                                                                 } else {
@@ -988,7 +1039,7 @@ export default function ChatInput({
                                                                             handleSend();
                                                                         }}
                                                                     >
-                                                                        {hasText ? (
+                                                                        {hasText || !showContinueAction ? (
                                                                             <SpriteIcon name="laptop" size={20} className="brightness-0 invert" />
                                                                         ) : isVoiceConnecting ? (
                                                                             <span className="flex items-center gap-2 whitespace-nowrap">

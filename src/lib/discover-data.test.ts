@@ -16,7 +16,6 @@ function character(id: string, name: string): CharacterResponse {
     voice_provider_voice_id: "Cherry",
     voice_source_type: "system",
     creator_id: null,
-    status: "ACTIVE",
     visibility: "PUBLIC",
     distinct_user_count: 0,
   };

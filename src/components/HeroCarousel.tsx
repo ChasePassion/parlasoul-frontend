@@ -27,11 +27,13 @@ const WHEEL_AXIS_LOCK_RATIO = 1.25;
 interface HeroCarouselProps {
   characters: DiscoverHeroCharacter[];
   onSelectCharacter: (character: CharacterResponse) => void;
+  onPrefetchCharacter?: (characterId: string) => void;
 }
 
 export default function HeroCarousel({
   characters,
   onSelectCharacter,
+  onPrefetchCharacter,
 }: HeroCarouselProps) {
   const isMobile = useIsMobile();
 
@@ -318,10 +320,9 @@ export default function HeroCarousel({
             ...(isMobile ? { cursor: "pointer" } : {}),
           }}
           onClick={
-            isMobile
-              ? () => onSelectCharacter(item.character)
-              : undefined
+            isMobile ? () => onSelectCharacter(item.character) : undefined
           }
+          onMouseEnter={() => onPrefetchCharacter?.(item.character.id)}
         >
           <Image
             src={item.imageUrl}
@@ -358,6 +359,7 @@ export default function HeroCarousel({
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.15) 100%)';
+                  onPrefetchCharacter?.(item.character.id);
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%)';
@@ -424,10 +426,9 @@ export default function HeroCarousel({
                     : { willChange: "transform, opacity" }),
                 }}
                 onClick={
-                  isMobile
-                    ? () => onSelectCharacter(item.character)
-                    : undefined
+                  isMobile ? () => onSelectCharacter(item.character) : undefined
                 }
+                onMouseEnter={() => onPrefetchCharacter?.(item.character.id)}
               >
                 {/* 背景图片 */}
                 <Image
@@ -467,6 +468,7 @@ export default function HeroCarousel({
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.15) 100%)';
+                      onPrefetchCharacter?.(item.character.id);
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%)';

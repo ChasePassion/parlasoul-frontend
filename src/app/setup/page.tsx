@@ -4,17 +4,15 @@ import { useState, useRef, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { useQueryClient } from "@tanstack/react-query";
 import {
     useAuth,
     isProfileStatusComplete,
     isProfileStatusIncomplete,
 } from "@/lib/auth-context";
 import { uploadFile, updateUserProfile } from "@/lib/api";
-import {
-    canContinueProfileSetup,
-    clearProfileSetupState,
-} from "@/lib/profile-setup-session";
-import { UnauthorizedError } from "@/lib/token-store";
+import { clearProfileSetupState } from "@/lib/profile-setup-session";
+import { queryKeys } from "@/lib/query";
 import AvatarCropper from "@/components/AvatarCropper";
 
 export default function SetupPage() {
@@ -22,12 +20,11 @@ export default function SetupPage() {
         user,
         isAuthed,
         isLoading: isAuthLoading,
-        logout,
         refreshUser,
         profileStatus,
-        profileError,
     } = useAuth();
     const router = useRouter();
+    const queryClient = useQueryClient();
 
     const [username, setUsername] = useState("");
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -37,55 +34,25 @@ export default function SetupPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isSetupAllowed =
-        isProfileStatusIncomplete(profileStatus, user) &&
-        !!user &&
-        canContinueProfileSetup(user.id);
+        isProfileStatusIncomplete(profileStatus, user) && !!user;
     const isProfileReady = isProfileStatusComplete(profileStatus, user);
 
-    // Redirect if not authenticated, or if an incomplete session is no longer
-    // part of the active setup flow in this tab.
+    // 未登录才去登录页；资料未补全时留在本页补全，不再因为一次性 setup intent
+    // 丢失而 logout 弹回验证码页（手机浏览器上 sessionStorage 更容易被回收）。
     useEffect(() => {
         if (isAuthLoading) {
             return;
         }
 
         if (!isAuthed || !user) {
-            clearProfileSetupState();
             router.replace("/login");
             return;
         }
 
         if (profileStatus === "error") {
-            clearProfileSetupState();
-            if (profileError instanceof UnauthorizedError) {
-                void logout().finally(() => {
-                    router.replace("/login");
-                });
-                return;
-            }
             router.replace("/");
-            return;
         }
-
-        if (profileStatus !== "loaded") {
-            return;
-        }
-
-        if (isProfileStatusIncomplete(profileStatus, user) && !canContinueProfileSetup(user.id)) {
-            void logout().finally(() => {
-                clearProfileSetupState();
-                router.replace("/login");
-            });
-        }
-    }, [
-        isAuthed,
-        isAuthLoading,
-        user,
-        profileStatus,
-        profileError,
-        logout,
-        router,
-    ]);
+    }, [isAuthed, isAuthLoading, user, profileStatus, router]);
 
     // Redirect if profile already complete
     useEffect(() => {
@@ -201,11 +168,19 @@ export default function SetupPage() {
                 avatarImageKey = uploadResult.image_key;
             }
 
-            // Update profile
-            await updateUserProfile({
+            // Update profile。PUT 返回的最新 User 立即写回 profile 查询缓存，
+            // 消除 staleTime 内的陈旧窗口：否则应用壳守卫会在缓存刷新前判定
+            // "资料未补全"，把刚提交的用户登出并弹回验证码页。
+            const updated = await updateUserProfile({
                 username,
                 avatar_image_key: avatarImageKey,
             });
+            if (user?.id) {
+                queryClient.setQueryData(
+                    queryKeys.user.profile(user.id),
+                    updated,
+                );
+            }
 
             try {
                 await refreshUser();
