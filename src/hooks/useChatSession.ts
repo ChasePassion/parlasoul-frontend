@@ -139,6 +139,18 @@ const mapTurnsPageMessage = (turn: TurnsPageResponse["turns"][number]): Message 
   };
 };
 
+const mapVisibleTurns = (turns: TurnsPageResponse["turns"]): Message[] =>
+  turns
+    .filter(
+      (turn) => turn.author_type === "USER" || turn.author_type === "CHARACTER",
+    )
+    .filter(
+      (turn) =>
+        turn.primary_candidate.is_final ||
+        turn.primary_candidate.content.trim() !== "",
+    )
+    .map(mapTurnsPageMessage);
+
 export function useChatSession({
   chatId,
   isAuthed,
@@ -258,6 +270,44 @@ export function useChatSession({
 
   const currentReplySuggestions = deriveCurrentReplySuggestions(messages);
 
+  const buildSharedStreamCallbacks = useCallback(
+    (controller: AbortController) => ({
+      onReplySuggestions: (data: {
+        assistant_candidate_id: string;
+        suggestions: ReplySuggestion[];
+      }) => {
+        if (controller.signal.aborted) return;
+        if (data.suggestions && data.suggestions.length > 0) {
+          applyReplySuggestions(data.assistant_candidate_id, data.suggestions);
+        }
+      },
+      onTtsAudioDelta: (data: {
+        assistant_candidate_id: string;
+        seq: number;
+        audio_b64: string;
+        mime_type: string;
+      }) => {
+        if (controller.signal.aborted) return;
+        if (!autoReadAloudRef.current) return;
+        ttsPlaybackManager?.feedRealtimeChunk(
+          data.assistant_candidate_id,
+          data.audio_b64,
+          data.mime_type,
+          data.seq,
+        );
+      },
+      onTtsAudioDone: (data: { assistant_candidate_id: string }) => {
+        if (controller.signal.aborted) return;
+        ttsPlaybackManager?.finishRealtime(data.assistant_candidate_id);
+      },
+      onTtsError: (data: { code: string; message: string }) => {
+        if (controller.signal.aborted) return;
+        ttsPlaybackManager?.handleTtsError(data.code, data.message);
+      },
+    }),
+    [applyReplySuggestions, ttsPlaybackManager],
+  );
+
   const setCurrentChatTitle = useCallback((title: string) => {
     setChat((prev) => (prev ? { ...prev, title } : prev));
   }, []);
@@ -281,16 +331,7 @@ export function useChatSession({
       characterIdRef.current = data.character.id;
       setSelectedCharacterId(data.character.id);
 
-      const mappedMessages: Message[] = data.turns
-        .filter(
-          (turn) => turn.author_type === "USER" || turn.author_type === "CHARACTER",
-        )
-        .filter(
-          (turn) =>
-            turn.primary_candidate.is_final ||
-            turn.primary_candidate.content.trim() !== "",
-        )
-        .map(mapTurnsPageMessage);
+      const mappedMessages: Message[] = mapVisibleTurns(data.turns);
 
       setMessages((prev) => {
         const previousReplyCardErrors = new Map<string, string | null>();
@@ -386,16 +427,7 @@ export function useChatSession({
       setHasOlderMessages(data.has_more);
 
       setMessages((prev) => {
-        const newMessages = data.turns
-          .filter(
-            (turn) => turn.author_type === "USER" || turn.author_type === "CHARACTER",
-          )
-          .filter(
-            (turn) =>
-              turn.primary_candidate.is_final ||
-              turn.primary_candidate.content.trim() !== "",
-          )
-          .map(mapTurnsPageMessage);
+        const newMessages = mapVisibleTurns(data.turns);
 
         const existingIds = new Set(prev.map((m) => m.id));
         const uniqueNew = newMessages.filter((m) => !existingIds.has(m.id));
@@ -689,15 +721,7 @@ export function useChatSession({
             setIsStreaming(false);
             detachControllerToTail(controller);
           },
-          onReplySuggestions: (data) => {
-            if (controller.signal.aborted) return;
-            if (data.suggestions && data.suggestions.length > 0) {
-              applyReplySuggestions(
-                data.assistant_candidate_id,
-                data.suggestions,
-              );
-            }
-          },
+          ...buildSharedStreamCallbacks(controller),
           onReplyCardStarted: (data) => {
             if (controller.signal.aborted) return;
             setMessages((prev) =>
@@ -750,24 +774,6 @@ export function useChatSession({
                   : message,
               ),
             );
-          },
-          onTtsAudioDelta: (data) => {
-            if (controller.signal.aborted) return;
-            if (!autoReadAloudRef.current) return;
-            ttsPlaybackManager?.feedRealtimeChunk(
-              data.assistant_candidate_id,
-              data.audio_b64,
-              data.mime_type,
-              data.seq,
-            );
-          },
-          onTtsAudioDone: (data) => {
-            if (controller.signal.aborted) return;
-            ttsPlaybackManager?.finishRealtime(data.assistant_candidate_id);
-          },
-          onTtsError: (data) => {
-            if (controller.signal.aborted) return;
-            ttsPlaybackManager?.handleTtsError(data.code, data.message);
           },
           onError: async (err) => {
             if (controller.signal.aborted) return;
@@ -825,8 +831,8 @@ export function useChatSession({
       }
     },
     [
-      applyReplySuggestions,
       beginStream,
+      buildSharedStreamCallbacks,
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
@@ -950,15 +956,7 @@ export function useChatSession({
             setIsStreaming(false);
             detachControllerToTail(controller);
           },
-          onReplySuggestions: (data) => {
-            if (controller.signal.aborted) return;
-            if (data.suggestions && data.suggestions.length > 0) {
-              applyReplySuggestions(
-                data.assistant_candidate_id,
-                data.suggestions,
-              );
-            }
-          },
+          ...buildSharedStreamCallbacks(controller),
           onReplyCardStarted: (data) => {
             if (controller.signal.aborted) return;
             setMessages((prev) =>
@@ -1011,24 +1009,6 @@ export function useChatSession({
                   : message,
               ),
             );
-          },
-          onTtsAudioDelta: (data) => {
-            if (controller.signal.aborted) return;
-            if (!autoReadAloudRef.current) return;
-            ttsPlaybackManager?.feedRealtimeChunk(
-              data.assistant_candidate_id,
-              data.audio_b64,
-              data.mime_type,
-              data.seq,
-            );
-          },
-          onTtsAudioDone: (data) => {
-            if (controller.signal.aborted) return;
-            ttsPlaybackManager?.finishRealtime(data.assistant_candidate_id);
-          },
-          onTtsError: (data) => {
-            if (controller.signal.aborted) return;
-            ttsPlaybackManager?.handleTtsError(data.code, data.message);
           },
           onError: async (err) => {
             if (controller.signal.aborted) return;
@@ -1086,9 +1066,8 @@ export function useChatSession({
       }
     },
     [
-      applyReplySuggestions,
-      autoReadAloudRef,
       beginStream,
+      buildSharedStreamCallbacks,
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
@@ -1253,15 +1232,7 @@ export function useChatSession({
               setIsStreaming(false);
               detachControllerToTail(controller);
             },
-            onReplySuggestions: (data) => {
-              if (controller.signal.aborted) return;
-              if (data.suggestions && data.suggestions.length > 0) {
-                applyReplySuggestions(
-                  data.assistant_candidate_id,
-                  data.suggestions,
-                );
-              }
-            },
+            ...buildSharedStreamCallbacks(controller),
             onReplyCardStarted: (data) => {
               if (controller.signal.aborted) return;
               setMessages((prev) =>
@@ -1317,24 +1288,6 @@ export function useChatSession({
                     : message,
               ),
             );
-          },
-          onTtsAudioDelta: (data) => {
-            if (controller.signal.aborted) return;
-            if (!autoReadAloudRef.current) return;
-            ttsPlaybackManager?.feedRealtimeChunk(
-              data.assistant_candidate_id,
-              data.audio_b64,
-              data.mime_type,
-              data.seq,
-            );
-          },
-          onTtsAudioDone: (data) => {
-            if (controller.signal.aborted) return;
-            ttsPlaybackManager?.finishRealtime(data.assistant_candidate_id);
-          },
-          onTtsError: (data) => {
-            if (controller.signal.aborted) return;
-            ttsPlaybackManager?.handleTtsError(data.code, data.message);
           },
           onError: async (err) => {
             if (controller.signal.aborted) return;
@@ -1395,8 +1348,8 @@ export function useChatSession({
       }
     },
     [
-      applyReplySuggestions,
       beginStream,
+      buildSharedStreamCallbacks,
       clearReplySuggestions,
       clearTrackedController,
       detachControllerToTail,
@@ -1622,15 +1575,7 @@ export function useChatSession({
               setIsStreaming(false);
               detachControllerToTail(controller);
             },
-            onReplySuggestions: (data) => {
-              if (controller.signal.aborted) return;
-              if (data.suggestions && data.suggestions.length > 0) {
-                applyReplySuggestions(
-                  data.assistant_candidate_id,
-                  data.suggestions,
-                );
-              }
-            },
+            ...buildSharedStreamCallbacks(controller),
             onReplyCardStarted: (data) => {
               if (controller.signal.aborted) return;
               setMessages((prev) =>
@@ -1687,24 +1632,6 @@ export function useChatSession({
                     : message,
                 ),
               );
-            },
-            onTtsAudioDelta: (data) => {
-              if (controller.signal.aborted) return;
-              if (!autoReadAloudRef.current) return;
-              ttsPlaybackManager?.feedRealtimeChunk(
-                data.assistant_candidate_id,
-                data.audio_b64,
-                data.mime_type,
-                data.seq,
-              );
-            },
-            onTtsAudioDone: (data) => {
-              if (controller.signal.aborted) return;
-              ttsPlaybackManager?.finishRealtime(data.assistant_candidate_id);
-            },
-            onTtsError: (data) => {
-              if (controller.signal.aborted) return;
-              ttsPlaybackManager?.handleTtsError(data.code, data.message);
             },
             onGrowthDailyUpdated: (data) => {
               if (controller.signal.aborted) return;
@@ -1774,8 +1701,8 @@ export function useChatSession({
     },
     [
       abortActiveTextStream,
-      applyReplySuggestions,
       beginStream,
+      buildSharedStreamCallbacks,
       canSend,
       character,
       chatId,

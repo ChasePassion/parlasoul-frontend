@@ -99,6 +99,17 @@ export function useLearningAssistant(): UseLearningAssistantResult {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const patchAssistantMessage = (
+        id: string,
+        updater: (message: LearningAssistantMessage) => LearningAssistantMessage,
+      ) => {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === id ? updater(message) : message,
+          ),
+        );
+      };
+
       try {
         await streamLearningAssistant(
           {
@@ -110,30 +121,18 @@ export function useLearningAssistant(): UseLearningAssistantResult {
           {
             signal: controller.signal,
             onChunk: (content) => {
-              setMessages((current) =>
-                current.map((message) =>
-                  message.id === assistantMessageId
-                    ? {
-                        ...message,
-                        content: message.content + content,
-                        status: "streaming",
-                      }
-                    : message,
-                ),
-              );
+              patchAssistantMessage(assistantMessageId, (message) => ({
+                ...message,
+                content: message.content + content,
+                status: "streaming",
+              }));
             },
             onDone: (fullContent) => {
-              setMessages((current) =>
-                current.map((message) =>
-                  message.id === assistantMessageId
-                    ? {
-                        ...message,
-                        content: fullContent,
-                        status: "done",
-                      }
-                    : message,
-                ),
-              );
+              patchAssistantMessage(assistantMessageId, (message) => ({
+                ...message,
+                content: fullContent,
+                status: "done",
+              }));
               setIsStreaming(false);
             },
             onError: (streamError) => {
@@ -144,17 +143,11 @@ export function useLearningAssistant(): UseLearningAssistantResult {
                   ? streamError.detail
                   : getErrorMessage(streamError);
 
-              setMessages((current) =>
-                current.map((message) =>
-                  message.id === assistantMessageId
-                    ? {
-                        ...message,
-                        content: errorText,
-                        status: "error",
-                      }
-                    : message,
-                ),
-              );
+              patchAssistantMessage(assistantMessageId, (message) => ({
+                ...message,
+                content: errorText,
+                status: "error",
+              }));
               setIsStreaming(false);
             },
           },

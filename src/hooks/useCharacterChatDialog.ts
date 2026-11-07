@@ -111,6 +111,18 @@ export function useCharacterChatDialog(chatId: string | null) {
 
       const controller = new AbortController();
       abortRef.current = controller;
+
+      const patchAssistantMessage = (
+        id: string,
+        updater: (message: CharacterChatMessage) => CharacterChatMessage,
+      ) => {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === id ? updater(message) : message,
+          ),
+        );
+      };
+
       try {
         await streamChatMessage(
           chatId,
@@ -118,36 +130,25 @@ export function useCharacterChatDialog(chatId: string | null) {
           {
             signal: controller.signal,
             onChunk: (chunk) => {
-              setMessages((current) =>
-                current.map((message) =>
-                  message.id === assistantMessageId
-                    ? { ...message, content: message.content + chunk }
-                    : message,
-                ),
-              );
+              patchAssistantMessage(assistantMessageId, (message) => ({
+                ...message,
+                content: message.content + chunk,
+              }));
             },
             onDone: (fullContent) => {
-              setMessages((current) =>
-                current.map((message) =>
-                  message.id === assistantMessageId
-                    ? { ...message, content: fullContent, status: "done" }
-                    : message,
-                ),
-              );
+              patchAssistantMessage(assistantMessageId, (message) => ({
+                ...message,
+                content: fullContent,
+                status: "done",
+              }));
               setIsStreaming(false);
             },
             onError: (streamError) => {
-              setMessages((current) =>
-                current.map((message) =>
-                  message.id === assistantMessageId
-                    ? {
-                        ...message,
-                        content: getErrorMessage(streamError),
-                        status: "error",
-                      }
-                    : message,
-                ),
-              );
+              patchAssistantMessage(assistantMessageId, (message) => ({
+                ...message,
+                content: getErrorMessage(streamError),
+                status: "error",
+              }));
               setIsStreaming(false);
             },
           },
