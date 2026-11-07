@@ -47,15 +47,27 @@ function compressImage(file: File): Promise<Blob> {
   });
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("图片读取失败"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export async function uploadChatImage(file: File): Promise<ChatImageUploadResult> {
   if (!ALLOWED_IMAGE_TYPES.includes(file.type)) throw new Error("不支持的图片格式");
   if (file.size > MAX_FILE_SIZE) throw new Error("图片大小不能超过 5MB");
 
   const compressed = await compressImage(file);
-  const result = await apiService.uploadFile(
-    new File([compressed], file.name, { type: "image/jpeg" }),
-    { kind: "chat_image" },
-  );
+  const [result, dataUrl] = await Promise.all([
+    apiService.uploadFile(
+      new File([compressed], file.name, { type: "image/jpeg" }),
+      { kind: "chat_image" },
+    ),
+    blobToDataUrl(compressed),
+  ]);
 
   if (!result.original_url || !result.display_url) {
     throw new Error("上传结果缺少图片 URL");
@@ -66,6 +78,7 @@ export async function uploadChatImage(file: File): Promise<ChatImageUploadResult
       image_key: result.image_key,
       original: result.original_url,
       display: result.display_url,
+      data_url: dataUrl,
     },
     imageKey: result.image_key,
   };

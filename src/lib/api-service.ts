@@ -486,6 +486,7 @@ export interface ChatImageRef {
   image_key: string;
   original: string;
   display: string;
+  data_url?: string;
 }
 
 export interface ChatStreamRequest {
