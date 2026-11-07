@@ -807,17 +807,9 @@ export function useChatSession({
           });
         }
       } catch (err) {
-        if (regenTimedOut) {
+        if (regenTimedOut || !controller.signal.aborted) {
           finalizeStreamError(
-            new Error("STREAM_TIMEOUT"),
-            controller,
-            regenMetaTimeoutId,
-            (id) => { regenMetaTimeoutId = id; },
-            [turnId],
-          );
-        } else if (!controller.signal.aborted) {
-          finalizeStreamError(
-            err,
+            regenTimedOut ? new Error("STREAM_TIMEOUT") : err,
             controller,
             regenMetaTimeoutId,
             (id) => { regenMetaTimeoutId = id; },
@@ -1076,17 +1068,9 @@ export function useChatSession({
           });
         }
       } catch (err) {
-        if (continueTimedOut) {
+        if (continueTimedOut || !controller.signal.aborted) {
           finalizeStreamError(
-            new Error("STREAM_TIMEOUT"),
-            controller,
-            continueMetaTimeoutId,
-            (id) => { continueMetaTimeoutId = id; },
-            [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
-          );
-        } else if (!controller.signal.aborted) {
-          finalizeStreamError(
-            err,
+            continueTimedOut ? new Error("STREAM_TIMEOUT") : err,
             controller,
             continueMetaTimeoutId,
             (id) => { continueMetaTimeoutId = id; },
@@ -1393,17 +1377,9 @@ export function useChatSession({
           });
         }
       } catch (err) {
-        if (editTimedOut) {
+        if (editTimedOut || !controller.signal.aborted) {
           finalizeStreamError(
-            new Error("STREAM_TIMEOUT"),
-            controller,
-            editMetaTimeoutId,
-            (id) => { editMetaTimeoutId = id; },
-            [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
-          );
-        } else if (!controller.signal.aborted) {
-          finalizeStreamError(
-            err,
+            editTimedOut ? new Error("STREAM_TIMEOUT") : err,
             controller,
             editMetaTimeoutId,
             (id) => { editMetaTimeoutId = id; },
@@ -1778,18 +1754,9 @@ export function useChatSession({
         );
 
       } catch (err) {
-        if (sendTimedOut) {
+        if (sendTimedOut || !controller.signal.aborted) {
           finalizeStreamError(
-            new Error("STREAM_TIMEOUT"),
-            controller,
-            sendMetaTimeoutId,
-            (id) => { sendMetaTimeoutId = id; },
-            [tempAssistantId, resolvedAssistantMessageId].filter(Boolean),
-            content,
-          );
-        } else if (!controller.signal.aborted) {
-          finalizeStreamError(
-            err,
+            sendTimedOut ? new Error("STREAM_TIMEOUT") : err,
             controller,
             sendMetaTimeoutId,
             (id) => { sendMetaTimeoutId = id; },

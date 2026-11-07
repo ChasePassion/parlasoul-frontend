@@ -338,16 +338,7 @@ function resolveMicPermissionAction(
   if (before === "denied") {
     return "settings";
   }
-
-  if (after === "denied") {
-    return "request";
-  }
-
-  if (after === "granted") {
-    return null;
-  }
-
-  return "request";
+  return after === "granted" ? null : "request";
 }
 
 function channelToKey(channel: string): keyof RealtimeSubtitleState {
