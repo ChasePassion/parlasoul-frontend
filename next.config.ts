@@ -56,9 +56,17 @@ const baseConfig: NextConfig = {
         hostname: "*.r2.dev",
       },
       {
+        // The backend emits media URLs as absolute origins (MEDIA_PUBLIC_BASE_URL),
+        // which currently point back at this site's own origin. Optimized <Image>
+        // usage (hero carousel, profile avatar) must accept them.
+        protocol: "https",
+        hostname: "117.72.161.187",
+        pathname: "/media/**",
+      },
+      {
         protocol: "https",
         hostname: "parlasoul.com",
-        pathname: "/media/images/discover/heroes/**",
+        pathname: "/media/**",
       },
     ],
   },
