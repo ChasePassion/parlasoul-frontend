@@ -45,6 +45,7 @@ export interface User {
   username?: string;
   email_verified?: boolean;
   avatar_image_key?: string | null;
+  avatar_url?: string | null;
   avatar_urls?: AvatarUrls | null;
   created_at: string;
   last_login_at?: string;
@@ -54,6 +55,7 @@ export interface User {
 export interface UpdateProfileRequest {
   username?: string;
   avatar_image_key?: string | null;
+  avatar_url?: string | null;
 }
 
 export interface AvatarUrls {

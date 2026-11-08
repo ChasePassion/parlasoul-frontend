@@ -12,6 +12,11 @@ import { Pool } from "pg";
 
 import { logEmailOtpEvent } from "./auth-email-otp-log";
 import { setEmailOtpDeliveryRecord } from "./auth-email-otp-delivery";
+import {
+  normalizeUsernameBase,
+  resolvePresetAvatarUrl,
+  resolveUniqueUsername,
+} from "./auth-default-profile";
 import { isBillingCheckoutEnabled } from "./billing-flags";
 import { DODO_CHECKOUT_PRODUCTS } from "./billing-plans";
 import {
@@ -343,12 +348,18 @@ function createAuth() {
       user: {
         create: {
           before: async (user) => {
+            const email = user.email.trim().toLowerCase();
             const fallbackName =
-              user.name?.trim() || user.email.split("@")[0] || "新用户";
+              user.name?.trim() || email.split("@")[0] || "新用户";
             return {
               data: {
                 ...user,
                 name: fallbackName,
+                username: await resolveUniqueUsername(
+                  resolvedPool,
+                  normalizeUsernameBase(email),
+                ),
+                image: resolvePresetAvatarUrl(email),
               },
             };
           },

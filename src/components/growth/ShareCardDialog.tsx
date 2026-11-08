@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth-context";
+import { resolveUserAvatarSrc } from "@/lib/character-avatar";
 import { listChats } from "@/lib/api";
 import { consumeShareCard } from "@/lib/growth-api";
 import { useGrowth } from "@/lib/growth-context";
@@ -171,7 +172,7 @@ export default function ShareCardDialog() {
     staleTime: 5 * 60 * 1000,
   });
   const milestoneFirstChatDate = firstChatDateQuery.data ?? null;
-  const userAvatar = user?.avatar_urls?.md || "/default-avatar.svg";
+  const userAvatar = resolveUserAvatarSrc(user, "md");
   const assetKey = useMemo(
     () => (currentCard ? `${currentCard.id}:${currentCard.kind}` : null),
     [currentCard],

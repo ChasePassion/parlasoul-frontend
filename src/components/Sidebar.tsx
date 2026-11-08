@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { CreditCard, LogIn, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { resolveUserAvatarSrc } from "@/lib/character-avatar";
 import { isBillingCheckoutEnabled } from "@/lib/billing-flags";
 import { useGrowth } from "@/lib/growth-context";
 import type { AvatarUrls, CharacterVisibility } from "@/lib/api";
@@ -285,7 +286,7 @@ export default function Sidebar({
                             <button className={`flex items-center w-full px-1 rounded-lg hover:bg-sidebar-hover cursor-pointer transition-all duration-300 ease-in-out overflow-hidden outline-none relative ${isCollapsed ? 'h-10' : 'h-[52px]'}`}>
                                 <div className={`flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'w-8' : 'w-10'}`}>
                                     <Avatar className={`rounded-lg overflow-hidden shrink-0 transition-all duration-300 ease-in-out ${isCollapsed ? 'h-8 w-8' : 'h-10 w-10'}`}>
-                                        <AvatarImage src={user?.avatar_urls?.sm || "/default-avatar.svg"} alt={user?.username || "User"} />
+                                        <AvatarImage src={resolveUserAvatarSrc(user, "sm")} alt={user?.username || "User"} />
                                         <AvatarFallback className="bg-gray-100 text-gray-600 text-[10px]">
                                             {user?.username?.slice(0, 2) || "GU"}
                                         </AvatarFallback>

@@ -19,7 +19,6 @@ import Sidebar, { Character } from "@/components/Sidebar";
 import AppFrame from "@/components/layout/AppFrame";
 import { useSidebarShell } from "@/hooks/useSidebarShell";
 import { mapCharacterToSidebar } from "@/lib/character-adapter";
-import { clearProfileSetupState } from "@/lib/profile-setup-session";
 import { markBrowserTourCompleted } from "@/lib/onboarding/tour-storage";
 import {
     peekResumeCharacterId,
@@ -92,7 +91,7 @@ export default function AppLayout({
     );
 
     // 访客可以停留在发现页（含新人导览）。其它受保护页面由 middleware 拦截，
-    // 客户端这里只做兜底跳转，避免把访客 / 资料未补全的用户登出并弹回验证码页。
+    // 客户端这里只做兜底跳转。
     const shouldBlockForRedirect = isGuest && !isDiscoverPage;
 
     useEffect(() => {
@@ -103,35 +102,14 @@ export default function AppLayout({
         // 访客：发现页直接浏览；若通过客户端导航落到受保护页，引导去登录。
         if (isGuest) {
             if (!isDiscoverPage) {
-                clearProfileSetupState();
                 router.replace(`/login?next=${encodeURIComponent(pathname)}`);
             }
             return;
         }
+    }, [user, isAuthLoading, isGuest, isDiscoverPage, pathname, router]);
 
-        // 已登录但资料未补全：不再 logout 弹回登录页，允许直接进入应用。
-        // 资料补全仍由 /setup 页面自行完成，profile 缓存由 setup 提交后写回，避免陈旧窗口。
-        if (profileStatus === "error") {
-            return;
-        }
-
-        if (profileStatus !== "loaded") {
-            return;
-        }
-
-        clearProfileSetupState();
-    }, [
-        user,
-        isAuthLoading,
-        isGuest,
-        isDiscoverPage,
-        profileStatus,
-        pathname,
-        router,
-    ]);
-
-    // 兜底续接：登录页已经直接进聊天页；这里覆盖「资料未补全先去 /setup」、
-    // 以及登录页开聊天失败的场合。等 profile 就绪再做，导航真的发起才消费 id。
+    // 兜底续接：登录页已经直接进聊天页；这里覆盖登录页开聊天失败的场合。
+    // 等 profile 就绪再做，导航真的发起才消费 id。
     const resumeHandledRef = useRef(false);
     useEffect(() => {
         if (isAuthLoading || !isProfileReady || !user || resumeHandledRef.current) {
