@@ -942,6 +942,16 @@ export interface UploadImageResult extends CompleteUploadResponse {
   url: string;
 }
 
+export interface ChatImageUploadResponse {
+  image_key: string;
+  original_url: string;
+  display_url: string;
+  content_type: string;
+  size_bytes: number;
+  width: number;
+  height: number;
+}
+
 export interface ForgeSessionSummary {
   id: string;
   title: string;
@@ -1047,6 +1057,26 @@ export class ApiService {
       return throwApiErrorResponse(response);
     }
     return response.arrayBuffer();
+  }
+
+  async uploadChatImageFile(file: File): Promise<ChatImageUploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetchWithBetterAuth("/v1/uploads/chat-image", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      return throwApiErrorResponse(response);
+    }
+
+    const payload = await parseJsonResponse(response);
+    const data =
+      payload && typeof payload === "object" && "data" in payload
+        ? (payload as { data: ChatImageUploadResponse }).data
+        : (payload as ChatImageUploadResponse);
+    return data;
   }
 
   async uploadFile(
