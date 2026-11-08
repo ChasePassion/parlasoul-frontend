@@ -82,7 +82,7 @@ export default function DiscoverPage() {
   };
 
   // 角色续接统一在 (app)/layout.tsx 处理：登录页直接进聊天，布局层负责
-  // /setup 之后和失败重试，避免发现页与布局层同时抢 id。
+  // 失败重试，避免发现页与布局层同时抢 id。
 
   // 转换全量数据以匹配 Character 接口 (用于 HorizontalSection 的 cards)
   const mappedCharacters = useMemo<Character[]>(() => {

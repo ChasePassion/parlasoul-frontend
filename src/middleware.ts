@@ -9,7 +9,6 @@ const protectedMatchers = [
   "/chat",
   "/favorites",
   "/profile",
-  "/setup",
   "/stats",
 ];
 const billingCheckoutMatchers = ["/pricing"];
@@ -56,7 +55,6 @@ export const config = {
     "/chat/:path*",
     "/favorites",
     "/profile",
-    "/setup",
     "/stats",
     "/pricing",
   ],

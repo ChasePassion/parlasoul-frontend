@@ -2,6 +2,13 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/*
+ * 原型页面放在 src/app/prototype/，但该目录被 .gitignore 忽略，
+ * Tailwind v4 的自动扫描会跳过被忽略的文件，导致原型里的工具类不生效。
+ * 显式声明扫描路径。该目录不进版本库，干净检出时目录不存在，不会产生多余产物。
+ */
+@source "./prototype";
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

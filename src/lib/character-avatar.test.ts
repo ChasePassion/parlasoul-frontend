@@ -1,7 +1,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isR2AvatarImageKey, resolveCharacterAvatarSrc } from "./character-avatar";
+import { isR2AvatarImageKey, resolveCharacterAvatarSrc, resolveUserAvatarSrc } from "./character-avatar";
+
+test("prefers uploaded user avatars over the preset avatar url", () => {
+  assert.equal(
+    resolveUserAvatarSrc(
+      {
+        avatar_image_key: "images/avatars/users/uid/avatar",
+        avatar_url: "/avatars/default/avatar-03.webp",
+      },
+      "md",
+    ),
+    "/media/images/avatars/users/uid/avatar/192.avif",
+  );
+});
+
+test("falls back to the preset avatar url when nothing is uploaded", () => {
+  assert.equal(
+    resolveUserAvatarSrc({ avatar_url: "/avatars/default/avatar-03.webp" }, "md"),
+    "/avatars/default/avatar-03.webp",
+  );
+  assert.equal(resolveUserAvatarSrc(null), "/default-avatar.svg");
+});
+
+test("ignores legacy local upload paths stored in avatar_url", () => {
+  assert.equal(
+    resolveUserAvatarSrc({ avatar_url: "/uploads/legacy-avatar.jpg" }, "md"),
+    "/default-avatar.svg",
+  );
+});
 
 test("returns default avatar when avatar is missing", () => {
   assert.equal(resolveCharacterAvatarSrc(undefined), "/default-avatar.svg");

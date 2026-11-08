@@ -248,6 +248,5 @@ export function useAuth() {
 export {
     isProfileComplete,
     isProfileStatusComplete,
-    isProfileStatusIncomplete,
     type BackendProfileStatus,
 } from "./auth-profile-state";

@@ -13,7 +13,7 @@ import {
   getShareCardDateSeed,
   resolveShareCardImageSrc,
 } from "@/lib/share-card-assets";
-import { resolveCharacterAvatarSrc } from "@/lib/character-avatar";
+import { resolveCharacterAvatarSrc, resolveUserAvatarSrc } from "@/lib/character-avatar";
 
 const sloganShadowStyle = {
   textShadow: "0 1px 8px rgba(0, 0, 0, 0.4)",
@@ -441,7 +441,7 @@ export default function ShareCardRenderer({
   milestoneFirstChatDate,
 }: ShareCardRendererProps) {
   const { user } = useAuth();
-  const userAvatar = user?.avatar_urls?.md || "/default-avatar.svg";
+  const userAvatar = resolveUserAvatarSrc(user, "md");
   const userName = user?.username || user?.email || null;
 
   if (card.kind === "daily_signin_completed" && card.daily_signin_payload) {

@@ -5,7 +5,6 @@ import type { User } from "./api-service";
 import {
   isProfileComplete,
   isProfileStatusComplete,
-  isProfileStatusIncomplete,
 } from "./auth-profile-state";
 
 const baseUser: User = {
@@ -28,13 +27,15 @@ test("classifies profile completion only from a loaded backend profile", () => {
   assert.equal(isProfileStatusComplete("error", completedProfile), false);
 });
 
-test("does not classify a session-only fallback as setup incomplete before profile load succeeds", () => {
-  assert.equal(isProfileComplete(baseUser), false);
-  assert.equal(isProfileStatusIncomplete("loading", baseUser), false);
-  assert.equal(isProfileStatusIncomplete("error", baseUser), false);
-  assert.equal(isProfileStatusIncomplete("anonymous", baseUser), false);
+test("accepts a preset avatar_url as a complete avatar", () => {
+  const presetProfile: User = {
+    ...baseUser,
+    avatar_url: "/avatars/default/avatar-03.webp",
+  };
+
+  assert.equal(isProfileComplete(presetProfile), true);
 });
 
-test("classifies setup incomplete only after backend profile has loaded", () => {
-  assert.equal(isProfileStatusIncomplete("loaded", baseUser), true);
+test("does not treat a session-only fallback as a complete profile", () => {
+  assert.equal(isProfileComplete(baseUser), false);
 });

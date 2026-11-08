@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import { resolveUserAvatarSrc } from "@/lib/character-avatar";
 import { useUserSettings } from "@/lib/user-settings-context";
 import type { Message } from "@/components/ChatMessage";
 import ChatHeader from "@/components/ChatHeader";
@@ -833,7 +834,7 @@ export default function ChatPage() {
                 isLoading={isLoading}
                 error={error}
                 isStreaming={isStreaming}
-                userAvatar={user?.avatar_urls?.md || "/default-avatar.svg"}
+                userAvatar={resolveUserAvatarSrc(user, "md")}
                 messagesEndRef={messagesEndRef}
                 messagesStartRef={messagesStartRef}
                 chatId={chatId}

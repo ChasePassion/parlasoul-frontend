@@ -73,7 +73,7 @@ const TOOL_ICONS: Record<string, typeof Wrench> = {
   read_webpage: FileText,
 };
 
-function ThoughtPart({ text, active }: { text: string; active: boolean }) {
+export function ThoughtPart({ text, active }: { text: string; active: boolean }) {
   return (
     <details open={active} className="group w-full">
       <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-[13px] text-gray-500 transition-colors hover:text-gray-700 [&::-webkit-details-marker]:hidden">
@@ -88,7 +88,7 @@ function ThoughtPart({ text, active }: { text: string; active: boolean }) {
   );
 }
 
-function ToolEventRow({ event }: { event: ForgeToolEvent }) {
+export function ToolEventRow({ event }: { event: ForgeToolEvent }) {
   const Icon = TOOL_ICONS[event.tool] ?? Wrench;
   return (
     <div className="inline-flex max-w-full items-center gap-2 self-start text-[13px] text-gray-500">

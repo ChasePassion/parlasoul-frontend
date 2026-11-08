@@ -51,7 +51,7 @@ test("returns null when Better Auth has no active session user", () => {
   assert.equal(mapBetterAuthSessionToUser(null), null);
 });
 
-test("uses backend profile fields for setup completion data", () => {
+test("uses backend profile fields for profile data", () => {
   const sessionUser = {
     id: "user-1",
     email: "chase@example.com",

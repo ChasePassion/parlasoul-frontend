@@ -1,0 +1,22 @@
+/*
+ * 演示区只做视觉播放：浏览器的焦点环、文本选区高亮、图片拖拽态
+ * 在这里都不应该出现。选择器只命中 iframe 里的 [data-demo-stage]，
+ * 不影响登录表单和业务页面。
+ */
+[data-demo-stage],
+[data-demo-stage] * {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-user-drag: none !important;
+}
+
+[data-demo-stage] button,
+[data-demo-stage] img {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+[data-demo-stage] *::selection {
+  background: transparent !important;
+  color: inherit !important;
+}

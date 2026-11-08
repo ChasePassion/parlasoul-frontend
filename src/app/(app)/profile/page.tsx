@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import CharacterCard from "@/components/CharacterCard";
@@ -15,6 +15,8 @@ import EditVoiceModal from "@/components/voice/EditVoiceModal";
 import { Button } from "@/components/ui/button";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
 import CreateItemCard from "@/components/CreateItemCard";
+import EditProfileDialog from "@/components/EditProfileDialog";
+import { resolveUserAvatarSrc } from "@/lib/character-avatar";
 import {
     unpublishCharacter,
     publishCharacter,
@@ -51,6 +53,7 @@ export default function ProfilePage() {
 
     // Modal State
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
     const [editCharacter, setEditCharacter] = useState<Character | undefined>(undefined);
     const [isUnpublishDialogOpen, setIsUnpublishDialogOpen] = useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -291,7 +294,7 @@ export default function ProfilePage() {
                     <div className="mb-6 ml-2 mt-4 flex items-center gap-6">
                         <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl">
                             <Image
-                                src={user?.avatar_urls?.md || "/default-avatar.svg"}
+                                src={resolveUserAvatarSrc(user, "md")}
                                 alt={user?.username || "User"}
                                 fill
                                 sizes="80px"
@@ -300,7 +303,19 @@ export default function ProfilePage() {
                             />
                         </div>
                         <div>
-                            <h1 className="mb-1 text-3xl font-bold text-gray-900">{user?.username}</h1>
+                            <div className="mb-1 flex items-center gap-3">
+                                <h1 className="text-3xl font-bold text-gray-900">{user?.username}</h1>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-1.5 rounded-lg border-gray-200 text-[13px] font-medium text-gray-600 hover:border-gray-400 hover:text-black"
+                                    onClick={() => setIsEditProfileOpen(true)}
+                                >
+                                    <Pencil className="size-3.5" />
+                                    编辑资料
+                                </Button>
+                            </div>
                             <p className="text-sm text-gray-400">{user?.email || "user@example.com"}</p>
                         </div>
                     </div>
@@ -478,6 +493,11 @@ export default function ProfilePage() {
                 onConfirm={handleConfirmDeleteVoice}
                 onCancel={() => setVoiceToDelete(null)}
                 isDeleting={deleteVoiceMutation.isPending}
+            />
+
+            <EditProfileDialog
+                open={isEditProfileOpen}
+                onOpenChange={setIsEditProfileOpen}
             />
         </WorkspaceFrame>
     );

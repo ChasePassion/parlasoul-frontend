@@ -119,3 +119,40 @@ export function resolveVoiceAvatarSrc(
 ): string {
   return resolveAvatarSrc(source, size) ?? DEFAULT_CHARACTER_AVATAR;
 }
+
+export interface UserAvatarSource {
+  avatar_urls?: AvatarUrls | null;
+  avatar_image_key?: string | null;
+  avatar_url?: string | null;
+}
+
+/**
+ * 用户头像：上传/生成的图（avatar_urls / avatar_image_key）优先，
+ * 其次是注册时分配的预设头像（avatar_url），最后才是灰色占位图。
+ *
+ * avatar_url 只认 /avatars/default/ 下的预设图：历史数据里这个字段存过
+ * 早期的本地上传路径（/uploads/...），那些文件已经不在了，不能直接渲染。
+ */
+export function resolveUserAvatarSrc(
+  user?: UserAvatarSource | null,
+  size: AvatarSize = "md",
+): string {
+  if (!user) {
+    return DEFAULT_CHARACTER_AVATAR;
+  }
+
+  const uploaded = resolveAvatarSrc(
+    { avatar_urls: user.avatar_urls, avatar_image_key: user.avatar_image_key },
+    size,
+  );
+  if (uploaded) {
+    return uploaded;
+  }
+
+  const preset = user.avatar_url?.trim();
+  if (preset?.startsWith("/avatars/default/")) {
+    return preset;
+  }
+
+  return DEFAULT_CHARACTER_AVATAR;
+}
