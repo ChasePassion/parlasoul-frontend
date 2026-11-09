@@ -533,6 +533,7 @@ interface StreamErrorEvent {
   type: "error";
   code?: string;
   message?: string;
+  request_id?: string;
 }
 
 type StreamEvent = StreamChunkEvent | StreamDoneEvent | StreamErrorEvent;
@@ -726,6 +727,7 @@ interface ChatStreamErrorEvent {
   type: "error";
   code?: string;
   message?: string;
+  request_id?: string;
 }
 
 // Phase 2: TTS realtime SSE events
@@ -903,6 +905,7 @@ interface LearningAssistantErrorEvent {
   type: "error";
   code?: string;
   message?: string;
+  request_id?: string;
 }
 
 type LearningAssistantStreamEvent =
@@ -1060,7 +1063,7 @@ export type ForgeStreamEvent =
   | { type: "character_created"; payload: ForgeCharacterPayload }
   | { type: "character_updated"; payload: ForgeCharacterPayload }
   | { type: "done"; assistant_message_id?: string | null }
-  | { type: "error"; code?: string; message?: string };
+  | { type: "error"; code?: string; message?: string; request_id?: string };
 
 export class ApiService {
   private async fetchAudioBuffer(
@@ -1454,17 +1457,18 @@ export class ApiService {
             message: data.message,
           });
         } else if (data.type === "error") {
-          if (data.code && data.message) {
-            handlers.onError(new ApiError(502, data.code, data.message));
-          } else {
-            handlers.onError(new Error(data.message || "Unknown error"));
-          }
+          handlers.onError(
+            new ApiError(
+              502,
+              data.code ?? "chat_stream_failed",
+              data.message ?? "Unknown error",
+              data.request_id,
+            ),
+          );
         }
       });
     } catch (error) {
-      handleStreamError(error, handlers.onError, {
-        apiErrorMode: "detail-error",
-      });
+      handleStreamError(error, handlers.onError);
     }
   }
 
@@ -1615,11 +1619,14 @@ export class ApiService {
             message: data.message,
           });
         } else if (data.type === "error") {
-          if (data.code && data.message) {
-            handlers.onError(new Error(`${data.code}: ${data.message}`));
-          } else {
-            handlers.onError(new Error(data.message || "Unknown error"));
-          }
+          handlers.onError(
+            new ApiError(
+              502,
+              data.code ?? "chat_stream_failed",
+              data.message ?? "Unknown error",
+              data.request_id,
+            ),
+          );
         } else if (data.type === "tts_audio_delta") {
           handlers.onTtsAudioDelta?.({
             assistant_candidate_id: data.assistant_candidate_id,
@@ -1644,9 +1651,7 @@ export class ApiService {
         // memory_queued is silently ignored (background operation)
       });
     } catch (error) {
-      handleStreamError(error, handlers.onError, {
-        apiErrorMode: "detail-error",
-      });
+      handleStreamError(error, handlers.onError);
     }
   }
 
@@ -1931,6 +1936,7 @@ export class ApiService {
               500,
               data.code ?? "llm_service_error",
               data.message ?? "Unknown error",
+              data.request_id,
             ),
           );
         }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  ApiError,
   createForgeSession,
   deleteForgeSession,
   getForgeSession,
@@ -18,7 +19,7 @@ import {
   type ForgeSessionSummary,
   type ForgeUiPayload,
 } from "@/lib/api";
-import { getErrorMessage } from "@/lib/error-map";
+import { getErrorMessage, getErrorReference } from "@/lib/error-map";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query";
 
@@ -73,6 +74,7 @@ interface UseCharacterForgeResult {
   isStreaming: boolean;
   toolStatus: string | null;
   error: string | null;
+  errorReference: string | null;
   isLoading: boolean;
   createdCharacterId: string | null;
   createdChatId: string | null;
@@ -169,6 +171,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
   const [isStreaming, setIsStreaming] = useState(false);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorReference, setErrorReference] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [createdCharacterId, setCreatedCharacterId] = useState<string | null>(null);
   const [createdChatId, setCreatedChatId] = useState<string | null>(null);
@@ -188,7 +191,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
       setSessions(page.items);
       return page.items;
     } catch (err) {
-      setError(getErrorMessage(err));
+      setError(getErrorMessage(err, "forge"));
       return [];
     }
   }, []);
@@ -206,6 +209,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
     setActiveSessionId(null);
     activeSessionIdRef.current = null;
     setError(null);
+    setErrorReference(null);
     setToolStatus(null);
     try {
       const detail: ForgeSessionDetail = await getForgeSession(sessionId);
@@ -218,7 +222,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
       setCreatedChatId(findCreatedChatId(mapped));
     } catch (err) {
       if (requestId === sessionRequestIdRef.current) {
-        setError(getErrorMessage(err));
+        setError(getErrorMessage(err, "forge"));
       }
     } finally {
       if (requestId === sessionRequestIdRef.current) setIsLoading(false);
@@ -245,6 +249,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
     setCreatedCharacterId(null);
     setCreatedChatId(null);
     setError(null);
+    setErrorReference(null);
     setToolStatus(null);
     setIsLoading(false);
 
@@ -276,7 +281,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
         setMessages(previous.messages);
         setCreatedCharacterId(previous.createdCharacterId);
         setCreatedChatId(previous.createdChatId);
-        setError(getErrorMessage(err));
+        setError(getErrorMessage(err, "forge"));
       }
     } finally {
       if (sessionCreatingRef.current === task) {
@@ -298,7 +303,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
           }
         }
       } catch (err) {
-        setError(getErrorMessage(err));
+        setError(getErrorMessage(err, "forge"));
       }
     },
     [activeSessionId, newSession, openSession, refreshSessions],
@@ -333,6 +338,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
     if (!createdCharacterId) return;
     setPublishingCharacterId(createdCharacterId);
     setError(null);
+    setErrorReference(null);
     try {
       const updated = await publishCharacter(createdCharacterId);
       setMessages((prev) =>
@@ -363,7 +369,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
         queryKey: queryKeys.sidebar.characters(user?.id ?? null),
       });
     } catch (err) {
-      setError(getErrorMessage(err));
+      setError(getErrorMessage(err, "forge"));
     } finally {
       setPublishingCharacterId(null);
     }
@@ -410,7 +416,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
               : message,
           ),
         );
-        setError(getErrorMessage(err));
+        setError(getErrorMessage(err, "forge"));
       }
     },
     [],
@@ -443,6 +449,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
       abortRef.current = controller;
       setIsStreaming(true);
       setError(null);
+      setErrorReference(null);
       setToolStatus(null);
 
       const userMessageId = `local-user-${crypto.randomUUID()}`;
@@ -623,11 +630,19 @@ export function useCharacterForge(): UseCharacterForgeResult {
               queryKey: queryKeys.characters.mine(user?.id ?? null),
             });
           } else if (event.type === "error") {
-            setError(event.message ?? "生成失败，请重试");
+            const streamError = new ApiError(
+              502,
+              event.code ?? "llm_service_error",
+              event.message ?? "forge stream failed",
+              event.request_id,
+            );
+            setError(getErrorMessage(streamError, "forge"));
+            setErrorReference(getErrorReference(streamError));
           }
         },
         onError: (err) => {
-          setError(getErrorMessage(err));
+          setError(getErrorMessage(err, "forge"));
+          setErrorReference(getErrorReference(err));
         },
       });
 
@@ -657,6 +672,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
     isStreaming,
     toolStatus,
     error,
+    errorReference,
     isLoading,
     createdCharacterId,
     createdChatId,
@@ -669,6 +685,9 @@ export function useCharacterForge(): UseCharacterForgeResult {
     openSession,
     removeSession,
     renameSession,
-    clearError: () => setError(null),
+    clearError: () => {
+      setError(null);
+      setErrorReference(null);
+    },
   };
 }

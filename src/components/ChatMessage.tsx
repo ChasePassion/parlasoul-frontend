@@ -36,6 +36,7 @@ export interface Message {
     assistantCandidateId?: string;
     messageStreamStatus?: MessageStreamStatus;
     errorMessage?: string;
+    errorReference?: string | null;
     retryContent?: string;
     replyCardStatus?: MessageActionStatus;
     replyCardErrorCode?: string | null;

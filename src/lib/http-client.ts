@@ -13,6 +13,7 @@ interface ErrorEnvelope {
     message?: string;
     detail?: string;
     status?: number;
+    request_id?: string;
 }
 
 type HttpRequestOptions = Omit<RequestInit, "body" | "method">;
@@ -48,7 +49,7 @@ export async function throwApiErrorResponse(response: Response): Promise<never> 
         throw new UnauthorizedError(message);
     }
 
-    throw new ApiError(response.status, code, message);
+    throw new ApiError(response.status, code, message, payload?.request_id);
 }
 
 class HttpClient {

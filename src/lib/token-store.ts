@@ -9,7 +9,8 @@ export class ApiError extends Error {
     constructor(
         public status: number,
         public code?: string,
-        public detail?: string
+        public detail?: string,
+        public requestId?: string
     ) {
         super(detail || `API Error: ${status}`);
         this.name = "ApiError";

@@ -7,6 +7,7 @@ export interface MappedError {
   message: string;
   severity: ErrorSeverity;
   rawMessage?: string;
+  requestId?: string;
 }
 
 interface ErrorMapping {
@@ -30,11 +31,108 @@ export const ERROR_MESSAGE_MAP: Record<string, ErrorMapping> = {
   "502": { message: "服务暂时不可用，请稍后重试", severity: "error" },
   "503": { message: "服务暂时不可用，请稍后重试", severity: "error" },
   llm_service_error: {
-    message: "连接超时，请稍后重试",
+    message: "AI 服务暂时不可用，请稍后重试",
     severity: "error",
   },
   llm_stream_first_chunk_timeout: {
-    message: "AI 响应超时，请稍后重试",
+    message: "回复生成超时，请重试",
+    severity: "error",
+  },
+  chat_stream_failed: {
+    message: "回复生成失败，请重试",
+    severity: "error",
+  },
+  regen_stream_failed: {
+    message: "回复生成失败，请重试",
+    severity: "error",
+  },
+  continue_stream_failed: {
+    message: "回复生成失败，请重试",
+    severity: "error",
+  },
+  user_edit_stream_failed: {
+    message: "回复生成失败，请重试",
+    severity: "error",
+  },
+
+  // 基础服务错误码（与后端 ErrorCode 保持一致）
+  invalid_param: { message: "请求参数有误，请检查输入", severity: "error" },
+  validation_failed: { message: "提交的内容有误，请检查后重试", severity: "error" },
+  forbidden: { message: "没有权限执行此操作", severity: "error" },
+  resource_not_found: { message: "内容不存在或已被删除", severity: "error" },
+  resource_conflict: { message: "操作冲突，请刷新页面后重试", severity: "error" },
+  too_many_requests: { message: "操作太频繁，请稍后再试", severity: "warning" },
+  internal_error: { message: "服务器内部错误，请稍后重试", severity: "error" },
+  external_error: { message: "服务暂时不可用，请稍后重试", severity: "error" },
+  external_timeout: { message: "请求超时，请稍后重试", severity: "error" },
+  db_connection_error: { message: "服务暂时不可用，请稍后重试", severity: "error" },
+  memory_unavailable: { message: "服务暂时不可用，请稍后重试", severity: "error" },
+  upload_file_too_large: {
+    message: "文件过大，请选择 5MB 以内的文件",
+    severity: "error",
+  },
+  upload_file_type_not_allowed: {
+    message: "不支持该文件格式，请选择 JPG、PNG 或 WebP",
+    severity: "error",
+  },
+  stt_upstream_error: {
+    message: "语音识别服务暂时不可用，请稍后重试",
+    severity: "error",
+  },
+  stt_no_speech_detected: {
+    message: "未检测到语音，请重试",
+    severity: "info",
+  },
+  tts_upstream_error: {
+    message: "语音合成服务暂时不可用，请稍后重试",
+    severity: "error",
+  },
+  tts_candidate_forbidden: {
+    message: "无法播放这段语音",
+    severity: "error",
+  },
+  tts_candidate_invalid_author: {
+    message: "无法播放这段语音",
+    severity: "error",
+  },
+  voice_provider_rate_limited: {
+    message: "音色服务繁忙，请稍后重试",
+    severity: "warning",
+  },
+  voice_provider_unavailable: {
+    message: "音色服务暂时不可用，请稍后重试",
+    severity: "error",
+  },
+  voice_provider_upstream_error: {
+    message: "音色服务处理失败，请稍后重试",
+    severity: "error",
+  },
+  voice_provider_invalid_response: {
+    message: "音色服务响应异常，请稍后重试",
+    severity: "error",
+  },
+  voice_dependency_missing: {
+    message: "音色服务暂时不可用，请稍后重试",
+    severity: "error",
+  },
+  voice_api_key_missing: {
+    message: "音色服务暂时不可用，请稍后重试",
+    severity: "error",
+  },
+  stt_invalid_audio: {
+    message: "音频文件无法识别，请重新录音",
+    severity: "error",
+  },
+  stt_audio_empty: {
+    message: "没有录到声音，请重试",
+    severity: "warning",
+  },
+  stt_audio_too_large: {
+    message: "录音文件过大，请缩短录音时长",
+    severity: "error",
+  },
+  voice_profile_not_found: {
+    message: "音色不存在或已被删除",
     severity: "error",
   },
 
@@ -240,7 +338,10 @@ function parseAlibabaCloudError(errorMessage: string): AlibabaCloudError | null 
   };
 }
 
-function mapUpstreamCloudError(message: string | undefined): MappedError | null {
+function mapUpstreamCloudError(
+  message: string | undefined,
+  requestId?: string,
+): MappedError | null {
   if (!message) return null;
 
   const parsed = parseAlibabaCloudError(message);
@@ -252,6 +353,7 @@ function mapUpstreamCloudError(message: string | undefined): MappedError | null 
         message: upstreamMapped.message,
         severity: upstreamMapped.severity,
         rawMessage: parsed.upstream_message || message,
+        requestId,
       };
     }
   }
@@ -273,10 +375,11 @@ export function mapApiError(error: unknown): MappedError {
         message: "你当前已有有效权益，暂不可重复购买该档位",
         severity: "info",
         rawMessage: error.detail,
+        requestId: error.requestId,
       };
     }
 
-    const upstreamError = mapUpstreamCloudError(error.detail);
+    const upstreamError = mapUpstreamCloudError(error.detail, error.requestId);
     if (upstreamError) return upstreamError;
 
     const mapped = ERROR_MESSAGE_MAP[codeKey] || ERROR_MESSAGE_MAP[statusKey];
@@ -286,6 +389,7 @@ export function mapApiError(error: unknown): MappedError {
       message: mapped?.message || ERROR_MESSAGE_MAP.DEFAULT.message,
       severity: mapped?.severity || "error",
       rawMessage: error.detail || error.message,
+      requestId: error.requestId,
     };
   }
 
@@ -340,8 +444,55 @@ export function mapApiError(error: unknown): MappedError {
   };
 }
 
-export function getErrorMessage(error: unknown): string {
-  return mapApiError(error).message;
+export type ErrorContext = "default" | "chat" | "learning" | "forge";
+
+const CHAT_ERROR_CODES = new Set([
+  "llm_service_error",
+  "chat_stream_failed",
+  "regen_stream_failed",
+  "continue_stream_failed",
+  "user_edit_stream_failed",
+]);
+
+const CHAT_FALLBACK_MESSAGE = "回复生成失败，请重试";
+const LEARNING_FALLBACK_MESSAGE = "学习助手暂时不可用，请稍后重试";
+const FORGE_FALLBACK_MESSAGE = "角色生成失败，请重试";
+
+export function getErrorMessage(
+  error: unknown,
+  context: ErrorContext = "default",
+): string {
+  const mapped = mapApiError(error);
+
+  if (context === "chat") {
+    if (CHAT_ERROR_CODES.has(mapped.code)) {
+      return CHAT_FALLBACK_MESSAGE;
+    }
+    if (mapped.code === "NETWORK_ERROR") {
+      return "回复生成中断，网络似乎不太稳定";
+    }
+    if (mapped.code === "STREAM_TIMEOUT") {
+      return "回复生成超时，请重试";
+    }
+  }
+  if (
+    context === "learning" &&
+    (mapped.code === "llm_service_error" || mapped.code === "502")
+  ) {
+    return LEARNING_FALLBACK_MESSAGE;
+  }
+  if (
+    context === "forge" &&
+    (mapped.code === "llm_service_error" || mapped.code === "502")
+  ) {
+    return FORGE_FALLBACK_MESSAGE;
+  }
+
+  return mapped.message;
+}
+
+export function getErrorReference(error: unknown): string | null {
+  return error instanceof ApiError && error.requestId ? error.requestId : null;
 }
 
 export function isSevereError(error: unknown): boolean {

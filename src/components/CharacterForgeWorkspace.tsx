@@ -155,6 +155,7 @@ export default function CharacterForgeWorkspace({
     messages,
     isStreaming,
     error,
+    errorReference,
     isLoading,
     createdChatId,
     publishingCharacterId,
@@ -550,8 +551,15 @@ export default function CharacterForgeWorkspace({
       )}
       {error ? (
         <div className="mx-auto -mt-2 mb-4 w-full max-w-[48rem] px-4 @w-sm/main:px-6 @w-lg/main:px-16">
-          <div className="flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
-            <span>{error}</span>
+          <div className="flex items-start justify-between rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+            <div className="min-w-0">
+              <span>{error}</span>
+              {errorReference ? (
+                <span className="mt-1 block text-[11px] text-red-400">
+                  错误编号：{errorReference}
+                </span>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={clearError}

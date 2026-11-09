@@ -61,17 +61,13 @@ export async function consumeSseStream<T>(
  * Routes different error types to the `onError` callback:
  * - AbortError: silently ignored (user-initiated cancellation).
  * - UnauthorizedError: wrapped with a user-friendly message.
- * - ApiError: passed through directly so callers can inspect `.code` / `.status`.
+ * - ApiError: passed through directly so callers can map `.code` to copy and
+ *   surface `.requestId` as a support reference.
  * - Other errors: wrapped in an Error instance.
  */
-interface StreamErrorOptions {
-  apiErrorMode?: "pass-through" | "detail-error";
-}
-
 export function handleStreamError(
   error: unknown,
   onError: (error: Error) => void,
-  options: StreamErrorOptions = {},
 ): void {
   if (
     (error instanceof DOMException && error.name === "AbortError") ||
@@ -86,11 +82,7 @@ export function handleStreamError(
   }
 
   if (error instanceof ApiError) {
-    if (options.apiErrorMode === "detail-error") {
-      onError(new Error(error.detail || `API error: ${error.status}`));
-    } else {
-      onError(error);
-    }
+    onError(error);
     return;
   }
 
