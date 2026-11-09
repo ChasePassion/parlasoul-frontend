@@ -1,13 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, KeyboardEvent } from "react";
-import { Loader2, LoaderCircle, X } from "lucide-react";
+import { AudioLines, Loader2, LoaderCircle, X } from "lucide-react";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
 import ReplySuggestionsBar from "./ReplySuggestionsBar";
 import { SttRecorder } from "@/lib/voice/stt-recorder";
 import type { ReplySuggestion } from "@/lib/api";
-import type { ChatImageRef } from "@/lib/api-service";
+import type { ChatImageRef, ForgeAudioRef } from "@/lib/api-service";
+import { apiService } from "@/lib/api-service";
+import { getErrorMessage } from "@/lib/error-map";
 import { uploadChatImage, validateImageFiles } from "@/lib/chat-image-upload";
+import { formatClipDuration } from "@/lib/audio-format";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ImageLightbox } from "@/components/ImageLightbox";
@@ -30,6 +33,8 @@ function formatRecordingDuration(ms: number): string {
     const seconds = totalSeconds % 60;
     return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
+
+const CLIP_WAVE_BARS = [14, 22, 30, 18, 26, 12] as const;
 export type VoiceButtonState = "idle" | "connecting" | "active_ready" | "active_user_speaking";
 export type MicCaptureState = "hidden" | "mic_hot" | "mic_cold";
 
@@ -40,8 +45,16 @@ interface PendingImage {
     ref?: ChatImageRef;
 }
 
+interface PendingAudio {
+    id: string;
+    name: string;
+    status: "uploading" | "done" | "error";
+    durationSeconds: number;
+    ref?: ForgeAudioRef;
+}
+
 interface ChatInputProps {
-    onSend: (message: string, images?: ChatImageRef[]) => void;
+    onSend: (message: string, images?: ChatImageRef[], audios?: ForgeAudioRef[]) => void;
     disabled?: boolean;
     disabledReason?: string | null;
     roleName?: string;
@@ -49,6 +62,7 @@ interface ChatInputProps {
     replySuggestions?: ReplySuggestion[] | null;
     onSelectSuggestion?: (text: string) => void;
     onRegisterAddImages?: (fn: ((files: File[]) => void) | null) => void;
+    onRegisterAddAudios?: (fn: ((files: File[]) => void) | null) => void;
     // Phase 2
     onMicStart?: () => void;
     onMicCancel?: () => void;
@@ -70,6 +84,8 @@ interface ChatInputProps {
     /** Character-forge has no voice calls and no "continue the story" action. */
     showVoiceControls?: boolean;
     showContinueAction?: boolean;
+    /** When true, the "＋" menu offers a recording upload entry below the photo one. */
+    enableAudio?: boolean;
 }
 
 export default function ChatInput({
@@ -81,6 +97,7 @@ export default function ChatInput({
     replySuggestions,
     onSelectSuggestion,
     onRegisterAddImages,
+    onRegisterAddAudios,
     onMicStart,
     onMicCancel,
     isStreaming = false,
@@ -98,6 +115,7 @@ export default function ChatInput({
     onRegisterSetText,
     showVoiceControls = true,
     showContinueAction = true,
+    enableAudio = false,
 }: ChatInputProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const savedSelectionRef = useRef<Range | null>(null);
@@ -105,8 +123,10 @@ export default function ChatInput({
     const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
     const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
     const pendingImagesRef = useRef<PendingImage[]>([]);
+    const [pendingAudios, setPendingAudios] = useState<PendingAudio[]>([]);
     const [plusMenuOpen, setPlusMenuOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const audioInputRef = useRef<HTMLInputElement>(null);
     const [lightboxState, setLightboxState] = useState<{ open: boolean; index: number }>({ open: false, index: 0 });
 
     // Phase 2: recording state
@@ -242,6 +262,43 @@ export default function ChatInput({
         });
     }, []);
 
+    // Recordings wait in the composer like photos; only the send action ships them.
+    const addAudios = useCallback(
+        async (files: File[]) => {
+            const file = files[0];
+            if (!file) return;
+            if (files.length > 1) toast.error("一次只能放一段录音");
+            if (pendingAudios.length > 0) {
+                toast.error("输入框里已经有一段录音了");
+                return;
+            }
+            const pendingId = crypto.randomUUID();
+            setPendingAudios([
+                { id: pendingId, name: file.name, status: "uploading", durationSeconds: 0 },
+            ]);
+            try {
+                const ref = await apiService.uploadForgeAudio(file);
+                setPendingAudios((prev) =>
+                    prev.map((item) =>
+                        item.id === pendingId
+                            ? { ...item, status: "done" as const, durationSeconds: ref.duration_seconds, ref }
+                            : item,
+                    ),
+                );
+            } catch (error) {
+                setPendingAudios((prev) =>
+                    prev.map((item) => (item.id === pendingId ? { ...item, status: "error" as const } : item)),
+                );
+                toast.error(getErrorMessage(error));
+            }
+        },
+        [pendingAudios.length],
+    );
+
+    const removeAudio = useCallback((id: string) => {
+        setPendingAudios((prev) => prev.filter((item) => item.id !== id));
+    }, []);
+
     const handleFileChange = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
             const files = e.target.files;
@@ -257,6 +314,11 @@ export default function ChatInput({
         onRegisterAddImages?.(addImages);
         return () => onRegisterAddImages?.(null);
     }, [addImages, onRegisterAddImages]);
+
+    useEffect(() => {
+        onRegisterAddAudios?.(addAudios);
+        return () => onRegisterAddAudios?.(null);
+    }, [addAudios, onRegisterAddAudios]);
 
     const setEditorText = useCallback((text: string) => {
         const root = editorRef.current;
@@ -278,13 +340,21 @@ export default function ChatInput({
     const handleSend = useCallback(() => {
         const content = getEditorText().trim();
         const doneImages = pendingImages.filter((p) => p.status === "done" && p.ref).map((p) => p.ref!);
-        const uploading = pendingImages.some((p) => p.status === "uploading");
-        if ((!content && doneImages.length === 0) || disabled || uploading) return;
-        onSend(content, doneImages.length > 0 ? doneImages : undefined);
+        const doneAudios = pendingAudios.filter((p) => p.status === "done" && p.ref).map((p) => p.ref!);
+        const uploading =
+            pendingImages.some((p) => p.status === "uploading") ||
+            pendingAudios.some((p) => p.status === "uploading");
+        if ((!content && doneImages.length === 0 && doneAudios.length === 0) || disabled || uploading) return;
+        onSend(
+            content,
+            doneImages.length > 0 ? doneImages : undefined,
+            doneAudios.length > 0 ? doneAudios : undefined,
+        );
         setMessage("");
         clearPendingImages();
+        setPendingAudios([]);
         clearEditor();
-    }, [clearEditor, clearPendingImages, disabled, getEditorText, onSend, pendingImages]);
+    }, [clearEditor, clearPendingImages, disabled, getEditorText, onSend, pendingAudios, pendingImages]);
 
     useEffect(() => {
         clearEditor();
@@ -626,7 +696,10 @@ export default function ChatInput({
     }, [appendTextToEditor, inputAreaState, pendingTranscript]);
 
     const hasText = message.length > 0;
-    const hasUploading = pendingImages.some((p) => p.status === "uploading");
+    const hasAttachments = pendingImages.length > 0 || pendingAudios.length > 0;
+    const hasUploading =
+        pendingImages.some((p) => p.status === "uploading") ||
+        pendingAudios.some((p) => p.status === "uploading");
     const isInRecordingFlow = inputAreaState === "recording" || inputAreaState === "transcribing";
     const isVoiceConnecting = voiceButtonState === "connecting";
     const isVoiceActive =
@@ -755,8 +828,8 @@ export default function ChatInput({
                                     }
                                 }}
                             >
-                                {/* ── Header area: image preview ── */}
-                                {pendingImages.length > 0 && (
+                                {/* ── Header area: image and recording previews ── */}
+                                {(pendingImages.length > 0 || pendingAudios.length > 0) && (
                                     <div className="flex flex-wrap gap-2 px-3 py-2 [grid-area:header]">
                                         {pendingImages.map((img) => (
                                             <div key={img.id} className="relative w-20 h-20 shrink-0">
@@ -784,6 +857,54 @@ export default function ChatInput({
                                                     type="button"
                                                     className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors"
                                                     onClick={() => removeImage(img.id)}
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {pendingAudios.map((audio) => (
+                                            <div key={audio.id} className="relative w-20 h-20 shrink-0">
+                                                <div className="relative flex h-20 w-20 items-end justify-center overflow-hidden rounded-xl bg-[#3964FE]/10 text-[#3964FE]">
+                                                    <div
+                                                        className="flex h-full w-full items-center justify-center gap-[3px]"
+                                                        aria-hidden="true"
+                                                    >
+                                                        {CLIP_WAVE_BARS.map((height, index) => (
+                                                            <span
+                                                                key={index}
+                                                                className="w-[3px] rounded-full bg-current opacity-75"
+                                                                style={{ height: `${height}px` }}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                    <span className="absolute left-1.5 top-1 text-[10px] font-medium tabular-nums opacity-80">
+                                                        {audio.status === "done"
+                                                            ? formatClipDuration(audio.durationSeconds)
+                                                            : ""}
+                                                    </span>
+                                                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 to-transparent px-1.5 pb-1 pt-2">
+                                                        <span
+                                                            className="block truncate text-[10px] leading-3 text-white"
+                                                            title={audio.name}
+                                                        >
+                                                            {audio.name}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                {audio.status === "uploading" && (
+                                                    <div className="absolute inset-0 rounded-xl bg-black/10 flex items-center justify-center">
+                                                        <Loader2 className="w-5 h-5 text-white animate-spin" />
+                                                    </div>
+                                                )}
+                                                {audio.status === "error" && (
+                                                    <div className="absolute inset-0 rounded-xl bg-black/30 flex items-center justify-center">
+                                                        <span className="text-white text-xs">!</span>
+                                                    </div>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors"
+                                                    onClick={() => removeAudio(audio.id)}
                                                 >
                                                     <X className="w-3 h-3" />
                                                 </button>
@@ -894,6 +1015,23 @@ export default function ChatInput({
                                                             <span className="text-muted-foreground text-xs">上传聊天图片</span>
                                                         </span>
                                                     </button>
+                                                    {enableAudio ? (
+                                                        <button
+                                                            type="button"
+                                                            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent"
+                                                            onClick={() => {
+                                                                audioInputRef.current?.click();
+                                                                setPlusMenuOpen(false);
+                                                            }}
+                                                            disabled={disabled}
+                                                        >
+                                                            <AudioLines className="h-5 w-5 shrink-0" />
+                                                            <span className="flex min-w-0 flex-col items-start text-left">
+                                                                <span>音频</span>
+                                                                <span className="text-muted-foreground text-xs">上传录音</span>
+                                                            </span>
+                                                        </button>
+                                                    ) : null}
                                                     {showVoiceControls ? (
                                                         <button
                                                             type="button"
@@ -997,7 +1135,7 @@ export default function ChatInput({
                                                                                 : undefined
                                                                         }
                                                                         aria-label={
-                                                                            hasText || !showContinueAction
+                                                                            hasText || hasAttachments || !showContinueAction
                                                                                 ? "发送消息"
                                                                                 : voiceButtonState === "connecting"
                                                                                 ? "取消语音连接"
@@ -1018,7 +1156,7 @@ export default function ChatInput({
                                                                         disabled={
                                                                             hasUploading ||
                                                                             isInRecordingFlow ||
-                                                                            (!showContinueAction && !hasText) ||
+                                                                            (!showContinueAction && !hasText && !hasAttachments) ||
                                                                             (disabled &&
                                                                                 !hasText &&
                                                                                 !isVoiceActive &&
@@ -1027,7 +1165,7 @@ export default function ChatInput({
                                                                         }
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            if (!hasText) {
+                                                                            if (!hasText && !hasAttachments) {
                                                                                 if (!showContinueAction) return;
                                                                                 if (isVoiceActive || voiceButtonState === "connecting") {
                                                                                     handleVoiceButtonClick();
@@ -1039,7 +1177,7 @@ export default function ChatInput({
                                                                             handleSend();
                                                                         }}
                                                                     >
-                                                                        {hasText || !showContinueAction ? (
+                                                                        {hasText || hasAttachments || !showContinueAction ? (
                                                                             <SpriteIcon name="laptop" size={20} className="brightness-0 invert" />
                                                                         ) : isVoiceConnecting ? (
                                                                             <span className="flex items-center gap-2 whitespace-nowrap">
@@ -1112,6 +1250,22 @@ export default function ChatInput({
                     type="file"
                     onChange={handleFileChange}
                 />
+                {enableAudio ? (
+                    <input
+                        ref={audioInputRef}
+                        className="sr-only select-none"
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        id="upload-audio"
+                        accept="audio/wav,audio/mp3,audio/mpeg,audio/m4a,audio/x-m4a"
+                        type="file"
+                        onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            if (file) addAudios([file]);
+                        }}
+                    />
+                ) : null}
             </div>
         </div>
     );

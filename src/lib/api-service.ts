@@ -942,16 +942,6 @@ export interface UploadImageResult extends CompleteUploadResponse {
   url: string;
 }
 
-export interface ChatImageUploadResponse {
-  image_key: string;
-  original_url: string;
-  display_url: string;
-  content_type: string;
-  size_bytes: number;
-  width: number;
-  height: number;
-}
-
 export interface ForgeSessionSummary {
   id: string;
   title: string;
@@ -962,6 +952,22 @@ export interface ForgeSessionSummary {
   last_message?: string | null;
 }
 
+export interface ForgeAudioRef {
+  audio_key: string;
+  name: string;
+  duration_seconds: number;
+}
+
+export interface ChatImageUploadResponse {
+  image_key: string;
+  original_url: string;
+  display_url: string;
+  content_type: string;
+  size_bytes: number;
+  width: number;
+  height: number;
+}
+
 export interface ForgeMessageItem {
   id: string;
   seq: number;
@@ -969,6 +975,7 @@ export interface ForgeMessageItem {
   content?: string | null;
   ui_payloads: ForgeUiPayload[];
   images?: ChatImageRef[];
+  audios?: ForgeAudioRef[];
   created_at?: string | null;
 }
 
@@ -1015,8 +1022,18 @@ export interface ForgeCharacterPayload {
   };
 }
 
+export interface ForgeVoiceClonedPayload {
+  type: "voice_cloned";
+  voice_profile_id: string;
+  display_name: string;
+  sample_text: string;
+  preview_url: string;
+  duration_seconds: number;
+}
+
 export type ForgeUiPayload =
   | ForgeVoicePreviewPayload
+  | ForgeVoiceClonedPayload
   | ForgeCharacterPayload;
 
 export interface ForgeSteerDrainedItem {
@@ -1039,6 +1056,7 @@ export type ForgeStreamEvent =
   | { type: "steer_drained"; items: ForgeSteerDrainedItem[] }
   | { type: "steer_discarded"; steer_ids: string[]; reason?: string }
   | { type: "voice_preview"; payload: ForgeVoicePreviewPayload }
+  | { type: "voice_cloned"; payload: ForgeVoiceClonedPayload }
   | { type: "character_created"; payload: ForgeCharacterPayload }
   | { type: "character_updated"; payload: ForgeCharacterPayload }
   | { type: "done"; assistant_message_id?: string | null }
@@ -1057,26 +1075,6 @@ export class ApiService {
       return throwApiErrorResponse(response);
     }
     return response.arrayBuffer();
-  }
-
-  async uploadChatImageFile(file: File): Promise<ChatImageUploadResponse> {
-    const formData = new FormData();
-    formData.append("file", file);
-    const response = await fetchWithBetterAuth("/v1/uploads/chat-image", {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      return throwApiErrorResponse(response);
-    }
-
-    const payload = await parseJsonResponse(response);
-    const data =
-      payload && typeof payload === "object" && "data" in payload
-        ? (payload as { data: ChatImageUploadResponse }).data
-        : (payload as ChatImageUploadResponse);
-    return data;
   }
 
   async uploadFile(
@@ -1803,6 +1801,46 @@ export class ApiService {
     );
   }
 
+  async uploadChatImageFile(file: File): Promise<ChatImageUploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetchWithBetterAuth("/v1/uploads/chat-image", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      return throwApiErrorResponse(response);
+    }
+
+    const payload = await parseJsonResponse(response);
+    const data =
+      payload && typeof payload === "object" && "data" in payload
+        ? (payload as { data: ChatImageUploadResponse }).data
+        : (payload as ChatImageUploadResponse);
+    return data;
+  }
+
+  async uploadForgeAudio(file: File): Promise<ForgeAudioRef> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetchWithBetterAuth("/v1/uploads/audio", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      return throwApiErrorResponse(response);
+    }
+
+    const payload = await parseJsonResponse(response);
+    const data =
+      payload && typeof payload === "object" && "data" in payload
+        ? (payload as { data: ForgeAudioRef }).data
+        : (payload as ForgeAudioRef);
+    return data;
+  }
+
   async createVoiceClone(formData: FormData): Promise<VoiceProfile> {
     const response = await fetchWithBetterAuth("/v1/voices/clones", {
       method: "POST",
@@ -1997,6 +2035,7 @@ export class ApiService {
     handlers: {
       signal?: AbortSignal;
       images?: ChatImageRef[];
+      audios?: ForgeAudioRef[];
       onEvent: (event: ForgeStreamEvent) => void;
       onError: (error: Error) => void;
     },
@@ -2010,7 +2049,11 @@ export class ApiService {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
           },
-          body: JSON.stringify({ content, images: handlers.images ?? [] }),
+          body: JSON.stringify({
+            content,
+            images: handlers.images ?? [],
+            audios: handlers.audios ?? [],
+          }),
           signal: handlers.signal,
         },
       );

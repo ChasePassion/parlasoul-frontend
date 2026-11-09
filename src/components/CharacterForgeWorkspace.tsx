@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
+  AudioLines,
   BookOpen,
   Brain,
   Check,
@@ -13,6 +14,7 @@ import {
   Loader2,
   Mic,
   Pencil,
+  Scissors,
   Search,
   UserPlus,
   Wrench,
@@ -30,6 +32,7 @@ import CharacterChatDialog from "@/components/CharacterChatDialog";
 import Markdown from "@/components/Markdown";
 import ChatMainFrame from "@/components/layout/ChatMainFrame";
 import ForgeCharacterCard from "@/components/ForgeCharacterCard";
+import ForgeVoiceClonedCard from "@/components/ForgeVoiceClonedCard";
 import ForgeVoicePreviewCard from "@/components/ForgeVoicePreviewCard";
 import {
   useCharacterForge,
@@ -37,10 +40,14 @@ import {
 } from "@/hooks/useCharacterForge";
 import type {
   ChatImageRef,
+  ForgeAudioRef,
   ForgeCharacterPayload,
   ForgeUiPayload,
 } from "@/lib/api";
+import { toast } from "sonner";
+import { formatAudioKind, formatClipDuration } from "@/lib/audio-format";
 import { resolveCharacterAvatarSrc } from "@/lib/character-avatar";
+import CandidateEntry, { type CreateIntent } from "@/components/CandidateEntry";
 
 interface CharacterForgeWorkspaceProps {
   onManualCreate: () => void;
@@ -50,18 +57,45 @@ interface CharacterForgeWorkspaceProps {
 /** Distance from the bottom that still counts as "at bottom". */
 const BOTTOM_EPSILON_PX = 48;
 
+
+function AudioMessage({ audio }: { audio: ForgeAudioRef }) {
+  return (
+    <div className="flex w-[288px] max-w-[80%] items-center gap-3 self-end rounded-2xl border border-divider bg-white px-3 py-2.5">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#3964FE]/10 text-[#3964FE]">
+        <AudioLines className="h-5 w-5" />
+      </span>
+      <span className="flex min-w-0 flex-col gap-[5px]">
+        <span
+          className="truncate text-[13px] font-medium text-text-primary"
+          title={audio.name}
+        >
+          {audio.name}
+        </span>
+        <span className="text-[11.5px] tabular-nums text-gray-500">
+          {formatAudioKind(audio.name)} · {formatClipDuration(audio.duration_seconds)}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function isAtBottom(node: HTMLDivElement): boolean {
   return (
     node.scrollHeight - node.clientHeight - node.scrollTop <= BOTTOM_EPSILON_PX
   );
 }
 
-const EXAMPLE_PROMPTS = [
-  "在伦敦修古籍的中年女性",
-  "会写歌的地下乐队鼓手",
-  "说话很冲但心软的急诊科医生",
-  "基于真实历史人物做改编",
-];
+const FORGE_WELCOME_TEXT =
+  "告诉我你想要一个什么样的角色。身份、性格、你和 TA 的关系，说一点就够了。";
+
+/** Backend accepts these recording formats for voice cloning. */
+const AUDIO_FILE_EXTENSIONS = new Set(["wav", "mp3", "m4a", "flac", "opus"]);
+
+function isAudioFile(file: File): boolean {
+  if (file.type.startsWith("audio/")) return true;
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return AUDIO_FILE_EXTENSIONS.has(extension);
+}
 
 const TOOL_ICONS: Record<string, typeof Wrench> = {
   load_skill: BookOpen,
@@ -71,6 +105,9 @@ const TOOL_ICONS: Record<string, typeof Wrench> = {
   update_character: Pencil,
   search_web: Search,
   read_webpage: FileText,
+  inspect_audio: AudioLines,
+  crop_audio: Scissors,
+  clone_voice: AudioLines,
 };
 
 export function ThoughtPart({ text, active }: { text: string; active: boolean }) {
@@ -131,6 +168,7 @@ export default function CharacterForgeWorkspace({
     clearError,
   } = useCharacterForge();
 
+  const [isStartingTurn, setStartingTurn] = useState(false);
   const [isHistoryOpen, setHistoryOpen] = useState(false);
   const [showBackToBottom, setShowBackToBottom] = useState(false);
   const [lightbox, setLightbox] = useState<{
@@ -144,7 +182,55 @@ export default function CharacterForgeWorkspace({
   } | null>(null);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
   const setComposerTextRef = useRef<((text: string) => void) | null>(null);
+  const addComposerImagesRef = useRef<((files: File[]) => void) | null>(null);
+  const addComposerAudiosRef = useRef<((files: File[]) => void) | null>(null);
   const followingRef = useRef(true);
+
+  const visibleMessages = useMemo(
+    () =>
+      messages.filter(
+        (message) =>
+          message.role !== "assistant" ||
+          message.content.trim() !== FORGE_WELCOME_TEXT,
+      ),
+    [messages],
+  );
+
+  // A turn is "starting" from the click until the first message lands, so the
+  // candidate entry does not flash back while the session is being created.
+  const runTurn = useCallback(async (run: () => Promise<void>) => {
+    setStartingTurn(true);
+    try {
+      await run();
+    } finally {
+      setStartingTurn(false);
+    }
+  }, []);
+
+  const handlePickIntent = useCallback(
+    (next: CreateIntent) => {
+      void runTurn(() =>
+        send(next === "character" ? "我想创建一个角色" : "我想克隆一个音色"),
+      );
+    },
+    [runTurn, send],
+  );
+
+  // Both kinds of attachment wait in the composer; the user decides when to send.
+  const handleDropFiles = useCallback((files: File[]) => {
+    const images = files.filter((file) => file.type.startsWith("image/"));
+    const audios = files.filter(isAudioFile);
+    if (images.length > 0) {
+      addComposerImagesRef.current?.(images);
+    }
+    if (audios.length > 0) {
+      if (audios.length > 1) toast.error("一次只能放一段录音");
+      addComposerAudiosRef.current?.([audios[0]]);
+    }
+    if (images.length === 0 && audios.length === 0) {
+      toast.error("只支持图片或录音文件");
+    }
+  }, []);
 
   const forgeCharacter = useMemo(
     () => ({
@@ -263,6 +349,14 @@ export default function CharacterForgeWorkspace({
         />
       );
     }
+    if (payload.type === "voice_cloned") {
+      return (
+        <ForgeVoiceClonedCard
+          key={`${payload.voice_profile_id}-${payload.display_name}`}
+          payload={payload}
+        />
+      );
+    }
     return (
       <ForgeCharacterCard
         key={`${payload.type}-${payload.character_id}`}
@@ -301,7 +395,7 @@ export default function CharacterForgeWorkspace({
     />
   );
 
-  const thread = (
+  const forgeThread = (
     <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-6 px-4 pb-4 pt-6">
       {isLoading ? (
         <div className="flex flex-col gap-3" aria-label="正在加载对话">
@@ -311,10 +405,10 @@ export default function CharacterForgeWorkspace({
         </div>
       ) : null}
 
-      {messages.map((message) => {
+      {visibleMessages.map((message) => {
         if (message.role === "user") {
           return (
-            <div key={message.id} className="flex w-full flex-col items-end">
+            <div key={message.id} className="flex w-full flex-col items-end gap-1.5">
               {message.images.length > 0 ? (
                 <ImageGrid
                   images={message.images}
@@ -324,9 +418,14 @@ export default function CharacterForgeWorkspace({
                   }
                 />
               ) : null}
-              <div className="bubble-user max-w-[80%] px-4 py-2 text-sm leading-6 text-text-primary">
-                <p className="whitespace-pre-wrap">{message.content}</p>
-              </div>
+              {message.audios.map((audio) => (
+                <AudioMessage key={audio.audio_key} audio={audio} />
+              ))}
+              {message.content.trim() ? (
+                <div className="bubble-user max-w-[80%] px-4 py-2 text-sm leading-6 text-text-primary">
+                  <p className="whitespace-pre-wrap">{message.content}</p>
+                </div>
+              ) : null}
               {message.steerStatus === "queued" ? (
                 <div className="mt-1 pr-1 text-[11px] text-gray-400">
                   等待应用到当前对话
@@ -385,23 +484,15 @@ export default function CharacterForgeWorkspace({
           </div>
         );
       })}
-
-      {!isLoading && messages.length <= 1 && !isStreaming ? (
-        <div className="flex flex-wrap gap-2">
-          {EXAMPLE_PROMPTS.map((prompt) => (
-            <button
-              key={prompt}
-              type="button"
-              onClick={() => setComposerTextRef.current?.(prompt)}
-              className="rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-black/[0.03]"
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
+
+  const thread =
+    !isLoading && !isStartingTurn && visibleMessages.length === 0 ? (
+      <CandidateEntry onPick={handlePickIntent} disabled={isStreaming} />
+    ) : (
+      forgeThread
+    );
 
   const composer = (
     <>
@@ -436,14 +527,21 @@ export default function CharacterForgeWorkspace({
         </div>
       ) : (
         <ChatInput
-          onSend={(message, images) => {
-            void send(message, images);
+          onSend={(message, images, audios) => {
+            void runTurn(() => send(message, images, audios));
           }}
           isStreaming={isStreaming}
           onInterrupt={stop}
           streamingSendable
           showVoiceControls={false}
           showContinueAction={false}
+          enableAudio
+          onRegisterAddImages={(fn) => {
+            addComposerImagesRef.current = fn;
+          }}
+          onRegisterAddAudios={(fn) => {
+            addComposerAudiosRef.current = fn;
+          }}
           placeholder="说说你想要一个什么样的角色，或继续补充要求…"
           onRegisterSetText={(fn) => {
             setComposerTextRef.current = fn;
@@ -474,6 +572,8 @@ export default function CharacterForgeWorkspace({
         thread={thread}
         composer={composer}
         scrollRootRef={scrollRootRef}
+        onDropFiles={handleDropFiles}
+        dropLabel="释放以添加图片或录音"
       />
 
       <ChatHistorySidebar

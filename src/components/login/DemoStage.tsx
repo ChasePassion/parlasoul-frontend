@@ -9,6 +9,7 @@ import ChatMessage, { type Message } from "@/components/ChatMessage";
 import { ThoughtPart, ToolEventRow } from "@/components/CharacterForgeWorkspace";
 import FeedbackCardPopover from "@/components/FeedbackCardPopover";
 import ForgeCharacterCard from "@/components/ForgeCharacterCard";
+import ForgeVoiceClonedCard from "@/components/ForgeVoiceClonedCard";
 import ForgeVoicePreviewCard from "@/components/ForgeVoicePreviewCard";
 import Markdown from "@/components/Markdown";
 import ReplyCardPopover from "@/components/ReplyCardPopover";
@@ -1044,6 +1045,8 @@ function CreateScene({
                   <div key={`payload-${index}`} className="w-full">
                     {part.payload.type === "voice_preview" ? (
                       <ForgeVoicePreviewCard payload={part.payload} />
+                    ) : part.payload.type === "voice_cloned" ? (
+                      <ForgeVoiceClonedCard payload={part.payload} />
                     ) : (
                       <ForgeCharacterCard
                         payload={part.payload}

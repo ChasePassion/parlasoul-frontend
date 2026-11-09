@@ -12,6 +12,7 @@ import {
   steerForgeMessage,
   streamForgeMessage,
   type ChatImageRef,
+  type ForgeAudioRef,
   type ForgeMessageItem,
   type ForgeSessionDetail,
   type ForgeSessionSummary,
@@ -45,6 +46,7 @@ export interface ForgeMessage {
   content: string;
   parts: ForgeMessagePart[];
   images: ChatImageRef[];
+  audios: ForgeAudioRef[];
   createdAt?: string | null;
   streaming?: boolean;
   steerStatus?: ForgeSteerStatus;
@@ -75,7 +77,11 @@ interface UseCharacterForgeResult {
   createdCharacterId: string | null;
   createdChatId: string | null;
   publishingCharacterId: string | null;
-  send: (content: string, images?: ChatImageRef[]) => Promise<void>;
+  send: (
+    content: string,
+    images?: ChatImageRef[],
+    audios?: ForgeAudioRef[],
+  ) => Promise<void>;
   steer: (content: string) => Promise<void>;
   publishCreatedCharacter: () => Promise<void>;
   stop: () => void;
@@ -100,6 +106,7 @@ function mapMessage(item: ForgeMessageItem): ForgeMessage {
     content: item.content ?? "",
     parts,
     images: item.images ?? [],
+    audios: item.audios ?? [],
     createdAt: item.created_at ?? null,
   };
 }
@@ -149,6 +156,7 @@ function localWelcomeMessage(): ForgeMessage {
     content: FORGE_WELCOME_MESSAGE,
     parts: [{ type: "content", text: FORGE_WELCOME_MESSAGE }],
     images: [],
+    audios: [],
   };
 }
 
@@ -378,6 +386,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
           content: text,
           parts: [],
           images: [],
+          audios: [],
           steerStatus: "queued",
         },
       ]);
@@ -408,9 +417,9 @@ export function useCharacterForge(): UseCharacterForgeResult {
   );
 
   const send = useCallback(
-    async (content: string, images?: ChatImageRef[]) => {
+    async (content: string, images?: ChatImageRef[], audios?: ForgeAudioRef[]) => {
       const text = content.trim();
-      if (!text) return;
+      if (!text && !(audios?.length ?? 0)) return;
 
       let sessionId = activeSessionIdRef.current;
       if (!sessionId) {
@@ -447,6 +456,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
           content: text,
           parts: [],
           images: images ?? [],
+          audios: audios ?? [],
         },
         {
           id: assistantMessageId,
@@ -454,6 +464,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
           content: "",
           parts: [],
           images: [],
+          audios: [],
           streaming: true,
         },
       ]);
@@ -533,6 +544,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
       await streamForgeMessage(sessionId, text, {
         signal: controller.signal,
         images,
+        audios,
         onEvent: (event) => {
           if (event.type === "chunk") {
             setToolStatus(null);
@@ -574,6 +586,7 @@ export function useCharacterForge(): UseCharacterForgeResult {
                   content: "",
                   parts: [],
                   images: [],
+                  audios: [],
                   streaming: true,
                 },
               ];
@@ -589,6 +602,11 @@ export function useCharacterForge(): UseCharacterForgeResult {
             );
           } else if (event.type === "voice_preview") {
             appendPayload(event.payload);
+          } else if (event.type === "voice_cloned") {
+            appendPayload(event.payload);
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.voices.all(user?.id ?? null),
+            });
           } else if (event.type === "character_created") {
             appendPayload(event.payload);
             setCreatedCharacterId(event.payload.character_id);

@@ -109,14 +109,6 @@ export default function ForgeVoicePreviewCard({
         「{payload.sample_text}」
       </p>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 px-0.5 text-[11px] tabular-nums text-text-tertiary">
-        <span>语速 {payload.speech_rate.toFixed(2)}x</span>
-        <span className="text-black/15">·</span>
-        <span>音调 {payload.pitch_rate.toFixed(2)}</span>
-        <span className="text-black/15">·</span>
-        <span>音量 {payload.volume}</span>
-      </div>
-
       {error ? (
         <p className="mt-1.5 text-xs text-red-500">{error}</p>
       ) : null}
