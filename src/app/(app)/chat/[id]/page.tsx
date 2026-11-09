@@ -894,7 +894,11 @@ export default function ChatPage() {
                 header={headerContent}
                 thread={threadContent}
                 composer={composerContent}
-                onDropImages={(files) => chatInputAddImagesRef.current?.(files)}
+                onDropFiles={(files) =>
+                    chatInputAddImagesRef.current?.(
+                        files.filter((file) => file.type.startsWith("image/")),
+                    )
+                }
             />
 
             <ChatHistorySidebar

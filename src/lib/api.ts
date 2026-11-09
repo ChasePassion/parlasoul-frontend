@@ -329,6 +329,7 @@ export const deleteForgeSession = apiService.deleteForgeSession.bind(apiService)
 export const renameForgeSession = apiService.renameForgeSession.bind(apiService);
 export const streamForgeMessage = apiService.streamForgeMessage.bind(apiService);
 export const steerForgeMessage = apiService.steerForgeMessage.bind(apiService);
+export const uploadForgeAudio = apiService.uploadForgeAudio.bind(apiService);
 export const getForgeVoicePreviewAudio =
   apiService.getForgeVoicePreviewAudio.bind(apiService);
 
@@ -423,6 +424,8 @@ export type {
   ForgeSessionDetail,
   ForgeSessionList,
   ForgeVoicePreviewPayload,
+  ForgeVoiceClonedPayload,
+  ForgeAudioRef,
   ForgeCharacterPayload,
   ForgeUiPayload,
   ForgeStreamEvent,

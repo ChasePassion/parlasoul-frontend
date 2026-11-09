@@ -62,16 +62,11 @@ export async function uploadChatImage(file: File): Promise<ChatImageUploadResult
 
   const compressed = await compressImage(file);
   const [result, dataUrl] = await Promise.all([
-    apiService.uploadFile(
+    apiService.uploadChatImageFile(
       new File([compressed], file.name, { type: "image/jpeg" }),
-      { kind: "chat_image" },
     ),
     blobToDataUrl(compressed),
   ]);
-
-  if (!result.original_url || !result.display_url) {
-    throw new Error("上传结果缺少图片 URL");
-  }
 
   return {
     ref: {
