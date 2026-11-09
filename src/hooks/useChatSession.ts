@@ -23,7 +23,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { mapCharacterToSidebar } from "@/lib/character-adapter";
 import { snapshotContainsTurnIds } from "@/lib/chat-turn-snapshot";
-import { ERROR_MESSAGE_MAP, getErrorMessage } from "@/lib/error-map";
+import { ERROR_MESSAGE_MAP, getErrorMessage, getErrorReference } from "@/lib/error-map";
 import { chatTurnsQueryOptions, queryKeys } from "@/lib/query";
 import type { TtsPlaybackManager } from "@/lib/voice/tts-playback-manager";
 import { toast } from "sonner";
@@ -131,8 +131,7 @@ const mapTurnsPageMessage = (turn: TurnsPageResponse["turns"][number]): Message 
       : undefined,
     errorMessage: isTurnError
       ? ERROR_MESSAGE_MAP[turn.primary_candidate.extra?.error_code ?? ""]?.message
-        ?? turn.primary_candidate.extra?.error_message
-        ?? "操作失败，请稍后重试"
+        ?? ERROR_MESSAGE_MAP.chat_stream_failed.message
       : undefined,
     replyCardStatus: isAssistant ? (replyCard ? "ready" : "idle") : undefined,
     replyCardErrorCode: null,
@@ -596,7 +595,8 @@ export function useChatSession({
       targetMessageIds: string[],
       retryContent?: string,
     ) => {
-      const errorMessage = getErrorMessage(err);
+      const errorMessage = getErrorMessage(err, "chat");
+      const errorReference = getErrorReference(err);
       setMessages((prev) =>
         prev.map((msg) =>
           targetMessageIds.includes(msg.id)
@@ -605,6 +605,7 @@ export function useChatSession({
                 content: "",
                 messageStreamStatus: "error" as const,
                 errorMessage,
+                errorReference,
                 retryContent,
               }
             : msg,
@@ -782,7 +783,8 @@ export function useChatSession({
               regenMetaTimeoutId = null;
             }
             hasStreamError = true;
-            const errorMessage = getErrorMessage(err);
+            const errorMessage = getErrorMessage(err, "chat");
+            const errorReference = getErrorReference(err);
             setMessages((prev) =>
               prev.map((message) =>
                 message.id === turnId
@@ -791,6 +793,7 @@ export function useChatSession({
                       content: "",
                       messageStreamStatus: "error",
                       errorMessage,
+                      errorReference,
                       replyCardStatus:
                         deriveReplyCardStatus(message) === "loading"
                           ? "idle"
@@ -1017,7 +1020,8 @@ export function useChatSession({
               continueMetaTimeoutId = null;
             }
             hasStreamError = true;
-            const errorMessage = getErrorMessage(err);
+            const errorMessage = getErrorMessage(err, "chat");
+            const errorReference = getErrorReference(err);
             setMessages((prev) =>
               prev.map((message) =>
                 message.id === tempAssistantId || message.id === resolvedAssistantMessageId
@@ -1026,6 +1030,7 @@ export function useChatSession({
                       content: "",
                       messageStreamStatus: "error",
                       errorMessage,
+                      errorReference,
                       replyCardStatus:
                         deriveReplyCardStatus(message) === "loading"
                           ? "idle"
@@ -1296,7 +1301,8 @@ export function useChatSession({
               editMetaTimeoutId = null;
             }
             hasStreamError = true;
-            const errorMessage = getErrorMessage(err);
+            const errorMessage = getErrorMessage(err, "chat");
+            const errorReference = getErrorReference(err);
               setMessages((prev) =>
                 prev.map((message) =>
                   message.id === tempAssistantId ||
@@ -1307,6 +1313,7 @@ export function useChatSession({
                         content: "",
                         messageStreamStatus: "error",
                         errorMessage,
+                        errorReference,
                         replyCardStatus:
                           deriveReplyCardStatus(message) === "loading"
                             ? "idle"
@@ -1648,7 +1655,8 @@ export function useChatSession({
                 clearTimeout(sendMetaTimeoutId);
                 sendMetaTimeoutId = null;
               }
-              const errorMessage = getErrorMessage(err);
+              const errorMessage = getErrorMessage(err, "chat");
+              const errorReference = getErrorReference(err);
               setMessages((prev) =>
                 prev.map((message) =>
                   message.id === tempAssistantId ||
@@ -1658,6 +1666,7 @@ export function useChatSession({
                         content: "",
                         messageStreamStatus: "error",
                         errorMessage,
+                        errorReference,
                         replyCardStatus:
                           deriveReplyCardStatus(message) === "loading"
                             ? "idle"

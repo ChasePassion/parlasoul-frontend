@@ -813,6 +813,11 @@ export default function ChatPage() {
                         </AlertDialogTitle>
                         <AlertDialogDescription className="text-gray-600">
                             {micDialogMessage}
+                            {realtimeSession.lastErrorReference ? (
+                                <span className="mt-2 block text-xs text-gray-400">
+                                    错误编号：{realtimeSession.lastErrorReference}
+                                </span>
+                            ) : null}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

@@ -1026,7 +1026,14 @@ export default function ChatThread({
                             <div className="mx-auto w-full max-w-[44rem] lg:max-w-[calc(100%-320px)]">
                                 <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
                                     <AlertCircle className="h-4 w-4 shrink-0" />
-                                    <span>{message.errorMessage ?? "操作失败，请稍后重试"}</span>
+                                    <div className="min-w-0">
+                                        <span>{message.errorMessage ?? "操作失败，请稍后重试"}</span>
+                                        {message.errorReference ? (
+                                            <span className="mt-1 block text-[11px] text-red-400">
+                                                错误编号：{message.errorReference}
+                                            </span>
+                                        ) : null}
+                                    </div>
                                     {canRegen && (
                                         <button
                                             type="button"

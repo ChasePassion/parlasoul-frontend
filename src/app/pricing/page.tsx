@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import PricingPageContent from "@/components/billing/PricingPageContent";
 import { isBillingCheckoutDisabled } from "@/lib/billing-flags";
 import { getPricingCatalog } from "@/lib/dodo-payments";
+import { getErrorMessage } from "@/lib/error-map";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +28,7 @@ export default async function PricingPage() {
       </Suspense>
     );
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "价格信息暂时不可用，请稍后重试。";
+    const message = getErrorMessage(error);
 
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--workspace-bg)] px-6">
