@@ -280,6 +280,10 @@ strong,
   outline-width: 0;
   outline-style: none;
   position: relative;
+  /* Keep an empty editor as tall as one text line so the placeholder shares
+     the same baseline as typed text and the 36px composer buttons.
+     border-box: min-height must also cover the 1rem bottom padding. */
+  min-height: calc(1lh + 1rem);
 }
 
 .wcDTda_fallbackTextarea,
