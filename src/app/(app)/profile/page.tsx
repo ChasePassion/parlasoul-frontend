@@ -457,7 +457,7 @@ export default function ProfilePage() {
                 entityName={characterToDelete?.name || ""}
                 entityLabel="角色"
                 title="删除角色"
-                description={`删除角色 "${characterToDelete?.name || ""}" 后，它的全部聊天记录与统计数据会被永久移除，已分享的链接也会失效，无法恢复。`}
+                description={`删除角色 "${characterToDelete?.name || ""}" 后，它会从你的角色列表和发现页移除，相关聊天记录不再显示，已分享的链接也会失效。`}
                 confirmText="确认删除"
                 loadingText="删除中..."
                 onConfirm={handleConfirmDelete}
