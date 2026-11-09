@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  ApiError,
   streamLearningAssistant,
   type LearningAssistantContextMessage,
 } from "@/lib/api";
-import { getErrorMessage } from "@/lib/error-map";
+import { getErrorMessage, getErrorReference } from "@/lib/error-map";
 
 export interface LearningAssistantMessage {
   id: string;
@@ -136,16 +135,13 @@ export function useLearningAssistant(): UseLearningAssistantResult {
               setIsStreaming(false);
             },
             onError: (streamError) => {
-              const errorText =
-                streamError instanceof ApiError &&
-                streamError.code === "llm_service_error" &&
-                streamError.detail
-                  ? streamError.detail
-                  : getErrorMessage(streamError);
-
+              const errorText = getErrorMessage(streamError, "learning");
+              const reference = getErrorReference(streamError);
               patchAssistantMessage(assistantMessageId, (message) => ({
                 ...message,
-                content: errorText,
+                content: reference
+                  ? `${errorText}\n\n错误编号：${reference}`
+                  : errorText,
                 status: "error",
               }));
               setIsStreaming(false);

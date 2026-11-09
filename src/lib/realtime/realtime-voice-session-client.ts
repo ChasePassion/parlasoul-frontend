@@ -6,6 +6,7 @@ import {
   getRealtimeIceConfig,
   type RealtimeIceConfigResponse,
 } from "@/lib/api";
+import { ApiError } from "@/lib/token-store";
 import { logger, Module, RealtimeEvent } from "@/lib/logger";
 import { mapMicStartError } from "@/lib/voice/mic-errors";
 
@@ -706,7 +707,12 @@ export class RealtimeVoiceSessionClient {
     }
     if (event.type === "error") {
       this.handlers.onError?.(
-        new Error(typeof event.message === "string" ? event.message : "Realtime error"),
+        new ApiError(
+          502,
+          typeof event.code === "string" ? event.code : undefined,
+          typeof event.message === "string" ? event.message : "Realtime error",
+          typeof event.request_id === "string" ? event.request_id : undefined,
+        ),
       );
     }
   }

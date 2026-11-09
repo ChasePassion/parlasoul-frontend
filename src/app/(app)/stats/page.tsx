@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useGrowthOverviewQuery } from "@/lib/query";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { SpriteIcon } from "@/components/ui/sprite-icon";
+import { getErrorMessage } from "@/lib/error-map";
 
 export default function StatsPage() {
   const { user } = useAuth();
@@ -38,8 +39,15 @@ export default function StatsPage() {
       <div className="flex h-full w-full flex-col items-center justify-center bg-[var(--workspace-bg)] p-6 text-center">
         <p className="text-rose-500 font-medium">数据加载失败。</p>
         <p className="mt-2 text-sm text-[var(--text-tertiary)]">
-          {overviewQuery.error?.message ?? "请稍后重试"}
+          {getErrorMessage(overviewQuery.error)}
         </p>
+        <button
+          type="button"
+          onClick={() => void overviewQuery.refetch()}
+          className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          重试
+        </button>
       </div>
     );
   }

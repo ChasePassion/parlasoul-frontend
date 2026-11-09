@@ -8,6 +8,7 @@ import {
 } from "@/lib/realtime/realtime-voice-session-client";
 import type { RealtimeIceConfigResponse } from "@/lib/api";
 import { logger, Module, RealtimeEvent } from "@/lib/logger";
+import { getErrorMessage, getErrorReference } from "@/lib/error-map";
 import {
   getMicPermissionState,
   type MicStartErrorCode,
@@ -41,6 +42,7 @@ export function useRealtimeVoiceSession(options: {
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [lastErrorReference, setLastErrorReference] = useState<string | null>(null);
   const [micErrorCode, setMicErrorCode] = useState<MicStartErrorCode | null>(null);
   const [micPermissionAction, setMicPermissionAction] =
     useState<MicPermissionAction>(null);
@@ -84,6 +86,7 @@ export function useRealtimeVoiceSession(options: {
         setIsConnected(true);
         setIsConnecting(false);
         setLastError(null);
+        setLastErrorReference(null);
         clearMicError();
       },
       onDisconnected: () => {
@@ -96,6 +99,7 @@ export function useRealtimeVoiceSession(options: {
         setIsBotSpeaking(false);
         setSubtitles(emptySubtitles);
         setLastError(null);
+        setLastErrorReference(null);
         clearMicError();
       },
       onUserSpeakingChange: setIsUserSpeaking,
@@ -122,7 +126,8 @@ export function useRealtimeVoiceSession(options: {
       },
       onError: (error) => {
         clearMicError();
-        setLastError(error.message);
+        setLastError(getErrorMessage(error));
+        setLastErrorReference(getErrorReference(error));
       },
     });
 
@@ -193,6 +198,7 @@ export function useRealtimeVoiceSession(options: {
         );
         clearMicError();
         setLastError(null);
+        setLastErrorReference(null);
         return;
       }
       logger.fromError(Module.REALTIME, error, RealtimeEvent.START_FAILED, {
@@ -214,9 +220,11 @@ export function useRealtimeVoiceSession(options: {
         }
         setMicErrorCode(code);
         setLastError(null);
+        setLastErrorReference(null);
       } else {
         clearMicError();
-        setLastError(msg);
+        setLastError(getErrorMessage(error));
+        setLastErrorReference(getErrorReference(error));
       }
     }
   }, [
@@ -267,7 +275,8 @@ export function useRealtimeVoiceSession(options: {
           setIsUserSpeaking(false);
         }
       } catch (error) {
-        setLastError(error instanceof Error ? error.message : "麦克风切换失败");
+        setLastError(getErrorMessage(error));
+        setLastErrorReference(getErrorReference(error));
       }
     })();
   }, []);
@@ -296,6 +305,7 @@ export function useRealtimeVoiceSession(options: {
       isBotSpeaking,
       subtitles,
       lastError,
+      lastErrorReference,
       micErrorCode,
       micPermissionAction,
       clearMicError,
@@ -319,6 +329,7 @@ export function useRealtimeVoiceSession(options: {
       isMicCaptureEnabled,
       isUserSpeaking,
       lastError,
+      lastErrorReference,
       micErrorCode,
       micPermissionAction,
       clearMicError,

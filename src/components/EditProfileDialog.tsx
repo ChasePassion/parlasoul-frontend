@@ -29,6 +29,7 @@ import {
 } from "@/lib/auth-default-profile";
 import { useAuth } from "@/lib/auth-context";
 import { resolveUserAvatarSrc } from "@/lib/character-avatar";
+import { getErrorMessage } from "@/lib/error-map";
 import { queryKeys } from "@/lib/query";
 import { cn } from "@/lib/utils";
 
@@ -160,9 +161,7 @@ export default function EditProfileDialog({
       if (saveError instanceof ApiError && saveError.status === 409) {
         setError("这个用户名已经被占用了，换一个试试");
       } else {
-        setError(
-          saveError instanceof Error ? saveError.message : "保存失败，请稍后重试",
-        );
+        setError(getErrorMessage(saveError));
       }
     } finally {
       setIsUploading(false);

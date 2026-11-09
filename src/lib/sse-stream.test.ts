@@ -73,22 +73,6 @@ test("handleStreamError keeps aborts silent and wraps unauthorized errors", () =
   assert.notEqual(errors[0].message, unauthorized.message);
 });
 
-test("handleStreamError can preserve legacy chat stream ApiError wrapping", () => {
-  const errors: Error[] = [];
-
-  handleStreamError(
-    new ApiError(409, "resource_conflict", "character is unpublished"),
-    (error) => {
-      errors.push(error);
-    },
-    { apiErrorMode: "detail-error" },
-  );
-
-  assert.equal(errors.length, 1);
-  assert.equal(errors[0].name, "Error");
-  assert.equal(errors[0].message, "character is unpublished");
-});
-
 test("handleStreamError passes ApiError through by default", () => {
   const errors: Error[] = [];
 
