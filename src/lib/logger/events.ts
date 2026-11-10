@@ -57,4 +57,6 @@ export const TtsEvent = {
   DECODE_FAILED: "tts.decode_failed",
   RESUME_FAILED: "tts.resume_failed",
   STREAM_ERROR: "tts.stream_error",
+  CACHE_HIT: "tts.cache_hit",
+  CACHE_STORE: "tts.cache_store",
 } as const;
