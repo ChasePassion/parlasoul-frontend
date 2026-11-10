@@ -32,9 +32,23 @@ export class TtsPlaybackManager {
   private singleSource: AudioBufferSourceNode | null = null;
   private singleAbort: AbortController | null = null;
 
+  // LRU decoded-audio cache; candidateId is a safe key because candidate content is immutable
+  private readonly audioCache = new Map<string, AudioBuffer>();
+  private cacheTotalBytes = 0;
+  private readonly cacheMaxBytes: number;
+
+  // Realtime chunks are accumulated separately and only cached once the stream completes
+  private realtimeRecordChunks: AudioBuffer[] = [];
+  private realtimeRecordSampleRate = 24000;
+  private realtimeRecordValid = true;
+
   // External callback
   onPlayStateChange: PlayStateCallback = () => {};
   onAudioReady: AudioReadyCallback = () => {};
+
+  constructor(options?: { cacheMaxBytes?: number }) {
+    this.cacheMaxBytes = options?.cacheMaxBytes ?? 48 * 1024 * 1024;
+  }
 
   // ── AudioContext management ──
 
@@ -115,16 +129,27 @@ export class TtsPlaybackManager {
         audioBuffer = ctx.createBuffer(1, float32.length, sampleRate);
         audioBuffer.getChannelData(0).set(float32);
       } else {
+        this.realtimeRecordValid = false;
         logger.warn(Module.VOICE, TtsEvent.MIME_SKIP, "Unexpected mime type for realtime", {
           mime_type: mimeType,
         });
         return;
       }
 
+      if (this.realtimeRecordChunks.length === 0) {
+        this.realtimeRecordSampleRate = audioBuffer.sampleRate;
+      } else if (audioBuffer.sampleRate !== this.realtimeRecordSampleRate) {
+        this.realtimeRecordValid = false;
+      }
+      if (this.realtimeRecordValid) {
+        this.realtimeRecordChunks.push(audioBuffer);
+      }
+
       this.realtimeQueue.push(audioBuffer);
       this.realtimeQueuedDurationSec += audioBuffer.duration;
       this.scheduleRealtimePlayback(ctx);
     } catch (err) {
+      this.realtimeRecordValid = false;
       logger.fromError(Module.VOICE, err, TtsEvent.DECODE_FAILED, { seq });
     }
   }
@@ -218,6 +243,7 @@ export class TtsPlaybackManager {
   finishRealtime(candidateId: string): void {
     if (this.realtimeCandidateId !== candidateId) return;
     this.realtimeFinished = true;
+    this.cacheRealtimeRecording(candidateId);
     logger.info(Module.VOICE, TtsEvent.FINISH, "TTS realtime stream finished", {
       active_sources: this.realtimeActiveSources.length,
       queue_len: this.realtimeQueue.length,
@@ -261,6 +287,8 @@ export class TtsPlaybackManager {
     this.realtimeFinished = false;
     this.realtimeStarted = false;
     this.realtimeSeqCounter = 0;
+    this.realtimeRecordChunks = [];
+    this.realtimeRecordValid = true;
 
     const wasCandidateId = this.realtimeCandidateId;
     this.realtimeCandidateId = null;
@@ -268,6 +296,28 @@ export class TtsPlaybackManager {
     if (this.playingCandidateId === wasCandidateId && !this.singleSource) {
       this.setPlayingId(null);
     }
+  }
+
+  private cacheRealtimeRecording(candidateId: string): void {
+    const chunks = this.realtimeRecordChunks;
+    const valid = this.realtimeRecordValid;
+    this.realtimeRecordChunks = [];
+    this.realtimeRecordValid = true;
+    if (!valid || chunks.length === 0) return;
+
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const combined = this.getOrCreateAudioContext().createBuffer(
+      1,
+      totalLength,
+      this.realtimeRecordSampleRate,
+    );
+    const channel = combined.getChannelData(0);
+    let offset = 0;
+    for (const chunk of chunks) {
+      channel.set(chunk.getChannelData(0), offset);
+      offset += chunk.length;
+    }
+    this.cacheSet(candidateId, combined);
   }
 
   // ── Single-message manual playback ──
@@ -278,6 +328,15 @@ export class TtsPlaybackManager {
 
     await this.ensureResumed();
     const ctx = this.getOrCreateAudioContext();
+
+    const cached = this.cacheGet(candidateId);
+    if (cached) {
+      logger.info(Module.VOICE, TtsEvent.CACHE_HIT, "Playing cached TTS audio", {
+        candidate_id: candidateId,
+      });
+      this.startSingleSource(ctx, candidateId, cached);
+      return;
+    }
 
     const abortController = new AbortController();
     this.singleAbort = abortController;
@@ -294,24 +353,8 @@ export class TtsPlaybackManager {
 
       if (abortController.signal.aborted) return;
 
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(ctx.destination);
-      this.singleSource = source;
-
-      source.onended = () => {
-        if (this.singleSource === source) {
-          this.singleSource = null;
-          this.singleAbort = null;
-          if (this.playingCandidateId === candidateId) {
-            this.setPlayingId(null);
-          }
-        }
-      };
-
-      source.start(0);
-      this.setPlayingId(candidateId);
-      this.onAudioReady(candidateId);
+      this.cacheSet(candidateId, audioBuffer);
+      this.startSingleSource(ctx, candidateId, audioBuffer);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         return;
@@ -333,6 +376,31 @@ export class TtsPlaybackManager {
     this.stopSinglePlayback();
   }
 
+  private startSingleSource(
+    ctx: AudioContext,
+    candidateId: string,
+    audioBuffer: AudioBuffer,
+  ): void {
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(ctx.destination);
+    this.singleSource = source;
+
+    source.onended = () => {
+      if (this.singleSource === source) {
+        this.singleSource = null;
+        this.singleAbort = null;
+        if (this.playingCandidateId === candidateId) {
+          this.setPlayingId(null);
+        }
+      }
+    };
+
+    source.start(0);
+    this.setPlayingId(candidateId);
+    this.onAudioReady(candidateId);
+  }
+
   private stopSinglePlayback(): void {
     if (this.singleSource) {
       try {
@@ -349,6 +417,42 @@ export class TtsPlaybackManager {
     }
 
     this.setPlayingId(null);
+  }
+
+  // ── Audio cache ──
+
+  private cacheGet(candidateId: string): AudioBuffer | null {
+    const buffer = this.audioCache.get(candidateId);
+    if (!buffer) return null;
+    this.audioCache.delete(candidateId);
+    this.audioCache.set(candidateId, buffer);
+    return buffer;
+  }
+
+  private cacheSet(candidateId: string, buffer: AudioBuffer): void {
+    const bytes = buffer.length * buffer.numberOfChannels * 4;
+    if (bytes > this.cacheMaxBytes) return;
+
+    const existing = this.audioCache.get(candidateId);
+    if (existing) {
+      this.cacheTotalBytes -= existing.length * existing.numberOfChannels * 4;
+      this.audioCache.delete(candidateId);
+    }
+    this.audioCache.set(candidateId, buffer);
+    this.cacheTotalBytes += bytes;
+
+    while (this.cacheTotalBytes > this.cacheMaxBytes) {
+      const oldestKey = this.audioCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      const oldest = this.audioCache.get(oldestKey)!;
+      this.audioCache.delete(oldestKey);
+      this.cacheTotalBytes -= oldest.length * oldest.numberOfChannels * 4;
+    }
+
+    logger.info(Module.VOICE, TtsEvent.CACHE_STORE, "TTS audio cached", {
+      candidate_id: candidateId,
+      cache_bytes: this.cacheTotalBytes,
+    });
   }
 
   // ── Interrupt ──
@@ -375,6 +479,8 @@ export class TtsPlaybackManager {
 
   dispose(): void {
     this.interruptAll();
+    this.audioCache.clear();
+    this.cacheTotalBytes = 0;
     if (this.audioContext && this.audioContext.state !== "closed") {
       this.audioContext.close().catch(() => {});
     }
